@@ -120,51 +120,59 @@ interface ExamPDFDocumentProps {
 export function ExamPDFDocument({ exam }: ExamPDFDocumentProps): ReactNode {
   let currentQuestionNumber = 0;
 
+  if (!exam) { // Basic guard against null/undefined exam
+    return (
+      <Document>
+        <Page style={styles.page}>
+          <Text>Error: Exam data is not available.</Text>
+        </Page>
+      </Document>
+    );
+  }
+
   return (
-    <Document title={exam.title} author="Chit Exam Generator">
+    <Document title={exam.title || 'Exam'} author="Chit Exam Generator">
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
-          <Text style={styles.examTitle}>{exam.title}</Text>
+          <Text style={styles.examTitle}>{exam.title || 'Untitled Exam'}</Text>
           {exam.description && <Text style={styles.examDescription}>{exam.description}</Text>}
            <Text style={styles.metadata}>
-            Total Questions: {exam.totalQuestions} | Total Points: {exam.totalPoints} | Status: {exam.status}
+            Total Questions: {exam.totalQuestions || 0} | Total Points: {exam.totalPoints || 0} | Status: {exam.status || 'N/A'}
           </Text>
         </View>
 
-        {exam.examBlocks.map((block, blockIndex) => {
+        {(exam.examBlocks || []).map((block, blockIndex) => {
           return (
-            <View key={block.id} style={styles.block}>
+            <View key={block.id || `block-${blockIndex}`} style={styles.block}>
               <Text style={styles.blockTitle}>
                 {toRoman(blockIndex + 1)}{block.blockTitle ? `: ${block.blockTitle}` : ''}
               </Text>
-              {block.questions.map((question) => {
+              {(block.questions || []).map((question) => {
                 currentQuestionNumber++;
                 return (
-                  <View key={question.id} style={styles.questionContainer}>
+                  <View key={question.id || `question-${currentQuestionNumber}`} style={styles.questionContainer}>
                     <Text style={styles.questionText}>
                       {question.type === 'true-false' ? '____ ' : ''}
-                      {currentQuestionNumber}. {question.questionText}{' '}
-                      <Text style={styles.points}>({question.points} pts)</Text>
+                      {currentQuestionNumber}. {question.questionText || ''}{' '}
+                      <Text style={styles.points}>({question.points || 0} pts)</Text>
                     </Text>
 
                     {question.type === 'multiple-choice' && (
                       <View style={styles.optionsList}>
-                        {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
-                          <Text key={opt.id} style={styles.optionText}>
-                            {getAlphabetLetter(optIndex)}. {opt.text}
+                        {((question as MultipleChoiceQuestion).options || []).map((opt, optIndex) => (
+                          <Text key={opt.id || `opt-${optIndex}`} style={styles.optionText}>
+                            {getAlphabetLetter(optIndex)}. {opt.text || ''}
                           </Text>
                         ))}
                       </View>
                     )}
 
-                    {/* True/False has underline in question text */}
-
                     {question.type === 'matching' && (
                       <View style={styles.optionsList}>
-                        {(question as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (
-                          <View key={pair.id} style={{ flexDirection: 'column', marginBottom: 2 }}>
+                        {((question as MatchingTypeQuestion).pairs || []).map((pair, pairIndex) => (
+                          <View key={pair.id || `pair-${pairIndex}`} style={{ flexDirection: 'column', marginBottom: 2 }}>
                             <Text style={styles.matchingPairPremise}>
-                              {pairIndex + 1}. {pair.premise}
+                              {pairIndex + 1}. {pair.premise || ''}
                             </Text>
                             <Text style={styles.matchingPairLine}>
                               {'       '}_________________________

@@ -23,6 +23,11 @@ interface ExamItemBlockProps {
   itemIndex: number;
 }
 
+// Helper function to get alphabet letter for options
+const getAlphabetLetter = (index: number): string => {
+  return String.fromCharCode(65 + index); // 65 is ASCII for 'A'
+};
+
 export function ExamItemBlock({ item, onItemChange, onItemRemove, onItemTypeChange, itemIndex }: ExamItemBlockProps) {
   const handleQuestionTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     onItemChange({ ...item, questionText: e.target.value });
@@ -56,7 +61,14 @@ export function ExamItemBlock({ item, onItemChange, onItemRemove, onItemTypeChan
 
   const handleRemoveOption = (optionIndex: number) => {
     if (item.type === 'multiple-choice') {
+      // Ensure at least one option remains for multiple choice
+      if (item.options.length <= 1) return;
       const newOptions = item.options.filter((_, i) => i !== optionIndex);
+      // If the removed option was correct, and no other option is correct, mark the first as correct.
+      // This is a simple fallback, could be more sophisticated.
+      if (!newOptions.some(opt => opt.isCorrect) && newOptions.length > 0) {
+        newOptions[0].isCorrect = true;
+      }
       onItemChange({ ...item, options: newOptions });
     }
   };
@@ -94,6 +106,8 @@ export function ExamItemBlock({ item, onItemChange, onItemRemove, onItemTypeChan
 
   const handleRemovePair = (pairIndex: number) => {
     if (item.type === 'matching') {
+       // Ensure at least one pair remains for matching type
+      if (item.pairs.length <= 1) return;
       const newPairs = item.pairs.filter((_, i) => i !== pairIndex);
       onItemChange({ ...item, pairs: newPairs });
     }
@@ -137,22 +151,24 @@ export function ExamItemBlock({ item, onItemChange, onItemRemove, onItemTypeChan
           <div className="space-y-3">
             <Label className="block font-medium">Options (Mark the correct one)</Label>
             {(item as MultipleChoiceQuestion).options.map((option, optIndex) => (
-              <div key={option.id} className="flex items-center gap-2">
+              <div key={option.id} className="flex items-center gap-3">
                 <Checkbox
                   id={`correct-opt-${option.id}`}
                   checked={option.isCorrect}
                   onCheckedChange={() => handleCorrectOptionChange(option.id)}
-                  aria-label={`Mark option ${optIndex + 1} as correct`}
+                  aria-label={`Mark option ${getAlphabetLetter(optIndex)} as correct`}
                 />
+                <Label htmlFor={`option-text-${option.id}`} className="font-semibold">{getAlphabetLetter(optIndex)}.</Label>
                 <Input
+                  id={`option-text-${option.id}`}
                   type="text"
                   value={option.text}
                   onChange={(e) => handleOptionTextChange(optIndex, e.target.value)}
-                  placeholder={`Option ${optIndex + 1}`}
+                  placeholder={`Option ${getAlphabetLetter(optIndex)} text`}
                   className="flex-grow"
                 />
-                {(item as MultipleChoiceQuestion).options.length > 1 && (
-                   <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveOption(optIndex)} aria-label="Remove option">
+                {(item as MultipleChoiceQuestion).options.length > 1 && ( // Show remove button if more than 1 option
+                   <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveOption(optIndex)} aria-label={`Remove option ${getAlphabetLetter(optIndex)}`}>
                      <Trash2 className="h-4 w-4 text-muted-foreground" />
                    </Button>
                 )}
@@ -190,27 +206,25 @@ export function ExamItemBlock({ item, onItemChange, onItemRemove, onItemTypeChan
           <div className="space-y-3">
             <Label className="block font-medium">Matching Pairs</Label>
             {(item as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (
-              <div key={pair.id} className="grid grid-cols-1 md:grid-cols-2 gap-2 items-center">
+              <div key={pair.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto] gap-2 items-center">
                 <Input
                   type="text"
                   value={pair.premise}
                   onChange={(e) => handlePairPremiseChange(pairIndex, e.target.value)}
                   placeholder={`Premise ${pairIndex + 1}`}
                 />
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="text"
-                    value={pair.response}
-                    onChange={(e) => handlePairResponseChange(pairIndex, e.target.value)}
-                    placeholder={`Response ${pairIndex + 1}`}
-                    className="flex-grow"
-                  />
-                   {(item as MatchingTypeQuestion).pairs.length > 1 && (
-                    <Button type="button" variant="ghost" size="icon" onClick={() => handleRemovePair(pairIndex)} aria-label="Remove pair">
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  )}
-                </div>
+                <span className="text-center text-muted-foreground hidden md:inline">=</span>
+                <Input
+                  type="text"
+                  value={pair.response}
+                  onChange={(e) => handlePairResponseChange(pairIndex, e.target.value)}
+                  placeholder={`Response ${pairIndex + 1}`}
+                />
+                 {(item as MatchingTypeQuestion).pairs.length > 1 && ( // Show remove if more than 1 pair
+                  <Button type="button" variant="ghost" size="icon" onClick={() => handleRemovePair(pairIndex)} aria-label={`Remove pair ${pairIndex + 1}`}>
+                    <Trash2 className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                )}
               </div>
             ))}
             <Button type="button" variant="outline" onClick={handleAddPair} size="sm">

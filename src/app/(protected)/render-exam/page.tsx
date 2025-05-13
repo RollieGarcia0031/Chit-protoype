@@ -102,15 +102,15 @@ function ExamPreview({ exam, onBackToList, onDownload }: { exam: FullExamData, o
         {exam.examBlocks.map((block, blockIndex) => (
           <div key={block.id} className="p-4 border rounded-lg shadow-sm bg-card/50">
             <h3 className="text-xl font-semibold mb-1">
-              Block {toRoman(blockIndex + 1)}: {block.blockType.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              {toRoman(blockIndex + 1)}{block.blockTitle ? `: ${block.blockTitle}` : ''}
             </h3>
-            {block.blockTitle && <p className="text-sm text-muted-foreground mb-3">{block.blockTitle}</p>}
+            {/* {block.blockTitle && <p className="text-sm text-muted-foreground mb-3">{block.blockTitle}</p>} */}
             {block.questions.map((question) => {
               currentQuestionNumber++;
               return (
                 <div key={question.id} className="mb-4 p-3 border-t">
                   <p className="font-medium text-base">
-                    {currentQuestionNumber}. {question.questionText} <span className="text-xs text-muted-foreground">({question.points} pts)</span>
+                    {question.type === 'true-false' ? '____ ' : ''}{currentQuestionNumber}. {question.questionText} <span className="text-xs text-muted-foreground">({question.points} pts)</span>
                   </p>
                   {question.type === 'multiple-choice' && (
                     <ul className="list-none pl-5 mt-1 text-sm space-y-0.5">
@@ -121,12 +121,7 @@ function ExamPreview({ exam, onBackToList, onDownload }: { exam: FullExamData, o
                       ))}
                     </ul>
                   )}
-                  {question.type === 'true-false' && (
-                    // Correct answer is intentionally hidden for preview
-                    <p className="pl-5 mt-1 text-sm text-muted-foreground italic">
-                      (True/False)
-                    </p>
-                  )}
+                  {/* For true-false, the underline above handles the visual cue. No extra text needed here. */}
                   {question.type === 'matching' && (
                     <ul className="list-none pl-5 mt-1 text-sm space-y-1">
                       {(question as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (

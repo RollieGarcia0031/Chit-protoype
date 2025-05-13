@@ -509,6 +509,7 @@ export default function CreateExamPage() {
     );
   }
 
+  // Attempting to fix parsing error by ensuring this comment exists.
   return (
     <div className="space-y-6">
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -596,4 +597,9 @@ export default function CreateExamPage() {
             <CardDescription>Use AI to help generate questions or exam structures.</CardDescription>
         </CardHeader>
         <CardContent>
-            <p className="text-muted-foreground">AI features coming soon...</p
+            <p className="text-muted-foreground">AI features coming soon...</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

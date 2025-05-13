@@ -94,7 +94,7 @@ export default function CreateExamPage() {
 
   const performAIAnalysis = useCallback(async () => {
     if (!aiSuggestionsEnabled || !user || isSaving || isLoadingExamData) {
-      setAiFeedbackList([]);
+      setAiFeedbackList([]); // Clear feedback if conditions not met
       return;
     }
 
@@ -164,7 +164,7 @@ export default function CreateExamPage() {
             suggestionText: missingInfoMessage || "AI analysis requires more complete exam content (e.g., all questions filled, answers selected, options defined).", 
             severity: "info" 
         }]);
-        setIsAnalyzingWithAI(false);
+        setIsAnalyzingWithAI(false); // Ensure this is reset
         setAiError(null);
         return;
     }
@@ -209,14 +209,11 @@ export default function CreateExamPage() {
     }
   }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, user, isSaving, isLoadingExamData]);
 
-  const debouncedAIAnalysis = useMemo(() => debounce(performAIAnalysis, 20000), [performAIAnalysis]);
+  const debouncedAIAnalysis = useMemo(() => debounce(performAIAnalysis, 10000), [performAIAnalysis]);
 
   useEffect(() => {
     if (aiSuggestionsEnabled && isInitialLoadComplete && !isLoadingExamData && !isSaving) {
       debouncedAIAnalysis();
-    } else if (!aiSuggestionsEnabled) {
-        setAiFeedbackList([]); 
-        setAiError(null);
     }
   }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, isInitialLoadComplete, isLoadingExamData, isSaving, debouncedAIAnalysis]);
 
@@ -701,7 +698,7 @@ export default function CreateExamPage() {
             </DialogTitle>
             <DialogDescription>
               Review AI-generated feedback to improve your exam. Analysis is based on current exam content.
-              Content is analyzed approximately every 20 seconds if changes are made.
+              Content is analyzed approximately every 10 seconds if changes are made.
             </DialogDescription>
           </DialogHeader>
           <div className="flex-grow overflow-y-auto space-y-3 pr-2">
@@ -803,7 +800,17 @@ export default function CreateExamPage() {
                 <Switch
                     id="ai-suggestions-toggle"
                     checked={aiSuggestionsEnabled}
-                    onCheckedChange={setAiSuggestionsEnabled}
+                    onCheckedChange={(checked) => {
+                        setAiSuggestionsEnabled(checked);
+                        if (checked) {
+                            if (isInitialLoadComplete && !isLoadingExamData && !isSaving && !isAnalyzingWithAI) {
+                                performAIAnalysis(); 
+                            }
+                        } else {
+                            setAiFeedbackList([]); 
+                            setAiError(null);
+                        }
+                    }}
                     disabled={isSaving || isLoadingExamData}
                 />
                 <Label htmlFor="ai-suggestions-toggle" className="text-sm">
@@ -856,3 +863,4 @@ export default function CreateExamPage() {
     </div>
   );
 }
+

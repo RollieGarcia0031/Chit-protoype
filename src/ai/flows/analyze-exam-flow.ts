@@ -135,9 +135,7 @@ Block (ID: {{this.id}}, Type: {{this.blockType}}):
     {{#if (eq (typeOf this.correctAnswer) "boolean")}}
     Correct Answer (True/False): {{this.correctAnswer}}
     {{else}}
-        {{#if (eq this.correctAnswer null)}}
     Correct Answer (True/False): Not set by user
-        {{/if}}
     {{/if}}
     {{#if this.pairs}}
     Pairs (Matching):

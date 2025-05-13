@@ -80,7 +80,7 @@ function PdfExamPreview({ exam, onBack }: { exam: FullExamData; onBack: () => vo
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle className="text-xl font-semibold">Exam Preview: {exam.title}</CardTitle>
-          <CardDescription>This is a preview of the exam content.</CardDescription>
+          <CardDescription>This is a preview of the exam content. DOCX download will start automatically.</CardDescription>
         </div>
         <Button variant="outline" onClick={onBack}>
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -280,8 +280,8 @@ export default function RenderExamPage() {
             examBlocks: loadedBlocks,
         };
         
-        setExamForPreview(examToDownloadAndPreview); // Set data for PDF preview
-        setShowPdfPreview(true); // Switch to PDF preview UI
+        setExamForPreview(examToDownloadAndPreview); 
+        setShowPdfPreview(true); 
 
         // --- DOCX Generation Logic ---
         let questionCounter = 0;
@@ -354,7 +354,7 @@ export default function RenderExamPage() {
             });
         });
         
-        const doc = new DocxDocument({
+        const wordDocument = new DocxDocument({
             sections: [{ children }],
             styles: {
                 paragraphStyles: [
@@ -371,29 +371,25 @@ export default function RenderExamPage() {
             }
         });
 
-        const blob = await Packer.toBlob(doc);
+        const blob = await Packer.toBlob(wordDocument);
         saveAs(blob, `${String(examToDownloadAndPreview.title).replace(/[^a-z0-9]/gi, '_').toLowerCase()}_exam.docx`);
         toast({ title: "Download Started", description: `"${String(examToDownloadAndPreview.title)}.docx" is downloading.` });
 
     } catch (error) {
         console.error("Error generating DOCX and setting up preview:", error);
         toast({ title: "Operation Failed", description: "Could not generate DOCX or prepare preview.", variant: "destructive" });
-        // Reset preview states if error occurs before preview is shown
         setShowPdfPreview(false);
         setExamForPreview(null);
     } finally {
         setIsGeneratingDocx(null);
         setIsConfirmDialogOpen(false);
         setSelectedExamForDialog(null);
-        // Do not reset showPdfPreview and examForPreview here if successful, as they are needed for the preview
     }
   };
 
   const handleBackToList = () => {
     setShowPdfPreview(false);
     setExamForPreview(null);
-    // Optionally re-fetch exams if underlying data might have changed or for consistency
-    // fetchExams(); 
   };
 
 

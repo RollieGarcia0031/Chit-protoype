@@ -1,4 +1,3 @@
-
 // src/app/(protected)/exams/page.tsx
 'use client';
 
@@ -25,8 +24,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-
-const EXAMS_COLLECTION_NAME = 'chit1'; // Updated collection name
+import { EXAMS_COLLECTION_NAME } from "@/config/firebase-constants";
 
 interface ExamData {
   id: string;
@@ -56,7 +54,7 @@ export default function ViewExamsPage() {
     setIsLoadingExams(true);
     setError(null);
     try {
-      const examsCollectionRef = collection(db, EXAMS_COLLECTION_NAME); // Use updated collection name
+      const examsCollectionRef = collection(db, EXAMS_COLLECTION_NAME);
       const q = query(examsCollectionRef, where("userId", "==", user.uid), orderBy("createdAt", "desc"));
       const querySnapshot = await getDocs(q);
       const fetchedExams: ExamData[] = [];
@@ -291,4 +289,3 @@ export default function ViewExamsPage() {
     </div>
   );
 }
-

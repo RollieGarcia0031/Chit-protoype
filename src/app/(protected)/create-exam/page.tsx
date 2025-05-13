@@ -18,9 +18,9 @@ import { db } from '@/lib/firebase/config';
 import { collection, doc, writeBatch, serverTimestamp, getDoc, getDocs, query, orderBy, deleteDoc } from "firebase/firestore";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EXAMS_COLLECTION_NAME } from "@/config/firebase-constants";
 
 const LOCAL_STORAGE_KEY = 'pendingExamData';
-const EXAMS_COLLECTION_NAME = 'chit1';
 
 const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'): ExamQuestion => {
   const baseQuestionProps = {
@@ -596,9 +596,4 @@ export default function CreateExamPage() {
             <CardDescription>Use AI to help generate questions or exam structures.</CardDescription>
         </CardHeader>
         <CardContent>
-            <p className="text-muted-foreground">AI features coming soon...</p>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
+            <p className="text-muted-foreground">AI features coming soon...</p

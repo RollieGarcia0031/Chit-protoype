@@ -7,21 +7,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useState, type FormEvent, useEffect, useCallback } from "react";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useState, type FormEvent, useEffect, useCallback, useMemo } from "react";
 import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
-import { generateId } from "@/lib/utils";
+import { generateId, debounce } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
-import { PlusCircle, Loader2 } from "lucide-react";
+import { PlusCircle, Loader2, Sparkles, AlertTriangle, CheckCircle, Info, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from '@/lib/firebase/config';
-import { collection, doc, writeBatch, serverTimestamp, getDoc, getDocs, query, orderBy, deleteDoc } from "firebase/firestore";
+import { collection, doc, writeBatch, serverTimestamp, getDoc, getDocs, query, orderBy } from "firebase/firestore";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EXAMS_COLLECTION_NAME } from "@/config/firebase-constants";
-
+import { analyzeExamFlow, type AnalyzeExamInput, type AnalyzeExamOutput, type AnalyzeExamInputSchema } from "@/ai/flows/analyze-exam-flow";
+import type { z } from 'zod';
 
 const LOCAL_STORAGE_KEY = 'pendingExamData';
+
+type AISuggestion = z.infer<AnalyzeExamOutputSchema>['suggestions'][0];
 
 const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'): ExamQuestion => {
   const baseQuestionProps = {
@@ -79,16 +85,83 @@ export default function CreateExamPage() {
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
   const [isLoadingExamData, setIsLoadingExamData] = useState(false);
 
+  // AI Feature States
+  const [aiSuggestionsEnabled, setAiSuggestionsEnabled] = useState(false);
+  const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
+  const [aiFeedbackList, setAiFeedbackList] = useState<AISuggestion[]>([]);
+  const [isAnalyzingWithAI, setIsAnalyzingWithAI] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+
+  const performAIAnalysis = useCallback(async () => {
+    if (!aiSuggestionsEnabled || !user || isSaving || isLoadingExamData) {
+      setAiFeedbackList([]);
+      return;
+    }
+
+    setIsAnalyzingWithAI(true);
+    setAiError(null);
+
+    const examDataForAI: AnalyzeExamInput = {
+      examTitle,
+      examDescription,
+      examBlocks: examBlocks.map(block => ({
+        ...block,
+        questions: block.questions.map(q => {
+          const questionPayload: any = {
+            id: q.id,
+            questionText: q.questionText,
+            points: q.points,
+            type: q.type,
+          };
+          if (q.type === 'multiple-choice') {
+            questionPayload.options = (q as MultipleChoiceQuestion).options;
+          } else if (q.type === 'true-false') {
+            questionPayload.correctAnswer = (q as TrueFalseQuestion).correctAnswer;
+          } else if (q.type === 'matching') {
+            questionPayload.pairs = (q as MatchingTypeQuestion).pairs;
+          }
+          return questionPayload;
+        })
+      })),
+    };
+
+    try {
+      const result = await analyzeExamFlow(examDataForAI);
+      setAiFeedbackList(result.suggestions || []);
+    } catch (error) {
+      console.error("AI Analysis Error:", error);
+      setAiError("Failed to get AI suggestions. Please try again.");
+      setAiFeedbackList([]);
+    } finally {
+      setIsAnalyzingWithAI(false);
+    }
+  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, user, isSaving, isLoadingExamData]);
+
+  const debouncedAIAnalysis = useMemo(() => debounce(performAIAnalysis, 1500), [performAIAnalysis]);
+
+  useEffect(() => {
+    if (aiSuggestionsEnabled && isInitialLoadComplete && !isLoadingExamData && !isSaving) {
+      debouncedAIAnalysis();
+    } else if (!aiSuggestionsEnabled) {
+        setAiFeedbackList([]); 
+        setAiError(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps 
+  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, isInitialLoadComplete, isLoadingExamData, isSaving]);
+  // debouncedAIAnalysis is stable due to useMemo, so it's safe in deps. Direct inclusion of performAIAnalysis would cause loop.
+
+
   // Effect to determine mode (create or edit) and load initial data accordingly
   useEffect(() => {
     const examIdFromUrl = searchParams.get('examId');
+    let localDataLoaded = false;
+
     if (examIdFromUrl) {
       setEditingExamId(examIdFromUrl);
-      setIsLoadingExamData(true); 
-      if (!isInitialLoadComplete) setIsInitialLoadComplete(true); // Mark initial setup as complete
+      setIsLoadingExamData(true);
     } else {
-       // Ensure this runs only once on initial load for new exams
-      if (!isInitialLoadComplete && typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && !isInitialLoadComplete) {
         const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (savedData) {
           try {
@@ -118,29 +191,33 @@ export default function CreateExamPage() {
               }));
               setExamBlocks(validatedBlocks);
             }
+            localDataLoaded = true;
           } catch (error) {
             console.error("Error parsing exam data from localStorage:", error);
             localStorage.removeItem(LOCAL_STORAGE_KEY);
           }
         }
-        setIsInitialLoadComplete(true); // Mark initial load complete
       }
     }
-  }, [searchParams, isInitialLoadComplete]);
+    if (!isInitialLoadComplete) {
+        setIsInitialLoadComplete(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]); // Only run when searchParams changes or on initial mount effectively
 
 
   // Effect to fetch exam data from Firestore when in edit mode
   useEffect(() => {
-    if (!editingExamId || !user || !isLoadingExamData) {
-      // If not editing, no user, or not in loading state for this specific exam fetch, do nothing.
+    if (!editingExamId || !user || !isLoadingExamData || !isInitialLoadComplete) {
       return;
     }
 
     const fetchExamForEditing = async () => {
-      // Reset form states before fetching new data for the exam being edited
+      // Reset form states before fetching new data
       setExamTitle("");
       setExamDescription("");
       setExamBlocks([]);
+      setAiFeedbackList([]); // Clear AI feedback
       
       try {
         const examDocRef = doc(db, EXAMS_COLLECTION_NAME, editingExamId);
@@ -214,7 +291,7 @@ export default function CreateExamPage() {
           });
         }
         setExamBlocks(loadedBlocks);
-        localStorage.removeItem(LOCAL_STORAGE_KEY); // Clear local draft after loading from DB
+        localStorage.removeItem(LOCAL_STORAGE_KEY); 
         toast({ title: "Exam Loaded", description: `Editing "${examData.title}". Your changes will be saved to the database.` });
 
       } catch (error) {
@@ -222,18 +299,17 @@ export default function CreateExamPage() {
         toast({ title: "Error Loading Exam", description: "Could not load the exam data for editing.", variant: "destructive" });
         router.push('/exams');
       } finally {
-        setIsLoadingExamData(false); // Loading complete
+        setIsLoadingExamData(false); 
       }
     };
 
     fetchExamForEditing();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingExamId, user, router, toast]); // isLoadingExamData is intentionally kept in deps to trigger fetch on its change
+  }, [editingExamId, user, router, toast, isInitialLoadComplete]); // isLoadingExamData removed as per previous fix attempt. isInitialLoadComplete ensures this runs after initial setup.
 
 
   // Effect to save to local storage (only in create mode)
   useEffect(() => {
-    // Do not save to localStorage if editing an existing exam, not yet fully initialized, or if currently loading data from Firestore
     if (editingExamId || !isInitialLoadComplete || typeof window === 'undefined' || isLoadingExamData) return;
 
     const examDataToSave = {
@@ -272,7 +348,7 @@ export default function CreateExamPage() {
     newBlocks[blockIndex] = {
       ...currentBlock,
       blockType: newType,
-      questions: [initialQuestion], // Reset questions for the new type
+      questions: [initialQuestion], 
     };
     setExamBlocks(newBlocks);
     toast({ title: "Block Type Changed", description: `Questions in block ${blockIndex + 1} reset for new type.`});
@@ -344,12 +420,15 @@ export default function CreateExamPage() {
     setExamTitle("");
     setExamDescription("");
     setExamBlocks([]);
+    setAiSuggestionsEnabled(false);
+    setAiFeedbackList([]);
+    setAiError(null);
     if (!editingExamId && typeof window !== 'undefined') { 
       localStorage.removeItem(LOCAL_STORAGE_KEY);
     }
     setEditingExamId(null); 
-    setIsLoadingExamData(false); 
-    if (searchParams.get('examId')) router.push('/create-exam'); // Clear query param if it was an edit
+    // setIsLoadingExamData(false); // Already handled by fetch logic
+    if (searchParams.get('examId')) router.push('/create-exam'); 
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -453,7 +532,16 @@ export default function CreateExamPage() {
     }
   };
 
-  if (isLoadingExamData && editingExamId) {
+  const renderSeverityIcon = (severity?: 'error' | 'warning' | 'info') => {
+    switch (severity) {
+      case 'error': return <XCircle className="h-5 w-5 text-destructive mr-2 shrink-0" />;
+      case 'warning': return <AlertTriangle className="h-5 w-5 text-yellow-500 mr-2 shrink-0" />;
+      case 'info':
+      default: return <Info className="h-5 w-5 text-blue-500 mr-2 shrink-0" />;
+    }
+  };
+
+  if (isLoadingExamData && editingExamId && !isInitialLoadComplete) { // Check !isInitialLoadComplete as well
     return (
         <div className="space-y-6">
             <Card className="shadow-lg">
@@ -493,6 +581,89 @@ export default function CreateExamPage() {
 
   return (
     <div className="space-y-6">
+      {aiSuggestionsEnabled && (
+        <Button
+          variant="outline"
+          size="icon"
+          className="fixed left-4 bottom-4 z-50 rounded-full h-14 w-14 shadow-lg bg-primary text-primary-foreground hover:bg-primary/90"
+          onClick={() => setIsAiDialogOpen(true)}
+          aria-label="Open AI Suggestions"
+          disabled={isAnalyzingWithAI}
+        >
+          {isAnalyzingWithAI ? <Loader2 className="h-6 w-6 animate-spin" /> : <Sparkles className="h-6 w-6" />}
+        </Button>
+      )}
+
+      <Dialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-2xl flex items-center">
+              <Sparkles className="mr-2 h-6 w-6 text-primary" />
+              AI Exam Analysis & Suggestions
+            </DialogTitle>
+            <DialogDescription>
+              Review AI-generated feedback to improve your exam. Analysis is based on current exam content.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-grow overflow-y-auto space-y-3 pr-2">
+            {isAnalyzingWithAI && (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
+                <p className="text-muted-foreground">Analyzing exam content...</p>
+              </div>
+            )}
+            {aiError && !isAnalyzingWithAI && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Analysis Error</AlertTitle>
+                <AlertDescription>{aiError}</AlertDescription>
+              </Alert>
+            )}
+            {!isAnalyzingWithAI && !aiError && aiFeedbackList.length === 0 && (
+              <div className="text-center py-10">
+                <Info className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
+                <p className="text-muted-foreground">No AI suggestions available at the moment.</p>
+                <p className="text-sm text-muted-foreground">Ensure AI suggestions are enabled and you have some exam content.</p>
+              </div>
+            )}
+            {!isAnalyzingWithAI && !aiError && aiFeedbackList.length > 0 && (
+              <ul className="space-y-3">
+                {aiFeedbackList.map((feedback, index) => (
+                  <li key={index} className="p-3 border rounded-md shadow-sm bg-card/50">
+                    <div className="flex items-start">
+                      {renderSeverityIcon(feedback.severity)}
+                      <div className="flex-grow">
+                        <p className="text-sm font-medium text-card-foreground">{feedback.suggestionText}</p>
+                        {feedback.elementPath && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Path: <code className="bg-muted px-1 py-0.5 rounded text-xs">{feedback.elementPath}</code>
+                            </p>
+                        )}
+                         {(feedback.blockId || feedback.questionId) && (
+                             <p className="text-xs text-muted-foreground mt-0.5">
+                                {feedback.blockId && `Block ID: ${feedback.blockId}`}
+                                {feedback.blockId && feedback.questionId && ", "}
+                                {feedback.questionId && `Question ID: ${feedback.questionId}`}
+                            </p>
+                         )}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAiDialogOpen(false)}>Close</Button>
+            <Button onClick={performAIAnalysis} disabled={isAnalyzingWithAI}>
+              {isAnalyzingWithAI && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Re-analyze
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="shadow-lg">
           <CardHeader>
@@ -529,6 +700,17 @@ export default function CreateExamPage() {
                   onChange={(e) => setExamDescription(e.target.value)}
                   disabled={isSaving || isLoadingExamData}
                 />
+              </div>
+              <div className="flex items-center space-x-2 pt-2">
+                <Switch
+                    id="ai-suggestions-toggle"
+                    checked={aiSuggestionsEnabled}
+                    onCheckedChange={setAiSuggestionsEnabled}
+                    disabled={isSaving || isLoadingExamData}
+                />
+                <Label htmlFor="ai-suggestions-toggle" className="text-sm">
+                    Enable AI Suggestions
+                </Label>
               </div>
             </div>
           </CardContent>
@@ -576,3 +758,4 @@ export default function CreateExamPage() {
     </div>
   );
 }
+

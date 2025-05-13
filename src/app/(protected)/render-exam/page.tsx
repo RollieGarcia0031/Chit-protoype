@@ -63,18 +63,38 @@ const toRoman = (num: number): string => {
 };
 
 // This component wraps the dynamically loaded PDF viewer in a card structure
-function PdfPreviewCard({ exam, onBack }: { exam: FullExamData; onBack: () => void }) {
+function PdfPreviewCard({ 
+    exam, 
+    onBack,
+    onDownloadDocx,
+    isDownloadingDocxFile 
+}: { 
+    exam: FullExamData; 
+    onBack: () => void;
+    onDownloadDocx: () => Promise<void>;
+    isDownloadingDocxFile: boolean;
+}) {
   return (
     <Card className="shadow-lg">
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle className="text-xl font-semibold">Exam Preview: {exam.title}</CardTitle>
-          <CardDescription>This is a preview of the exam content. DOCX download will start automatically.</CardDescription>
+          <CardDescription>This is a preview of the exam content. Click download for the DOCX file.</CardDescription>
         </div>
-        <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to List
-        </Button>
+        <div className="flex gap-2">
+            <Button variant="outline" onClick={onBack}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to List
+            </Button>
+            <Button onClick={onDownloadDocx} disabled={isDownloadingDocxFile}>
+                {isDownloadingDocxFile ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                    <DownloadCloud className="mr-2 h-4 w-4" />
+                )}
+                Download DOCX
+            </Button>
+        </div>
       </CardHeader>
       <CardContent className="h-[calc(100vh-250px)] min-h-[600px]">
         <DynamicPdfExamViewer exam={exam} />
@@ -91,7 +111,8 @@ export default function RenderExamPage() {
   const [isLoadingExams, setIsLoadingExams] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  const [isGeneratingDocx, setIsGeneratingDocx] = useState<string | null>(null);
+  const [isLoadingPreviewData, setIsLoadingPreviewData] = useState<string | null>(null); // For dialog button
+  const [isDownloadingDocxFile, setIsDownloadingDocxFile] = useState(false); // For download button in preview
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [selectedExamForDialog, setSelectedExamForDialog] = useState<ExamSummaryData | null>(null);
 
@@ -153,14 +174,14 @@ export default function RenderExamPage() {
     setIsConfirmDialogOpen(true);
   };
   
-  const handleGenerateAndDownloadDocx = async () => {
+  const handlePreparePreview = async () => {
     if (!user || !selectedExamForDialog || !selectedExamForDialog.id) {
         toast({ title: "Error", description: "No exam selected or user not authenticated.", variant: "destructive" });
         setIsConfirmDialogOpen(false);
         setSelectedExamForDialog(null);
         return;
     }
-    setIsGeneratingDocx(selectedExamForDialog.id);
+    setIsLoadingPreviewData(selectedExamForDialog.id);
     
     try {
         const examDocRef = doc(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id);
@@ -248,7 +269,7 @@ export default function RenderExamPage() {
           });
         }
         
-        const examToDownloadAndPreview: FullExamData = {
+        const examToPreview: FullExamData = {
             id: selectedExamForDialog.id, 
             title: String(examBaseData.title || examDataFromSummary.title || "Untitled Exam"), 
             description: String(examBaseData.description || examDataFromSummary.description || ""),
@@ -260,29 +281,49 @@ export default function RenderExamPage() {
             examBlocks: loadedBlocks,
         };
         
-        setExamForPreview(examToDownloadAndPreview); 
+        setExamForPreview(examToPreview); 
         setShowPdfPreview(true); 
+        toast({ title: "Preview Ready", description: `Preview for "${String(examToPreview.title)}" is now available.` });
 
-        // --- DOCX Generation Logic ---
+    } catch (error) {
+        console.error("Error preparing preview:", error);
+        toast({ title: "Operation Failed", description: "Could not prepare preview.", variant: "destructive" });
+        setShowPdfPreview(false);
+        setExamForPreview(null);
+    } finally {
+        setIsLoadingPreviewData(null);
+        setIsConfirmDialogOpen(false);
+        setSelectedExamForDialog(null);
+    }
+  };
+
+
+  const generateAndDownloadActualDocx = async () => {
+    if (!examForPreview) {
+        toast({ title: "Error", description: "No exam data available for download.", variant: "destructive" });
+        return;
+    }
+    setIsDownloadingDocxFile(true);
+    try {
         let questionCounter = 0;
         const children = [
             new Paragraph({
-                text: String(examToDownloadAndPreview.title),
+                text: String(examForPreview.title),
                 heading: HeadingLevel.HEADING_1,
                 alignment: AlignmentType.CENTER,
             }),
         ];
 
-        if (examToDownloadAndPreview.description) {
+        if (examForPreview.description) {
             children.push(new Paragraph({ 
-                children: [new TextRun({ text: String(examToDownloadAndPreview.description), italics: true })],
+                children: [new TextRun({ text: String(examForPreview.description), italics: true })],
                 alignment: AlignmentType.CENTER, 
                 spacing: { after: 200 }
             }));
         }
         children.push(new Paragraph({
             children: [
-                new TextRun(`Total Questions: ${examToDownloadAndPreview.totalQuestions}\t\tTotal Points: ${examToDownloadAndPreview.totalPoints}\t\tStatus: ${String(examToDownloadAndPreview.status)}`),
+                new TextRun(`Total Questions: ${examForPreview.totalQuestions}\t\tTotal Points: ${examForPreview.totalPoints}\t\tStatus: ${String(examForPreview.status)}`),
             ],
             tabStops: [
                 { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 2 },
@@ -293,7 +334,7 @@ export default function RenderExamPage() {
         }));
 
 
-        (examToDownloadAndPreview.examBlocks).forEach((block, blockIndex) => {
+        (examForPreview.examBlocks).forEach((block, blockIndex) => {
             children.push(new Paragraph({
                 text: `${toRoman(blockIndex + 1)}${block.blockTitle ? `: ${String(block.blockTitle)}` : ''}`,
                 heading: HeadingLevel.HEADING_2,
@@ -352,20 +393,17 @@ export default function RenderExamPage() {
         });
 
         const blob = await Packer.toBlob(wordDocument);
-        saveAs(blob, `${String(examToDownloadAndPreview.title).replace(/[^a-z0-9]/gi, '_').toLowerCase()}_exam.docx`);
-        toast({ title: "Download Started", description: `"${String(examToDownloadAndPreview.title)}.docx" is downloading.` });
+        saveAs(blob, `${String(examForPreview.title).replace(/[^a-z0-9]/gi, '_').toLowerCase()}_exam.docx`);
+        toast({ title: "Download Started", description: `"${String(examForPreview.title)}.docx" is downloading.` });
 
     } catch (error) {
-        console.error("Error generating DOCX and setting up preview:", error);
-        toast({ title: "Operation Failed", description: "Could not generate DOCX or prepare preview.", variant: "destructive" });
-        setShowPdfPreview(false);
-        setExamForPreview(null);
+        console.error("Error generating DOCX:", error);
+        toast({ title: "DOCX Generation Failed", description: "Could not generate the DOCX file.", variant: "destructive" });
     } finally {
-        setIsGeneratingDocx(null);
-        setIsConfirmDialogOpen(false);
-        setSelectedExamForDialog(null);
+        setIsDownloadingDocxFile(false);
     }
   };
+
 
   const handleBackToList = () => {
     setShowPdfPreview(false);
@@ -428,7 +466,14 @@ export default function RenderExamPage() {
   }
 
   if (showPdfPreview && examForPreview) {
-    return <PdfPreviewCard exam={examForPreview} onBack={handleBackToList} />;
+    return (
+        <PdfPreviewCard 
+            exam={examForPreview} 
+            onBack={handleBackToList} 
+            onDownloadDocx={generateAndDownloadActualDocx}
+            isDownloadingDocxFile={isDownloadingDocxFile}
+        />
+    );
   }
 
   return (
@@ -472,12 +517,12 @@ export default function RenderExamPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleOpenConfirmDialog(exam)}
-                        disabled={isGeneratingDocx === exam.id}
+                        disabled={isLoadingPreviewData === exam.id}
                       >
-                        {isGeneratingDocx === exam.id ? (
+                        {isLoadingPreviewData === exam.id ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         ) : (
-                          <DownloadCloud className="mr-2 h-4 w-4" />
+                          <FileType2 className="mr-2 h-4 w-4" />
                         )}
                         Generate & Preview
                       </Button>
@@ -510,9 +555,10 @@ export default function RenderExamPage() {
         <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
             <AlertDialogContent>
                 <AlertDialogHeader>
-                    <AlertDialogTitle>Confirm DOCX Generation & Preview</AlertDialogTitle>
+                    <AlertDialogTitle>Confirm Preview Generation</AlertDialogTitle>
                     <AlertDialogDescription>
-                    This will generate a DOCX file for the exam: "{selectedExamForDialog.title}" and show a preview.
+                    This will fetch the full exam data for: "{selectedExamForDialog.title}" and prepare a preview.
+                    You can download the DOCX file from the preview screen.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="space-y-3 py-2 text-sm">
@@ -553,13 +599,13 @@ export default function RenderExamPage() {
                     </div>
                 </div>
                 <AlertDialogFooter>
-                    <AlertDialogCancel disabled={isGeneratingDocx === selectedExamForDialog.id} onClick={() => setSelectedExamForDialog(null)}>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel disabled={isLoadingPreviewData === selectedExamForDialog.id} onClick={() => setSelectedExamForDialog(null)}>Cancel</AlertDialogCancel>
                     <AlertDialogAction 
-                        onClick={handleGenerateAndDownloadDocx}
-                        disabled={isGeneratingDocx === selectedExamForDialog.id || !selectedExamForDialog.id}
+                        onClick={handlePreparePreview}
+                        disabled={isLoadingPreviewData === selectedExamForDialog.id || !selectedExamForDialog.id}
                     >
-                        {isGeneratingDocx === selectedExamForDialog.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Confirm & Generate
+                        {isLoadingPreviewData === selectedExamForDialog.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Confirm & Prepare Preview
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>

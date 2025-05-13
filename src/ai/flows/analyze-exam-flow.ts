@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview An AI agent for analyzing exam content and providing suggestions.
@@ -53,7 +52,7 @@ const SuggestionSchema = z.object({
   questionId: z.string().optional().describe("The ID of the question this suggestion pertains to, if applicable."),
   suggestionText: z.string().describe("The detailed suggestion or feedback provided by the AI. Should refer to items by their 1-based number (e.g., 'Block 1, Question 2')."),
   severity: z.enum(['error', 'warning', 'info']).default('info').optional().describe("Severity of the suggestion (e.g., error, warning, info)."),
-  elementPath: z.string().optional().describe("A dot-notation path to the specific element the suggestion refers to (e.g., 'examTitle', 'examBlocks[0].blockTitle', 'examBlocks[0].questions[1].questionText', 'examBlocks[0].questions[1].options[0].text'). Uses zero-based indexing."),
+  elementPath: z.string().optional().describe("A dot-notation path to the specific element the suggestion refers to (e.g., 'examTitle', 'examBlocks[0].blockTitle', 'examBlocks[0].questions[1].questionText', 'examBlocks[0].questions[1].options[0].text', 'examBlocks[0].questions[1].correctAnswer', 'examBlocks[0].questions[1].pairs[0].premise'). Uses zero-based indexing."),
 });
 
 const AnalyzeExamOutputSchema = z.object({
@@ -90,16 +89,14 @@ Block (Index: {{blockIndex}}) - ID: {{block.id}}, Type: {{block.blockType}}
   - Question (Index: {{questionIndex}} in Block {{blockIndex}}) - ID: {{question.id}}, Type: {{question.type}}, Points: {{question.points}}
     Text: {{{question.questionText}}}
     {{#if question.options}}
-    Options (for Question at index {{questionIndex}} in Block at index {{blockIndex}}):
+    Options (for Question at index {{questionIndex}} in Block {{blockIndex}}):
       {{#each question.options as |option optionIndex|}}
       - Option (Index: {{optionIndex}}) ID {{option.id}}: "{{option.text}}" (Correct: {{option.isCorrect}})
       {{/each}}
     {{/if}}
-    {{#if (eq question.type "true-false")}}
-    Correct Answer for True/False (Question at index {{questionIndex}}): {{#if (isTruthy question.correctAnswer)}}True{{else if (isFalsey question.correctAnswer)}}False{{else}}Not Set{{/if}}
-    {{/if}}
+    Value for 'correctAnswer' field (used for True/False questions, where 'null' or empty means not set): {{{question.correctAnswer}}}
     {{#if question.pairs}}
-    Matching Pairs (for Question at index {{questionIndex}} in Block at index {{blockIndex}}):
+    Matching Pairs (for Question at index {{questionIndex}} in Block {{blockIndex}}):
       {{#each question.pairs as |pair pairIndex|}}
       - Pair (Index: {{pairIndex}}) ID {{pair.id}}: Premise: "{{pair.premise}}" --- Response: "{{pair.response}}"
       {{/each}}
@@ -134,13 +131,8 @@ config: {
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
     ],
   },
-  // Register custom Handlebars helpers if needed, e.g., for `eq`, `isTruthy`, `isFalsey`
-  // For Genkit, custom helpers are typically not directly registered in definePrompt.
-  // Instead, pre-process data or rely on AI's ability to interpret the structure.
-  // The provided `eq`, `isTruthy`, `isFalsey` are illustrative.
-  // If Gemini struggles, simplify the prompt or pre-process data.
-  // For now, we'll rely on the AI understanding the boolean `correctAnswer` field for true/false questions.
-  // And the `type` field to determine context.
+  // Custom Handlebars helpers like 'eq', 'isTruthy', 'isFalsey' are not standard and should be avoided.
+  // The AI is instructed to interpret the 'type' and 'correctAnswer' fields directly based on the schema.
 });
 
 const analyzeExamFlowInstance = ai.defineFlow(
@@ -157,7 +149,6 @@ const analyzeExamFlowInstance = ai.defineFlow(
         return { suggestions: [{ suggestionText: "All question blocks are empty. Add questions to get feedback.", severity: "warning" }] };
     }
 
-
     const {output} = await analyzeExamPrompt(input);
     if (!output) {
       return { suggestions: [{ suggestionText: "AI analysis failed to produce output. Please try again.", severity: "error" }] };
@@ -169,3 +160,4 @@ const analyzeExamFlowInstance = ai.defineFlow(
 export async function analyzeExamFlow(input: AnalyzeExamInput): Promise<AnalyzeExamOutput> {
   return analyzeExamFlowInstance(input);
 }
+

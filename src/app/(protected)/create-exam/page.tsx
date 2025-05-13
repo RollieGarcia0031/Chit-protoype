@@ -11,20 +11,19 @@ import { useState, type FormEvent, useEffect } from "react";
 import type { ExamBlock, ExamQuestion, QuestionType, Option } from "@/types/exam-types";
 import { generateId } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
-import { PlusCircle, Loader2 } from "lucide-react"; // Added Loader2
+import { PlusCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/auth-context"; // Import useAuth
-import { db } from '@/lib/firebase/config'; // Import db
-import { collection, doc, writeBatch, serverTimestamp } from "firebase/firestore"; // Firestore imports
+import { useAuth } from "@/contexts/auth-context";
+import { db } from '@/lib/firebase/config';
+import { collection, doc, writeBatch, serverTimestamp } from "firebase/firestore";
 
 const LOCAL_STORAGE_KEY = 'pendingExamData';
 
-// Helper to create a default question based on type
 const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'): ExamQuestion => {
   const baseQuestionProps = {
     id: generateId(idPrefix),
     questionText: "",
-    points: 1, // Default points for a new question
+    points: 1,
   };
 
   switch (type) {
@@ -47,14 +46,13 @@ const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'
       return {
         ...baseQuestionProps,
         type: 'matching',
-        // questionText for matching serves as instruction
         pairs: [{ id: generateId('pair'), premise: "", response: "" }],
       };
-    default: 
+    default:
       console.warn(`createDefaultQuestion received an unknown type: ${type}. Defaulting to multiple-choice.`);
       return {
         ...baseQuestionProps,
-        type: 'multiple-choice', 
+        type: 'multiple-choice',
         options: [
             { id: generateId('option'), text: "", isCorrect: true },
             { id: generateId('option'), text: "", isCorrect: false },
@@ -69,11 +67,10 @@ export default function CreateExamPage() {
   const [examDescription, setExamDescription] = useState("");
   const [examBlocks, setExamBlocks] = useState<ExamBlock[]>([]);
   const { toast } = useToast();
-  const { user } = useAuth(); // Get authenticated user
+  const { user } = useAuth();
   const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
-  const [isSaving, setIsSaving] = useState(false); // Loading state for saving
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Load data from localStorage on initial mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -90,16 +87,16 @@ export default function CreateExamPage() {
                 ...q,
                 id: q.id || generateId('question'),
                 ...(q.type === 'multiple-choice' && {
-                  options: q.options.map((opt: Option) => ({
+                  options: q.options?.map((opt: Option) => ({ // Added null check for options
                     ...opt,
                     id: opt.id || generateId('option'),
-                  })),
+                  })) || [], // Default to empty array if options is undefined
                 }),
                 ...(q.type === 'matching' && {
-                  pairs: q.pairs.map((p: any) => ({
+                  pairs: q.pairs?.map((p: any) => ({ // Added null check for pairs
                     ...p,
                     id: p.id || generateId('pair'),
-                  })),
+                  })) || [], // Default to empty array if pairs is undefined
                 }),
               })),
             }));
@@ -107,14 +104,13 @@ export default function CreateExamPage() {
           }
         } catch (error) {
           console.error("Error parsing exam data from localStorage:", error);
-          localStorage.removeItem(LOCAL_STORAGE_KEY); 
+          localStorage.removeItem(LOCAL_STORAGE_KEY);
         }
       }
     }
     setIsInitialLoadComplete(true);
-  }, []); 
+  }, []);
 
-  // Save data to localStorage whenever it changes, after initial load
   useEffect(() => {
     if (!isInitialLoadComplete || typeof window === 'undefined') return;
 
@@ -128,9 +124,9 @@ export default function CreateExamPage() {
 
 
   const handleAddExamBlock = () => {
-    let newBlockType: QuestionType = 'multiple-choice'; 
+    let newBlockType: QuestionType = 'multiple-choice';
     if (examBlocks.length > 0) {
-      newBlockType = examBlocks[examBlocks.length - 1].blockType; 
+      newBlockType = examBlocks[examBlocks.length - 1].blockType;
     }
     const initialQuestion = createDefaultQuestion(newBlockType);
     const newBlock: ExamBlock = {
@@ -150,16 +146,16 @@ export default function CreateExamPage() {
     const newBlocks = [...examBlocks];
     const currentBlock = newBlocks[blockIndex];
     const initialQuestion = createDefaultQuestion(newType);
-    
+
     newBlocks[blockIndex] = {
       ...currentBlock,
       blockType: newType,
-      questions: [initialQuestion], 
+      questions: [initialQuestion],
     };
     setExamBlocks(newBlocks);
     toast({ title: "Block Type Changed", description: `Questions in block ${blockIndex + 1} reset for new type.`});
   };
-  
+
   const handleBlockTitleChange = (blockIndex: number, title: string) => {
     const newBlocks = [...examBlocks];
     newBlocks[blockIndex].blockTitle = title;
@@ -169,9 +165,9 @@ export default function CreateExamPage() {
   const handleAddQuestionToBlock = (blockIndex: number) => {
     const newBlocks = [...examBlocks];
     const block = newBlocks[blockIndex];
-    
+
     const lastQuestion = block.questions[block.questions.length - 1];
-    
+
     const inheritedPoints = lastQuestion.points;
     let newOptionsForMC: Option[] = [
       { id: generateId('option'), text: "", isCorrect: true },
@@ -186,7 +182,7 @@ export default function CreateExamPage() {
         isCorrect: i === 0 && numOptions > 0,
       }));
     }
-    
+
     const baseNewQuestionProps = {
       id: generateId('question'),
       questionText: "",
@@ -207,7 +203,7 @@ export default function CreateExamPage() {
         newQuestion = {
           ...baseNewQuestionProps,
           type: 'true-false',
-          correctAnswer: null, 
+          correctAnswer: null,
         };
         break;
       case 'matching':
@@ -222,7 +218,7 @@ export default function CreateExamPage() {
         newQuestion = {
           ...baseNewQuestionProps,
           type: 'multiple-choice',
-          options: [ 
+          options: [
               { id: generateId('option'), text: "", isCorrect: true },
               { id: generateId('option'), text: "", isCorrect: false },
           ],
@@ -255,6 +251,15 @@ export default function CreateExamPage() {
     }
   };
 
+  const resetForm = () => {
+    setExamTitle("");
+    setExamDescription("");
+    setExamBlocks([]);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!user) {
@@ -276,33 +281,51 @@ export default function CreateExamPage() {
     }
 
     setIsSaving(true);
-    const batch = writeBatch(db);
 
+    let totalQuestions = 0;
+    let totalPoints = 0;
+    examBlocks.forEach(block => {
+      totalQuestions += block.questions.length;
+      block.questions.forEach(question => {
+        totalPoints += question.points;
+      });
+    });
+
+    const batch = writeBatch(db);
     const examDocRef = doc(collection(db, "exams"));
+
     batch.set(examDocRef, {
       title: examTitle,
       description: examDescription,
       userId: user.uid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      totalQuestions: totalQuestions,
+      totalPoints: totalPoints,
+      status: "Draft", // Default status
     });
 
     examBlocks.forEach((block, blockIndex) => {
-      const blockDocRef = doc(db, "exams", examDocRef.id, "questionBlocks", block.id);
+      const blockDocRef = doc(collection(db, "exams", examDocRef.id, "questionBlocks")); // Use auto-generated ID
       batch.set(blockDocRef, {
+        originalBlockId: block.id, // Keep track of original local ID if needed for debugging or specific mapping
         blockType: block.blockType,
         blockTitle: block.blockTitle || "",
         orderIndex: blockIndex,
+        examId: examDocRef.id, // Link back to parent exam
       });
 
       block.questions.forEach((question, questionIndex) => {
-        const questionDocRef = doc(db, "exams", examDocRef.id, "questionBlocks", block.id, "questions", question.id);
-        
-        const questionData: Partial<ExamQuestion> & { orderIndex: number, type: QuestionType } = {
+        const questionDocRef = doc(collection(db, "exams", examDocRef.id, "questionBlocks", blockDocRef.id, "questions")); // Use auto-generated ID
+
+        const questionData: Partial<ExamQuestion> & { orderIndex: number, type: QuestionType, blockId: string, examId: string } = {
+          originalQuestionId: question.id,
           questionText: question.questionText,
           points: question.points,
-          type: question.type, 
+          type: question.type,
           orderIndex: questionIndex,
+          blockId: blockDocRef.id,
+          examId: examDocRef.id,
         };
 
         if (question.type === 'multiple-choice') {
@@ -312,7 +335,7 @@ export default function CreateExamPage() {
         } else if (question.type === 'matching') {
           questionData.pairs = question.pairs.map(pair => ({ ...pair }));
         }
-        
+
         batch.set(questionDocRef, questionData);
       });
     });
@@ -321,20 +344,14 @@ export default function CreateExamPage() {
       await batch.commit();
       toast({
         title: "Exam Saved Successfully",
-        description: `Exam "${examTitle}" has been saved to Firestore. Local draft cleared.`,
+        description: `Exam "${examTitle}" has been saved. Local draft cleared.`,
       });
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(LOCAL_STORAGE_KEY);
-      }
-      // Optionally reset form fields here if needed
-      // setExamTitle("");
-      // setExamDescription("");
-      // setExamBlocks([]);
+      resetForm(); // Clear form and local storage
     } catch (e) {
       console.error("Error saving exam to Firestore: ", e);
       toast({
         title: "Error Saving Exam",
-        description: "There was an issue saving your exam to the database. Please try again.",
+        description: "There was an issue saving your exam. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -355,10 +372,10 @@ export default function CreateExamPage() {
             <div className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="examTitle" className="text-base">Exam Title</Label>
-                <Input 
-                  id="examTitle" 
-                  placeholder="e.g., Midterm Mathematics" 
-                  className="text-base" 
+                <Input
+                  id="examTitle"
+                  placeholder="e.g., Midterm Mathematics"
+                  className="text-base"
                   value={examTitle}
                   onChange={(e) => setExamTitle(e.target.value)}
                   required
@@ -367,9 +384,9 @@ export default function CreateExamPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="examDescription" className="text-base">Description (Optional)</Label>
-                <Textarea 
-                  id="examDescription" 
-                  placeholder="A brief description of the exam content or instructions." 
+                <Textarea
+                  id="examDescription"
+                  placeholder="A brief description of the exam content or instructions."
                   className="text-base min-h-[100px]"
                   value={examDescription}
                   onChange={(e) => setExamDescription(e.target.value)}
@@ -406,7 +423,7 @@ export default function CreateExamPage() {
             </Button>
           </CardContent>
         </Card>
-        
+
         <div className="flex justify-end pt-4">
           <Button type="submit" size="lg" disabled={isSaving || examBlocks.length === 0 || !examTitle.trim()}>
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

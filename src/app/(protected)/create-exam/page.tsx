@@ -7,125 +7,137 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useState, type FormEvent } from "react";
-import { ExamQuestion, QUESTION_TYPES, QuestionType } from "@/types/exam-types";
+import type { ExamBlock, ExamQuestion, QuestionType } from "@/types/exam-types";
 import { generateId } from "@/lib/utils";
-import { ExamItemBlock } from "@/components/exam/ExamItemBlock";
+import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock"; // New component
 import { PlusCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+
+// Helper to create a default question based on type
+const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'): ExamQuestion => {
+  switch (type) {
+    case 'multiple-choice':
+      return {
+        id: generateId(idPrefix),
+        type: 'multiple-choice',
+        questionText: "",
+        options: [
+          { id: generateId('option'), text: "", isCorrect: true },
+          { id: generateId('option'), text: "", isCorrect: false },
+        ],
+      };
+    case 'true-false':
+      return {
+        id: generateId(idPrefix),
+        type: 'true-false',
+        questionText: "",
+        correctAnswer: null,
+      };
+    case 'matching':
+      return {
+        id: generateId(idPrefix),
+        type: 'matching',
+        questionText: "", // Serves as instruction
+        pairs: [{ id: generateId('pair'), premise: "", response: "" }],
+      };
+    default: // Should not be reached if types are handled correctly
+      return {
+        id: generateId(idPrefix),
+        type: 'multiple-choice', // Fallback
+        questionText: "",
+        options: [
+            { id: generateId('option'), text: "", isCorrect: true },
+            { id: generateId('option'), text: "", isCorrect: false },
+        ],
+      };
+  }
+};
+
 
 export default function CreateExamPage() {
   const [examTitle, setExamTitle] = useState("");
   const [examDescription, setExamDescription] = useState("");
-  const [examItems, setExamItems] = useState<ExamQuestion[]>([]);
+  const [examBlocks, setExamBlocks] = useState<ExamBlock[]>([]);
+  const { toast } = useToast();
 
-  const handleAddExamItem = () => {
-    let newQuestionType: QuestionType = 'multiple-choice'; // Default type
-    if (examItems.length > 0) {
-      newQuestionType = examItems[examItems.length - 1].type;
+  const handleAddExamBlock = () => {
+    let newBlockType: QuestionType = 'multiple-choice'; // Default for the very first block
+    if (examBlocks.length > 0) {
+      newBlockType = examBlocks[examBlocks.length - 1].blockType; // Inherit from last block
     }
-
-    let newItem: ExamQuestion;
-
-    switch (newQuestionType) {
-      case 'multiple-choice':
-        newItem = {
-          id: generateId('question'),
-          type: 'multiple-choice',
-          questionText: "",
-          options: [
-            { id: generateId('option'), text: "", isCorrect: true }, // Default first option to correct for new MCQs
-            { id: generateId('option'), text: "", isCorrect: false },
-          ],
-        };
-        break;
-      case 'true-false':
-        newItem = {
-          id: generateId('question'),
-          type: 'true-false',
-          questionText: "",
-          correctAnswer: null, // No default correct answer
-        };
-        break;
-      case 'matching':
-        newItem = {
-          id: generateId('question'),
-          type: 'matching',
-          questionText: "", // Serves as instruction
-          pairs: [{ id: generateId('pair'), premise: "", response: "" }],
-        };
-        break;
-      default:
-        // Should not happen with defined types, but as a fallback
-        newItem = {
-          id: generateId('question'),
-          type: 'multiple-choice',
-          questionText: "",
-          options: [
-            { id: generateId('option'), text: "", isCorrect: true },
-            { id: generateId('option'), text: "", isCorrect: false },
-          ],
-        };
-        break;
-    }
-    setExamItems([...examItems, newItem]);
+    const initialQuestion = createDefaultQuestion(newBlockType);
+    const newBlock: ExamBlock = {
+      id: generateId('block'),
+      blockType: newBlockType,
+      questions: [initialQuestion],
+      blockTitle: "",
+    };
+    setExamBlocks([...examBlocks, newBlock]);
   };
 
-  const handleUpdateExamItem = (index: number, updatedItem: ExamQuestion) => {
-    const newItems = [...examItems];
-    newItems[index] = updatedItem;
-    setExamItems(newItems);
+  const handleRemoveExamBlock = (blockIndex: number) => {
+    setExamBlocks(examBlocks.filter((_, i) => i !== blockIndex));
   };
 
-  const handleRemoveExamItem = (index: number) => {
-    setExamItems(examItems.filter((_, i) => i !== index));
-  };
-
-  const handleChangeExamItemType = (index: number, newType: QuestionType) => {
-    const currentItem = examItems[index];
-    let newItem: ExamQuestion;
-
-    // Preserve question text if switching types
-    const questionText = currentItem.questionText;
-
-    switch (newType) {
-      case 'multiple-choice':
-        newItem = {
-          id: currentItem.id,
-          type: 'multiple-choice',
-          questionText: questionText,
-          options: [{ id: generateId('option'), text: "", isCorrect: true }, { id: generateId('option'), text: "", isCorrect: false }],
-        };
-        break;
-      case 'true-false':
-        newItem = {
-          id: currentItem.id,
-          type: 'true-false',
-          questionText: questionText,
-          correctAnswer: null,
-        };
-        break;
-      case 'matching':
-        newItem = {
-          id: currentItem.id,
-          type: 'matching',
-          questionText: questionText, 
-          pairs: [{ id: generateId('pair'), premise: "", response: "" }],
-        };
-        break;
-      default:
-        return; // Should not happen
-    }
-    handleUpdateExamItem(index, newItem);
+  const handleChangeBlockType = (blockIndex: number, newType: QuestionType) => {
+    const newBlocks = [...examBlocks];
+    const currentBlock = newBlocks[blockIndex];
+    const initialQuestion = createDefaultQuestion(newType);
+    
+    newBlocks[blockIndex] = {
+      ...currentBlock,
+      blockType: newType,
+      questions: [initialQuestion], // Reset questions in the block to one default of the new type
+    };
+    setExamBlocks(newBlocks);
+    toast({ title: "Block Type Changed", description: `Questions in block ${blockIndex + 1} reset for new type.`});
   };
   
+  const handleBlockTitleChange = (blockIndex: number, title: string) => {
+    const newBlocks = [...examBlocks];
+    newBlocks[blockIndex].blockTitle = title;
+    setExamBlocks(newBlocks);
+  };
+
+  const handleAddQuestionToBlock = (blockIndex: number) => {
+    const newBlocks = [...examBlocks];
+    const block = newBlocks[blockIndex];
+    const newQuestion = createDefaultQuestion(block.blockType);
+    block.questions.push(newQuestion);
+    setExamBlocks(newBlocks);
+  };
+
+  const handleUpdateQuestionInBlock = (blockIndex: number, questionIndex: number, updatedQuestion: ExamQuestion) => {
+    const newBlocks = [...examBlocks];
+    newBlocks[blockIndex].questions[questionIndex] = updatedQuestion;
+    setExamBlocks(newBlocks);
+  };
+
+  const handleRemoveQuestionFromBlock = (blockIndex: number, questionIndex: number) => {
+    const newBlocks = [...examBlocks];
+    const block = newBlocks[blockIndex];
+    if (block.questions.length > 1) {
+      block.questions.splice(questionIndex, 1);
+      setExamBlocks(newBlocks);
+    } else {
+      toast({
+        title: "Action Denied",
+        description: "A block must have at least one question. To remove all questions, remove the block itself.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    // Combine examTitle, examDescription, and examItems for submission
     const examData = {
       title: examTitle,
       description: examDescription,
-      questions: examItems,
+      blocks: examBlocks,
     };
     console.log("Exam Data to save:", examData);
+    toast({ title: "Exam Saved (Simulated)", description: "Exam data logged to console."});
     // Here you would typically send data to a backend or state management
   };
 
@@ -167,21 +179,24 @@ export default function CreateExamPage() {
 
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle className="text-2xl font-semibold">Exam Questions</CardTitle>
-            <CardDescription>Add and configure questions for your exam. New questions will inherit the type of the previous question.</CardDescription>
+            <CardTitle className="text-2xl font-semibold">Question Blocks</CardTitle>
+            <CardDescription>Add blocks of questions. Each block contains questions of the same type. New blocks inherit the type of the previous block.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {examItems.map((item, index) => (
-              <ExamItemBlock
-                key={item.id}
-                item={item}
-                onItemChange={(updatedItem) => handleUpdateExamItem(index, updatedItem)}
-                onItemRemove={() => handleRemoveExamItem(index)}
-                onItemTypeChange={(newType) => handleChangeExamItemType(index, newType)}
-                itemIndex={index}
+            {examBlocks.map((block, blockIndex) => (
+              <ExamQuestionGroupBlock
+                key={block.id}
+                block={block}
+                blockIndex={blockIndex}
+                onBlockTypeChange={handleChangeBlockType}
+                onBlockTitleChange={handleBlockTitleChange}
+                onAddQuestionToBlock={handleAddQuestionToBlock}
+                onUpdateQuestionInBlock={handleUpdateQuestionInBlock}
+                onRemoveQuestionFromBlock={handleRemoveQuestionFromBlock}
+                onRemoveBlock={handleRemoveExamBlock}
               />
             ))}
-            <Button type="button" variant="outline" onClick={handleAddExamItem} className="w-full">
+            <Button type="button" variant="outline" onClick={handleAddExamBlock} className="w-full">
               <PlusCircle className="mr-2 h-5 w-5" />
               Add Question Block
             </Button>
@@ -189,13 +204,12 @@ export default function CreateExamPage() {
         </Card>
         
         <div className="flex justify-end pt-4">
-          <Button type="submit" size="lg" disabled={examItems.length === 0 || !examTitle}>
+          <Button type="submit" size="lg" disabled={examBlocks.length === 0 || !examTitle}>
             Save Exam
           </Button>
         </div>
       </form>
 
-      {/* Placeholder for AI-powered question generation or other features */}
       <Card className="shadow-md">
         <CardHeader>
             <CardTitle className="text-xl">AI Tools</CardTitle>

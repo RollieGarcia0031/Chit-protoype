@@ -40,3 +40,11 @@ export const QUESTION_TYPES: { value: QuestionType; label: string }[] = [
   { value: 'true-false', label: 'True/False' },
   { value: 'matching', label: 'Matching Type' },
 ];
+
+// New interface for a block of questions
+export interface ExamBlock {
+  id: string;
+  blockType: QuestionType;
+  questions: ExamQuestion[];
+  blockTitle?: string; // Optional title/instructions for the entire block
+}

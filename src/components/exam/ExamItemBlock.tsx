@@ -7,20 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Trash2, PlusCircle } from "lucide-react";
 import type { ExamQuestion, QuestionType, Option, MatchingPair, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
-import { QUESTION_TYPES } from "@/types/exam-types";
 import { generateId } from "@/lib/utils";
 
 interface ExamItemBlockProps {
   item: ExamQuestion;
+  questionType: QuestionType; // Type is now passed as a prop
   onItemChange: (item: ExamQuestion) => void;
   onItemRemove: () => void;
-  onItemTypeChange: (newType: QuestionType) => void;
-  itemIndex: number;
+  itemIndex: number; // Index of the question within its block
 }
 
 // Helper function to get alphabet letter for options
@@ -28,7 +26,7 @@ const getAlphabetLetter = (index: number): string => {
   return String.fromCharCode(65 + index); // 65 is ASCII for 'A'
 };
 
-export function ExamItemBlock({ item, onItemChange, onItemRemove, onItemTypeChange, itemIndex }: ExamItemBlockProps) {
+export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, itemIndex }: ExamItemBlockProps) {
   const handleQuestionTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     onItemChange({ ...item, questionText: e.target.value });
   };
@@ -55,17 +53,18 @@ export function ExamItemBlock({ item, onItemChange, onItemRemove, onItemTypeChan
   const handleAddOption = () => {
     if (item.type === 'multiple-choice') {
       const newOptions = [...item.options, { id: generateId('option'), text: "", isCorrect: false }];
+      // If this is the first option being added to an empty list (e.g. after type change), make it correct by default
+      if (newOptions.length === 1) {
+        newOptions[0].isCorrect = true;
+      }
       onItemChange({ ...item, options: newOptions });
     }
   };
 
   const handleRemoveOption = (optionIndex: number) => {
     if (item.type === 'multiple-choice') {
-      // Ensure at least one option remains for multiple choice
-      if (item.options.length <= 1) return;
+      if (item.options.length <= 1) return; // Keep at least one option for MCQs
       const newOptions = item.options.filter((_, i) => i !== optionIndex);
-      // If the removed option was correct, and no other option is correct, mark the first as correct.
-      // This is a simple fallback, could be more sophisticated.
       if (!newOptions.some(opt => opt.isCorrect) && newOptions.length > 0) {
         newOptions[0].isCorrect = true;
       }
@@ -106,8 +105,7 @@ export function ExamItemBlock({ item, onItemChange, onItemRemove, onItemTypeChan
 
   const handleRemovePair = (pairIndex: number) => {
     if (item.type === 'matching') {
-       // Ensure at least one pair remains for matching type
-      if (item.pairs.length <= 1) return;
+      if (item.pairs.length <= 1) return; // Keep at least one pair for Matching
       const newPairs = item.pairs.filter((_, i) => i !== pairIndex);
       onItemChange({ ...item, pairs: newPairs });
     }
@@ -115,96 +113,84 @@ export function ExamItemBlock({ item, onItemChange, onItemRemove, onItemTypeChan
 
 
   return (
-    <Card className="border-border shadow-md">
-      <CardHeader className="flex flex-row items-center justify-between pb-4">
-        <CardTitle className="text-lg">Question {itemIndex + 1}</CardTitle>
-        <div className="flex items-center gap-2">
-          <Select value={item.type} onValueChange={(newType) => onItemTypeChange(newType as QuestionType)}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Select type" />
-            </SelectTrigger>
-            <SelectContent>
-              {QUESTION_TYPES.map(qt => (
-                <SelectItem key={qt.value} value={qt.value}>{qt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="destructive" size="icon" onClick={onItemRemove} aria-label="Remove question">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+    <Card className="border-border shadow-sm bg-card/50"> {/* Slightly different background for nested card */}
+      <CardHeader className="flex flex-row items-center justify-between py-3 px-4">
+        <CardTitle className="text-md font-medium">Question {itemIndex + 1}</CardTitle>
+        <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block">
+          <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+        </Button>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 px-4 pb-4">
         <div>
-          <Label htmlFor={`questionText-${item.id}`} className="mb-1 block">Question Text / Instructions</Label>
+          <Label htmlFor={`questionText-${item.id}`} className="mb-1 block text-sm">Question Text / Instructions</Label>
           <Textarea
             id={`questionText-${item.id}`}
             value={item.questionText}
             onChange={handleQuestionTextChange}
-            placeholder={item.type === 'matching' ? "e.g., Match the terms with their definitions." : "e.g., What is the capital of France?"}
-            className="min-h-[80px]"
+            placeholder={questionType === 'matching' ? "e.g., Match the terms with their definitions." : "e.g., What is the capital of France?"}
+            className="min-h-[70px] text-sm"
           />
         </div>
 
         {/* Multiple Choice Fields */}
-        {item.type === 'multiple-choice' && (
-          <div className="space-y-3">
-            <Label className="block font-medium">Options (Mark the correct one)</Label>
+        {questionType === 'multiple-choice' && item.type === 'multiple-choice' && (
+          <div className="space-y-2">
+            <Label className="block text-sm font-medium">Options (Mark the correct one)</Label>
             {(item as MultipleChoiceQuestion).options.map((option, optIndex) => (
-              <div key={option.id} className="flex items-center gap-3">
+              <div key={option.id} className="flex items-center gap-2">
                 <Checkbox
                   id={`correct-opt-${option.id}`}
                   checked={option.isCorrect}
                   onCheckedChange={() => handleCorrectOptionChange(option.id)}
                   aria-label={`Mark option ${getAlphabetLetter(optIndex)} as correct`}
                 />
-                <Label htmlFor={`option-text-${option.id}`} className="font-semibold">{getAlphabetLetter(optIndex)}.</Label>
+                <Label htmlFor={`option-text-${option.id}`} className="font-semibold text-sm">{getAlphabetLetter(optIndex)}.</Label>
                 <Input
                   id={`option-text-${option.id}`}
                   type="text"
                   value={option.text}
                   onChange={(e) => handleOptionTextChange(optIndex, e.target.value)}
                   placeholder={`Option ${getAlphabetLetter(optIndex)} text`}
-                  className="flex-grow"
+                  className="flex-grow h-9 text-sm"
                 />
-                {(item as MultipleChoiceQuestion).options.length > 1 && ( // Show remove button if more than 1 option
+                {(item as MultipleChoiceQuestion).options.length > 1 && (
                    <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveOption(optIndex)} aria-label={`Remove option ${getAlphabetLetter(optIndex)}`}>
-                     <Trash2 className="h-4 w-4 text-muted-foreground" />
+                     <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                    </Button>
                 )}
               </div>
             ))}
-            <Button type="button" variant="outline" onClick={handleAddOption} size="sm">
-              <PlusCircle className="mr-2 h-4 w-4" /> Add Option
+            <Button type="button" variant="outline" onClick={handleAddOption} size="sm" className="text-xs">
+              <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Add Option
             </Button>
           </div>
         )}
 
         {/* True/False Fields */}
-        {item.type === 'true-false' && (
+        {questionType === 'true-false' && item.type === 'true-false' && (
           <div>
-            <Label className="block font-medium mb-2">Correct Answer</Label>
+            <Label className="block text-sm font-medium mb-1.5">Correct Answer</Label>
             <RadioGroup
               value={(item as TrueFalseQuestion).correctAnswer === null ? '' : String((item as TrueFalseQuestion).correctAnswer)}
               onValueChange={handleTrueFalseChange}
-              className="flex space-x-4"
+              className="flex space-x-3"
             >
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1.5">
                 <RadioGroupItem value="true" id={`true-${item.id}`} />
-                <Label htmlFor={`true-${item.id}`}>True</Label>
+                <Label htmlFor={`true-${item.id}`} className="text-sm font-normal">True</Label>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1.5">
                 <RadioGroupItem value="false" id={`false-${item.id}`} />
-                <Label htmlFor={`false-${item.id}`}>False</Label>
+                <Label htmlFor={`false-${item.id}`} className="text-sm font-normal">False</Label>
               </div>
             </RadioGroup>
           </div>
         )}
 
         {/* Matching Type Fields */}
-        {item.type === 'matching' && (
-          <div className="space-y-3">
-            <Label className="block font-medium">Matching Pairs</Label>
+        {questionType === 'matching' && item.type === 'matching' && (
+          <div className="space-y-2">
+            <Label className="block text-sm font-medium">Matching Pairs</Label>
             {(item as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (
               <div key={pair.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto] gap-2 items-center">
                 <Input
@@ -212,23 +198,25 @@ export function ExamItemBlock({ item, onItemChange, onItemRemove, onItemTypeChan
                   value={pair.premise}
                   onChange={(e) => handlePairPremiseChange(pairIndex, e.target.value)}
                   placeholder={`Premise ${pairIndex + 1}`}
+                  className="h-9 text-sm"
                 />
-                <span className="text-center text-muted-foreground hidden md:inline">=</span>
+                <span className="text-center text-muted-foreground hidden md:inline text-sm">=</span>
                 <Input
                   type="text"
                   value={pair.response}
                   onChange={(e) => handlePairResponseChange(pairIndex, e.target.value)}
                   placeholder={`Response ${pairIndex + 1}`}
+                  className="h-9 text-sm"
                 />
-                 {(item as MatchingTypeQuestion).pairs.length > 1 && ( // Show remove if more than 1 pair
+                 {(item as MatchingTypeQuestion).pairs.length > 1 && (
                   <Button type="button" variant="ghost" size="icon" onClick={() => handleRemovePair(pairIndex)} aria-label={`Remove pair ${pairIndex + 1}`}>
-                    <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
                 )}
               </div>
             ))}
-            <Button type="button" variant="outline" onClick={handleAddPair} size="sm">
-              <PlusCircle className="mr-2 h-4 w-4" /> Add Pair
+            <Button type="button" variant="outline" onClick={handleAddPair} size="sm" className="text-xs">
+              <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Add Pair
             </Button>
           </div>
         )}

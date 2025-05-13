@@ -1,13 +1,12 @@
 // src/app/(protected)/render-exam/page.tsx
 'use client';
 
-import dynamic from 'next/dynamic';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star, FileType2, ArrowLeft, Info } from "lucide-react"; // Added Info
+import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star, FileType2, ArrowLeft, Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from "@/lib/firebase/config";
@@ -30,17 +29,6 @@ import { format } from 'date-fns';
 import { Packer, Document as DocxDocument, Paragraph, TextRun, HeadingLevel, AlignmentType, TabStopPosition, TabStopType } from 'docx';
 import { saveAs } from 'file-saver';
 
-// Dynamically import the PDF Viewer component
-const DynamicPdfExamViewer = dynamic(() => import('@/components/exam/PdfExamViewer'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-full w-full bg-card">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      <p className="ml-2 text-muted-foreground">Loading PDF Previewer...</p>
-    </div>
-  ),
-});
-
 
 const getAlphabetLetter = (index: number): string => String.fromCharCode(65 + index);
 
@@ -62,8 +50,8 @@ const toRoman = (num: number): string => {
   return result;
 };
 
-// This component wraps the dynamically loaded PDF viewer in a card structure
-function PdfPreviewCard({ 
+// Placeholder for the new preview component/area
+function ExamPreviewPlaceholder({ 
     exam, 
     onBack,
     onDownloadDocx,
@@ -79,7 +67,7 @@ function PdfPreviewCard({
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle className="text-xl font-semibold">Exam Preview: {exam.title}</CardTitle>
-          <CardDescription>This is a preview of the exam content. Click download for the DOCX file.</CardDescription>
+          <CardDescription>Preview functionality will be updated. Click download for the DOCX file.</CardDescription>
         </div>
         <div className="flex gap-2">
             <Button variant="outline" onClick={onBack}>
@@ -96,8 +84,12 @@ function PdfPreviewCard({
             </Button>
         </div>
       </CardHeader>
-      <CardContent className="h-[calc(100vh-250px)] min-h-[600px]">
-        <DynamicPdfExamViewer exam={exam} />
+      <CardContent className="h-[calc(100vh-250px)] min-h-[600px] flex items-center justify-center bg-muted/50">
+        <div className="text-center">
+          <Info className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-lg text-muted-foreground">Exam preview area.</p>
+          <p className="text-sm text-muted-foreground">The content for "{exam.title}" will be displayed here using a new library soon.</p>
+        </div>
       </CardContent>
     </Card>
   );
@@ -117,7 +109,7 @@ export default function RenderExamPage() {
   const [selectedExamForDialog, setSelectedExamForDialog] = useState<ExamSummaryData | null>(null);
 
   const [examForPreview, setExamForPreview] = useState<FullExamData | null>(null);
-  const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [showPreview, setShowPreview] = useState(false); // Renamed from showPdfPreview
 
 
   const fetchExams = async () => {
@@ -235,7 +227,7 @@ export default function RenderExamPage() {
                   options: (qData.options || []).map((opt: any) => ({ 
                       id: String(opt?.id || `opt-${Math.random()}`),
                       text: String(opt?.text || ""),
-                      isCorrect: Boolean(opt?.isCorrect || false)
+                      isCorrect: Boolean(opt?.isCorrect || false) // Keep isCorrect for DOCX generation logic
                     })),
                 } as MultipleChoiceQuestion;
                 break;
@@ -243,7 +235,7 @@ export default function RenderExamPage() {
                 question = {
                   ...baseQuestionProps,
                   type: 'true-false',
-                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer),
+                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer), // Keep correctAnswer for DOCX
                 } as TrueFalseQuestion;
                 break;
               case 'matching':
@@ -283,13 +275,13 @@ export default function RenderExamPage() {
         };
         
         setExamForPreview(examToPreview); 
-        setShowPdfPreview(true); 
+        setShowPreview(true); 
         toast({ title: "Preview Ready", description: `Preview for "${String(examToPreview.title)}" is now available.` });
 
     } catch (error) {
         console.error("Error preparing preview:", error);
         toast({ title: "Operation Failed", description: "Could not prepare preview.", variant: "destructive" });
-        setShowPdfPreview(false);
+        setShowPreview(false);
         setExamForPreview(null);
     } finally {
         setIsLoadingPreviewData(null);
@@ -372,7 +364,7 @@ export default function RenderExamPage() {
                         }));
                     });
                 }
-                children.push(new Paragraph({ text: ""})); // Empty paragraph for spacing after question
+                children.push(new Paragraph({ text: ""})); 
             });
         });
         
@@ -407,12 +399,12 @@ export default function RenderExamPage() {
 
 
   const handleBackToList = () => {
-    setShowPdfPreview(false);
+    setShowPreview(false);
     setExamForPreview(null);
   };
 
 
-  if (authLoading || (isLoadingExams && !showPdfPreview)) {
+  if (authLoading || (isLoadingExams && !showPreview)) {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -455,7 +447,7 @@ export default function RenderExamPage() {
     );
   }
 
-  if (error && !showPdfPreview) {
+  if (error && !showPreview) {
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center">
         <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
@@ -466,9 +458,9 @@ export default function RenderExamPage() {
     );
   }
 
-  if (showPdfPreview && examForPreview) {
+  if (showPreview && examForPreview) {
     return (
-        <PdfPreviewCard 
+        <ExamPreviewPlaceholder 
             exam={examForPreview} 
             onBack={handleBackToList} 
             onDownloadDocx={generateAndDownloadActualDocx}
@@ -558,8 +550,7 @@ export default function RenderExamPage() {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Confirm Preview Generation</AlertDialogTitle>
                     <AlertDialogDescription>
-                    This will fetch the full exam data for: "{selectedExamForDialog.title}" and prepare a preview.
-                    You can download the DOCX file from the preview screen.
+                    This will fetch the full exam data for: "{selectedExamForDialog.title}" and prepare it for preview and DOCX download.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="space-y-3 py-2 text-sm">
@@ -606,7 +597,7 @@ export default function RenderExamPage() {
                         disabled={isLoadingPreviewData === selectedExamForDialog.id || !selectedExamForDialog.id}
                     >
                         {isLoadingPreviewData === selectedExamForDialog.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Confirm & Prepare Preview
+                        Confirm & Prepare
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>

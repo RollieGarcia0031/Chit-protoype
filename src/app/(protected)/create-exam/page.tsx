@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useState, type FormEvent } from "react";
-import type { ExamBlock, ExamQuestion, QuestionType, Option, MatchingPair } from "@/types/exam-types";
+import { useState, type FormEvent, useEffect } from "react";
+import type { ExamBlock, ExamQuestion, QuestionType, Option } from "@/types/exam-types";
 import { generateId } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
 import { PlusCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+const LOCAL_STORAGE_KEY = 'pendingExamData';
 
 // Helper to create a default question based on type
 const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'): ExamQuestion => {
@@ -47,8 +48,6 @@ const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'
         pairs: [{ id: generateId('pair'), premise: "", response: "" }],
       };
     default: 
-      // Should not be reached if types are handled correctly.
-      // Fallback to multiple-choice to ensure a valid question structure.
       console.warn(`createDefaultQuestion received an unknown type: ${type}. Defaulting to multiple-choice.`);
       return {
         ...baseQuestionProps,
@@ -67,6 +66,62 @@ export default function CreateExamPage() {
   const [examDescription, setExamDescription] = useState("");
   const [examBlocks, setExamBlocks] = useState<ExamBlock[]>([]);
   const { toast } = useToast();
+  const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
+
+  // Load data from localStorage on initial mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (savedData) {
+        try {
+          const parsedData = JSON.parse(savedData);
+          if (parsedData.title) setExamTitle(parsedData.title);
+          if (parsedData.description) setExamDescription(parsedData.description);
+          if (parsedData.blocks && Array.isArray(parsedData.blocks)) {
+            // Ensure all IDs are present, regenerate if necessary (though unlikely needed if saved correctly)
+            const validatedBlocks = parsedData.blocks.map((block: ExamBlock) => ({
+              ...block,
+              id: block.id || generateId('block'),
+              questions: block.questions.map((q: ExamQuestion) => ({
+                ...q,
+                id: q.id || generateId('question'),
+                ...(q.type === 'multiple-choice' && {
+                  options: q.options.map((opt: Option) => ({
+                    ...opt,
+                    id: opt.id || generateId('option'),
+                  })),
+                }),
+                ...(q.type === 'matching' && {
+                  pairs: q.pairs.map((p: any) => ({ // any for potential loaded data
+                    ...p,
+                    id: p.id || generateId('pair'),
+                  })),
+                }),
+              })),
+            }));
+            setExamBlocks(validatedBlocks);
+          }
+        } catch (error) {
+          console.error("Error parsing exam data from localStorage:", error);
+          localStorage.removeItem(LOCAL_STORAGE_KEY); // Clear corrupted data
+        }
+      }
+    }
+    setIsInitialLoadComplete(true);
+  }, []); // Runs only on mount
+
+  // Save data to localStorage whenever it changes, after initial load
+  useEffect(() => {
+    if (!isInitialLoadComplete || typeof window === 'undefined') return;
+
+    const examDataToSave = {
+      title: examTitle,
+      description: examDescription,
+      blocks: examBlocks,
+    };
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(examDataToSave));
+  }, [examTitle, examDescription, examBlocks, isInitialLoadComplete]);
+
 
   const handleAddExamBlock = () => {
     let newBlockType: QuestionType = 'multiple-choice'; 
@@ -111,28 +166,26 @@ export default function CreateExamPage() {
     const newBlocks = [...examBlocks];
     const block = newBlocks[blockIndex];
     
-    // There will always be at least one question due to how blocks are initialized.
     const lastQuestion = block.questions[block.questions.length - 1];
     
     const inheritedPoints = lastQuestion.points;
-    let newOptionsForMC: Option[] = [ // Default options for MC if not inheriting or malformed
+    let newOptionsForMC: Option[] = [
       { id: generateId('option'), text: "", isCorrect: true },
       { id: generateId('option'), text: "", isCorrect: false },
     ];
 
     if (block.blockType === 'multiple-choice' && lastQuestion.type === 'multiple-choice') {
-      // Ensure options array exists and has elements. If not, default to 2 options.
       const numOptions = (lastQuestion.options && lastQuestion.options.length > 0) ? lastQuestion.options.length : 2;
       newOptionsForMC = Array.from({ length: numOptions }, (_, i) => ({
         id: generateId('option'),
         text: "",
-        isCorrect: i === 0 && numOptions > 0, // Make the first option correct if options exist
+        isCorrect: i === 0 && numOptions > 0,
       }));
     }
     
     const baseNewQuestionProps = {
       id: generateId('question'),
-      questionText: "", // New questions start with empty text
+      questionText: "",
       points: inheritedPoints,
     };
 
@@ -157,15 +210,14 @@ export default function CreateExamPage() {
         newQuestion = {
           ...baseNewQuestionProps,
           type: 'matching',
-          pairs: [{ id: generateId('pair'), premise: "", response: "" }], // New matching questions start with one pair
+          pairs: [{ id: generateId('pair'), premise: "", response: "" }],
         };
         break;
       default:
-        // This is a fallback, should not be reached with valid block types.
         console.warn(`Unhandled block type in handleAddQuestionToBlock: ${block.blockType}. Defaulting to multiple-choice.`);
         newQuestion = {
           ...baseNewQuestionProps,
-          type: 'multiple-choice', // Fallback to MC
+          type: 'multiple-choice',
           options: [ 
               { id: generateId('option'), text: "", isCorrect: true },
               { id: generateId('option'), text: "", isCorrect: false },
@@ -207,7 +259,14 @@ export default function CreateExamPage() {
       blocks: examBlocks,
     };
     console.log("Exam Data to save:", JSON.stringify(examData, null, 2)); 
-    toast({ title: "Exam Saved (Simulated)", description: "Exam data logged to console."});
+    if (typeof window !== 'undefined') {
+        localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+    toast({ title: "Exam Saved (Simulated)", description: "Exam data logged to console. Local draft cleared."});
+    // Optionally reset form fields here if needed
+    // setExamTitle("");
+    // setExamDescription("");
+    // setExamBlocks([]);
   };
 
 
@@ -217,7 +276,7 @@ export default function CreateExamPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="text-3xl font-bold tracking-tight">Create New Exam</CardTitle>
-            <CardDescription>Fill in the details below to create a new exam.</CardDescription>
+            <CardDescription>Fill in the details below to create a new exam. Your progress is saved locally.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">

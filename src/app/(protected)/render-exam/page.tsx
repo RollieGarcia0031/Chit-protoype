@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star, FileType2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star, FileType2, ArrowLeft } from "lucide-react";
+import { useEffect, useState, Suspense } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, getDocs, Timestamp, orderBy, doc, getDoc } from "firebase/firestore";
@@ -26,8 +26,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { format } from 'date-fns';
-import { Packer, Document as DocxDocument, Paragraph, TextRun, HeadingLevel, AlignmentType, Tab, TabStopPosition, TabStopType } from 'docx';
+import { Packer, Document as DocxDocument, Paragraph, TextRun, HeadingLevel, AlignmentType, TabStopPosition, TabStopType } from 'docx';
 import { saveAs } from 'file-saver';
+import { PDFViewer } from '@react-pdf/renderer';
+import { ExamPDFDocument } from '@/components/exam/ExamPDFDocument';
 
 
 interface ExamSummaryData {
@@ -49,7 +51,7 @@ export interface FullExamData extends ExamSummaryData {
 const getAlphabetLetter = (index: number): string => String.fromCharCode(65 + index);
 
 const toRoman = (num: number): string => {
-  if (num < 1 || num > 3999) return String(num); // Basic fallback for out-of-range numbers
+  if (num < 1 || num > 3999) return String(num); 
   const romanNumerals: Array<[number, string]> = [
     [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
     [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
@@ -66,6 +68,41 @@ const toRoman = (num: number): string => {
   return result;
 };
 
+function PdfExamPreview({ exam, onBack }: { exam: FullExamData; onBack: () => void }) {
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  return (
+    <Card className="shadow-lg">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-xl font-semibold">Exam Preview: {exam.title}</CardTitle>
+          <CardDescription>This is a preview of the exam content.</CardDescription>
+        </div>
+        <Button variant="outline" onClick={onBack}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to List
+        </Button>
+      </CardHeader>
+      <CardContent className="h-[calc(100vh-250px)] min-h-[600px]">
+        {isClient ? (
+            <PDFViewer width="100%" height="100%" showToolbar={false}>
+              <ExamPDFDocument exam={exam} />
+            </PDFViewer>
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="ml-2 text-muted-foreground">Loading PDF preview...</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 
 export default function RenderExamPage() {
   const { user, loading: authLoading } = useAuth();
@@ -77,6 +114,9 @@ export default function RenderExamPage() {
   const [isGeneratingDocx, setIsGeneratingDocx] = useState<string | null>(null);
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [selectedExamForDialog, setSelectedExamForDialog] = useState<ExamSummaryData | null>(null);
+
+  const [examForPreview, setExamForPreview] = useState<FullExamData | null>(null);
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
 
 
   const fetchExams = async () => {
@@ -148,19 +188,13 @@ export default function RenderExamPage() {
 
         if (!examSnap.exists()) {
           toast({ title: "Error", description: "Exam not found.", variant: "destructive" });
-          setIsGeneratingDocx(null);
-          setIsConfirmDialogOpen(false);
-          setSelectedExamForDialog(null);
-          return;
+          throw new Error("Exam not found");
         }
         
         const firestoreExamData = examSnap.data();
         if (firestoreExamData.userId !== user.uid) {
             toast({ title: "Error", description: "Permission denied.", variant: "destructive" });
-            setIsGeneratingDocx(null);
-            setIsConfirmDialogOpen(false);
-            setSelectedExamForDialog(null);
-            return;
+            throw new Error("Permission denied");
         }
 
         const examDataFromSummary = selectedExamForDialog;
@@ -199,7 +233,7 @@ export default function RenderExamPage() {
                   options: (qData.options || []).map((opt: any) => ({ 
                       id: String(opt.id || `opt-${Math.random()}`),
                       text: String(opt.text || ""),
-                      isCorrect: Boolean(opt.isCorrect || false) // This will be ignored in DOCX rendering
+                      isCorrect: Boolean(opt.isCorrect || false)
                     })),
                 } as MultipleChoiceQuestion;
                 break;
@@ -207,7 +241,7 @@ export default function RenderExamPage() {
                 question = {
                   ...baseQuestionProps,
                   type: 'true-false',
-                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer), // Ignored
+                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer),
                 } as TrueFalseQuestion;
                 break;
               case 'matching':
@@ -217,7 +251,7 @@ export default function RenderExamPage() {
                   pairs: (qData.pairs || []).map((p: any) => ({ 
                       id: String(p.id || `pair-${Math.random()}`),
                       premise: String(p.premise || ""),
-                      response: String(p.response || ""), // Response is also ignored in rendering
+                      response: String(p.response || ""), 
                     })),
                 } as MatchingTypeQuestion;
                 break;
@@ -234,7 +268,7 @@ export default function RenderExamPage() {
           });
         }
         
-        const examToDownload: FullExamData = {
+        const examToDownloadAndPreview: FullExamData = {
             id: selectedExamForDialog.id, 
             title: String(examBaseData.title || examDataFromSummary.title || "Untitled Exam"), 
             description: String(examBaseData.description || examDataFromSummary.description || ""),
@@ -246,26 +280,29 @@ export default function RenderExamPage() {
             examBlocks: loadedBlocks,
         };
         
+        setExamForPreview(examToDownloadAndPreview); // Set data for PDF preview
+        setShowPdfPreview(true); // Switch to PDF preview UI
+
         // --- DOCX Generation Logic ---
         let questionCounter = 0;
         const children = [
             new Paragraph({
-                text: String(examToDownload.title || "Untitled Exam"),
+                text: String(examToDownloadAndPreview.title),
                 heading: HeadingLevel.HEADING_1,
                 alignment: AlignmentType.CENTER,
             }),
         ];
 
-        if (examToDownload.description) {
+        if (examToDownloadAndPreview.description) {
             children.push(new Paragraph({ 
-                children: [new TextRun({ text: String(examToDownload.description), italics: true })],
+                children: [new TextRun({ text: String(examToDownloadAndPreview.description), italics: true })],
                 alignment: AlignmentType.CENTER, 
                 spacing: { after: 200 }
             }));
         }
         children.push(new Paragraph({
             children: [
-                new TextRun(`Total Questions: ${examToDownload.totalQuestions || 0}\t\tTotal Points: ${examToDownload.totalPoints || 0}\t\tStatus: ${String(examToDownload.status || 'N/A')}`),
+                new TextRun(`Total Questions: ${examToDownloadAndPreview.totalQuestions}\t\tTotal Points: ${examToDownloadAndPreview.totalPoints}\t\tStatus: ${String(examToDownloadAndPreview.status)}`),
             ],
             tabStops: [
                 { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 2 },
@@ -276,40 +313,36 @@ export default function RenderExamPage() {
         }));
 
 
-        (examToDownload.examBlocks || []).forEach((block, blockIndex) => {
-            if (typeof block !== 'object' || block === null) return;
+        (examToDownloadAndPreview.examBlocks).forEach((block, blockIndex) => {
             children.push(new Paragraph({
-                text: `${toRoman(blockIndex + 1)}${block.blockTitle ? `: ${String(block.blockTitle)}` : ''}`, // Only Roman numeral and title
+                text: `${toRoman(blockIndex + 1)}${block.blockTitle ? `: ${String(block.blockTitle)}` : ''}`,
                 heading: HeadingLevel.HEADING_2,
                 spacing: { before: 200, after: 100 }
             }));
 
-            (block.questions || []).forEach((question) => {
-                if (typeof question !== 'object' || question === null) return;
+            (block.questions).forEach((question) => {
                 questionCounter++;
                 const questionPrefix = question.type === 'true-false' ? '____ ' : '';
                 children.push(new Paragraph({
                     children: [
-                        new TextRun(`${questionPrefix}${questionCounter}. ${String(question.questionText || '')} `),
-                        new TextRun({ text: `(${String(question.points || 0)} pts)`, size: 18, color: "555555" }),
+                        new TextRun(`${questionPrefix}${questionCounter}. ${String(question.questionText)} `),
+                        new TextRun({ text: `(${String(question.points)} pts)`, size: 18, color: "555555" }),
                     ],
                     indent: { left: 720 }, 
                     spacing: { after: 80 }
                 }));
 
                 if (question.type === 'multiple-choice') {
-                    ((question as MultipleChoiceQuestion).options || []).forEach((opt, optIndex) => {
-                        if (typeof opt !== 'object' || opt === null) return;
+                    ((question as MultipleChoiceQuestion).options).forEach((opt, optIndex) => {
                         children.push(new Paragraph({
-                            text: `${getAlphabetLetter(optIndex)}. ${String(opt.text || '')}`,
+                            text: `${getAlphabetLetter(optIndex)}. ${String(opt.text)}`,
                             indent: { left: 1080 }, 
                         }));
                     });
                 } else if (question.type === 'matching') {
-                    ((question as MatchingTypeQuestion).pairs || []).forEach((pair, pairIndex) => {
-                         if (typeof pair !== 'object' || pair === null) return;
+                    ((question as MatchingTypeQuestion).pairs).forEach((pair, pairIndex) => {
                          children.push(new Paragraph({
-                            text: `${pairIndex + 1}. ${String(pair.premise || '')}\t\t____________________`, // Only premise and a line
+                            text: `${pairIndex + 1}. ${String(pair.premise)}\t\t____________________`,
                             indent: { left: 1080 },
                             tabStops: [
                                 { type: TabStopType.LEFT, position: 2880 }, 
@@ -317,7 +350,7 @@ export default function RenderExamPage() {
                         }));
                     });
                 }
-                children.push(new Paragraph({ text: ""})); // Add a blank paragraph for spacing after each question
+                children.push(new Paragraph({ text: ""}));
             });
         });
         
@@ -339,21 +372,32 @@ export default function RenderExamPage() {
         });
 
         const blob = await Packer.toBlob(doc);
-        saveAs(blob, `${String(examToDownload.title || 'exam').replace(/[^a-z0-9]/gi, '_').toLowerCase()}_exam.docx`);
-        toast({ title: "Download Started", description: `"${String(examToDownload.title || 'exam')}.docx" is downloading.` });
+        saveAs(blob, `${String(examToDownloadAndPreview.title).replace(/[^a-z0-9]/gi, '_').toLowerCase()}_exam.docx`);
+        toast({ title: "Download Started", description: `"${String(examToDownloadAndPreview.title)}.docx" is downloading.` });
 
     } catch (error) {
-        console.error("Error generating DOCX:", error);
-        toast({ title: "DOCX Generation Failed", description: "Could not generate the DOCX file.", variant: "destructive" });
+        console.error("Error generating DOCX and setting up preview:", error);
+        toast({ title: "Operation Failed", description: "Could not generate DOCX or prepare preview.", variant: "destructive" });
+        // Reset preview states if error occurs before preview is shown
+        setShowPdfPreview(false);
+        setExamForPreview(null);
     } finally {
         setIsGeneratingDocx(null);
         setIsConfirmDialogOpen(false);
         setSelectedExamForDialog(null);
+        // Do not reset showPdfPreview and examForPreview here if successful, as they are needed for the preview
     }
   };
 
+  const handleBackToList = () => {
+    setShowPdfPreview(false);
+    setExamForPreview(null);
+    // Optionally re-fetch exams if underlying data might have changed or for consistency
+    // fetchExams(); 
+  };
 
-  if (authLoading || isLoadingExams) {
+
+  if (authLoading || (isLoadingExams && !showPdfPreview)) {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -396,7 +440,7 @@ export default function RenderExamPage() {
     );
   }
 
-  if (error) {
+  if (error && !showPdfPreview) {
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center">
         <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
@@ -405,6 +449,10 @@ export default function RenderExamPage() {
         <Button onClick={fetchExams}>Try Again</Button>
       </div>
     );
+  }
+
+  if (showPdfPreview && examForPreview) {
+    return <PdfExamPreview exam={examForPreview} onBack={handleBackToList} />;
   }
 
   return (
@@ -416,7 +464,7 @@ export default function RenderExamPage() {
             Render Exam to DOCX
           </CardTitle>
           <CardDescription>
-            Select an exam from the list below to generate a DOCX file.
+            Select an exam from the list below to generate a DOCX file and preview its content.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -455,7 +503,7 @@ export default function RenderExamPage() {
                         ) : (
                           <DownloadCloud className="mr-2 h-4 w-4" />
                         )}
-                        Generate DOCX
+                        Generate & Preview
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -486,9 +534,9 @@ export default function RenderExamPage() {
         <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
             <AlertDialogContent>
                 <AlertDialogHeader>
-                    <AlertDialogTitle>Confirm DOCX Generation</AlertDialogTitle>
+                    <AlertDialogTitle>Confirm DOCX Generation & Preview</AlertDialogTitle>
                     <AlertDialogDescription>
-                    This will generate a DOCX file for the exam: "{selectedExamForDialog.title}".
+                    This will generate a DOCX file for the exam: "{selectedExamForDialog.title}" and show a preview.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="space-y-3 py-2 text-sm">

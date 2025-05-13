@@ -91,12 +91,13 @@ function PdfExamPreview({ exam, onBackToList, onDownload }: { exam: FullExamData
     setIsDownloading(false);
   };
 
-  if (!exam || !exam.examBlocks || !Array.isArray(exam.examBlocks)) {
+  // Enhanced guard for the exam prop
+  if (!exam || typeof exam !== 'object' || !exam.id || !Array.isArray(exam.examBlocks)) {
     return (
       <Card className="shadow-xl w-full">
         <CardHeader>
           <CardTitle>Error Loading Preview</CardTitle>
-          <CardDescription>Exam data is incomplete or unavailable for preview. Please try again.</CardDescription>
+          <CardDescription>Exam data is incomplete or unavailable for preview. Please try again or check console for details.</CardDescription>
         </CardHeader>
         <CardContent className="py-6">
           <Button onClick={onBackToList} variant="outline">
@@ -115,9 +116,9 @@ function PdfExamPreview({ exam, onBackToList, onDownload }: { exam: FullExamData
             <div className="flex-grow">
                 <CardTitle className="text-2xl md:text-3xl font-bold tracking-tight flex items-center mb-1">
                     <FileType2 className="mr-3 h-7 w-7 md:h-8 md:w-8 text-primary flex-shrink-0" />
-                    {exam.title}
+                    {String(exam.title || 'Untitled Exam')}
                 </CardTitle>
-                {exam.description && <CardDescription className="text-sm md:text-base mt-1">{exam.description}</CardDescription>}
+                {exam.description && <CardDescription className="text-sm md:text-base mt-1">{String(exam.description)}</CardDescription>}
             </div>
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                 <Button variant="outline" onClick={onBackToList} size="sm" className="w-full sm:w-auto">
@@ -180,8 +181,19 @@ export default function RenderExamPage() {
       const q = query(examsCollectionRef, where("userId", "==", user.uid), orderBy("createdAt", "desc"));
       const querySnapshot = await getDocs(q);
       const fetchedExams: ExamSummaryData[] = [];
-      querySnapshot.forEach((doc) => {
-        fetchedExams.push({ id: doc.id, ...doc.data() } as ExamSummaryData);
+      querySnapshot.forEach((docSnap) => {
+        // Ensure basic fields are present
+        const data = docSnap.data();
+        fetchedExams.push({ 
+            id: docSnap.id, 
+            title: data.title || "Untitled Exam",
+            description: data.description,
+            createdAt: data.createdAt || Timestamp.now(),
+            updatedAt: data.updatedAt || Timestamp.now(),
+            totalQuestions: data.totalQuestions || 0,
+            totalPoints: data.totalPoints || 0,
+            status: data.status || "Draft",
+        } as ExamSummaryData);
       });
       setExams(fetchedExams);
     } catch (e) {
@@ -213,8 +225,8 @@ export default function RenderExamPage() {
   };
   
   const generateAndDownloadDocx = async (examToDownload: FullExamData | null) => {
-    if (!examToDownload) {
-        toast({ title: "Error", description: "No exam data available for download.", variant: "destructive" });
+    if (!examToDownload || typeof examToDownload !== 'object' || !examToDownload.id) {
+        toast({ title: "Error", description: "No valid exam data available for download.", variant: "destructive" });
         return;
     }
     toast({ title: "Generating DOCX", description: `Preparing "${examToDownload.title}" for download...` });
@@ -223,7 +235,7 @@ export default function RenderExamPage() {
         let questionCounter = 0;
         const children = [
             new Paragraph({
-                text: examToDownload.title,
+                text: String(examToDownload.title || "Untitled Exam"),
                 heading: HeadingLevel.HEADING_1,
                 alignment: AlignmentType.CENTER,
             }),
@@ -231,14 +243,14 @@ export default function RenderExamPage() {
 
         if (examToDownload.description) {
             children.push(new Paragraph({ 
-                children: [new TextRun({ text: examToDownload.description, italics: true })],
+                children: [new TextRun({ text: String(examToDownload.description), italics: true })],
                 alignment: AlignmentType.CENTER, 
                 spacing: { after: 200 }
             }));
         }
         children.push(new Paragraph({
             children: [
-                new TextRun(`Total Questions: ${examToDownload.totalQuestions}\t\tTotal Points: ${examToDownload.totalPoints}\t\tStatus: ${examToDownload.status}`),
+                new TextRun(`Total Questions: ${examToDownload.totalQuestions || 0}\t\tTotal Points: ${examToDownload.totalPoints || 0}\t\tStatus: ${String(examToDownload.status || 'N/A')}`),
             ],
             tabStops: [
                 { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 2 },
@@ -249,44 +261,48 @@ export default function RenderExamPage() {
         }));
 
 
-        examToDownload.examBlocks.forEach((block, blockIndex) => {
+        (examToDownload.examBlocks || []).forEach((block, blockIndex) => {
+            if (typeof block !== 'object' || block === null) return;
             children.push(new Paragraph({
-                text: `${toRoman(blockIndex + 1)}${block.blockTitle ? `: ${block.blockTitle}` : ''}`,
+                text: `${toRoman(blockIndex + 1)}${block.blockTitle ? `: ${String(block.blockTitle)}` : ''}`,
                 heading: HeadingLevel.HEADING_2,
                 spacing: { before: 200, after: 100 }
             }));
 
-            block.questions.forEach((question) => {
+            (block.questions || []).forEach((question) => {
+                if (typeof question !== 'object' || question === null) return;
                 questionCounter++;
                 const questionPrefix = question.type === 'true-false' ? '____ ' : '';
                 children.push(new Paragraph({
                     children: [
-                        new TextRun(`${questionPrefix}${questionCounter}. ${question.questionText} `),
-                        new TextRun({ text: `(${question.points} pts)`, size: 18, color: "555555" }),
+                        new TextRun(`${questionPrefix}${questionCounter}. ${String(question.questionText || '')} `),
+                        new TextRun({ text: `(${String(question.points || 0)} pts)`, size: 18, color: "555555" }),
                     ],
-                    indent: { left: 720 }, // 0.5 inch indent
+                    indent: { left: 720 }, 
                     spacing: { after: 80 }
                 }));
 
                 if (question.type === 'multiple-choice') {
-                    (question as MultipleChoiceQuestion).options.forEach((opt, optIndex) => {
+                    ((question as MultipleChoiceQuestion).options || []).forEach((opt, optIndex) => {
+                        if (typeof opt !== 'object' || opt === null) return;
                         children.push(new Paragraph({
-                            text: `${getAlphabetLetter(optIndex)}. ${opt.text}`,
-                            indent: { left: 1080 }, // 0.75 inch indent
+                            text: `${getAlphabetLetter(optIndex)}. ${String(opt.text || '')}`,
+                            indent: { left: 1080 }, 
                         }));
                     });
                 } else if (question.type === 'matching') {
-                    (question as MatchingTypeQuestion).pairs.forEach((pair, pairIndex) => {
+                    ((question as MatchingTypeQuestion).pairs || []).forEach((pair, pairIndex) => {
+                         if (typeof pair !== 'object' || pair === null) return;
                          children.push(new Paragraph({
-                            text: `${pairIndex + 1}. ${pair.premise}\t\t____________________`,
+                            text: `${pairIndex + 1}. ${String(pair.premise || '')}\t\t____________________`,
                             indent: { left: 1080 },
                             tabStops: [
-                                { type: TabStopType.LEFT, position: 2880 }, // Adjust position as needed
+                                { type: TabStopType.LEFT, position: 2880 }, 
                             ],
                         }));
                     });
                 }
-                children.push(new Paragraph({ text: ""})); // Spacing after each question
+                children.push(new Paragraph({ text: ""})); 
             });
         });
         
@@ -300,7 +316,7 @@ export default function RenderExamPage() {
                         basedOn: "Normal",
                         quickFormat: true,
                         paragraph: {
-                            spacing: { line: 240 } // single spaced
+                            spacing: { line: 240 } 
                         }
                     }
                 ]
@@ -314,7 +330,7 @@ export default function RenderExamPage() {
                                 level: 0,
                                 format: LevelFormat.LOWER_LETTER,
                                 text: "%1.",
-                                indent: { left: 1440, hanging: 720 }, // 1 inch indent, 0.5 inch hanging
+                                indent: { left: 1440, hanging: 720 }, 
                             },
                         ],
                     },
@@ -323,8 +339,8 @@ export default function RenderExamPage() {
         });
 
         const blob = await Packer.toBlob(doc);
-        saveAs(blob, `${examToDownload.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_exam.docx`);
-        toast({ title: "Download Started", description: `"${examToDownload.title}.docx" is downloading.` });
+        saveAs(blob, `${String(examToDownload.title || 'exam').replace(/[^a-z0-9]/gi, '_').toLowerCase()}_exam.docx`);
+        toast({ title: "Download Started", description: `"${String(examToDownload.title || 'exam')}.docx" is downloading.` });
 
     } catch (error) {
         console.error("Error generating DOCX:", error);
@@ -334,7 +350,7 @@ export default function RenderExamPage() {
 
 
   const handlePreparePreview = async () => {
-    if (!user || !selectedExamForDialog) {
+    if (!user || !selectedExamForDialog || !selectedExamForDialog.id) {
         toast({ title: "Error", description: "No exam selected or user not authenticated.", variant: "destructive" });
         setIsConfirmDialogOpen(false);
         setSelectedExamForDialog(null);
@@ -346,15 +362,25 @@ export default function RenderExamPage() {
         const examDocRef = doc(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id);
         const examSnap = await getDoc(examDocRef);
 
-        if (!examSnap.exists() || examSnap.data().userId !== user.uid) {
-          toast({ title: "Error", description: "Exam not found or permission denied.", variant: "destructive" });
+        if (!examSnap.exists()) {
+          toast({ title: "Error", description: "Exam not found.", variant: "destructive" });
           setIsPreparingPreview(null);
           setIsConfirmDialogOpen(false);
           setSelectedExamForDialog(null);
           return;
         }
+        
+        const firestoreExamData = examSnap.data();
+        if (firestoreExamData.userId !== user.uid) {
+            toast({ title: "Error", description: "Permission denied.", variant: "destructive" });
+            setIsPreparingPreview(null);
+            setIsConfirmDialogOpen(false);
+            setSelectedExamForDialog(null);
+            return;
+        }
 
-        const examData = examSnap.data() as Omit<FullExamData, 'id' | 'examBlocks'>;
+
+        const examData = firestoreExamData as Omit<FullExamData, 'id' | 'examBlocks'>; // Base data
         const loadedBlocks: ExamBlock[] = [];
         const blocksCollectionRef = collection(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id, "questionBlocks");
         const blocksQuery = query(blocksCollectionRef, orderBy("orderIndex"));
@@ -362,6 +388,8 @@ export default function RenderExamPage() {
 
         for (const blockDoc of blocksSnapshot.docs) {
           const blockData = blockDoc.data();
+          if (typeof blockData !== 'object' || blockData === null) continue;
+
           const loadedQuestions: ExamQuestion[] = [];
           const questionsCollectionRef = collection(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id, "questionBlocks", blockDoc.id, "questions");
           const questionsQuery = query(questionsCollectionRef, orderBy("orderIndex"));
@@ -369,58 +397,67 @@ export default function RenderExamPage() {
 
           questionsSnapshot.forEach(questionDocSnap => {
             const qData = questionDocSnap.data();
-            let question: ExamQuestion;
+            if (typeof qData !== 'object' || qData === null) return;
+
+            let question: ExamQuestion | null = null;
+            const baseQuestionProps = {
+                id: questionDocSnap.id,
+                questionText: String(qData.questionText || ""),
+                points: Number(qData.points || 0),
+            };
+
             switch (qData.type as QuestionType) {
               case 'multiple-choice':
                 question = {
-                  id: questionDocSnap.id,
-                  questionText: qData.questionText,
-                  points: qData.points,
+                  ...baseQuestionProps,
                   type: 'multiple-choice',
-                  options: (qData.options || []).map((opt: Option) => ({ ...opt, id: opt.id || `opt-${Math.random()}` })),
+                  options: (qData.options || []).map((opt: any) => ({ 
+                      id: String(opt.id || `opt-${Math.random()}`),
+                      text: String(opt.text || ""),
+                      isCorrect: Boolean(opt.isCorrect || false)
+                    })),
                 } as MultipleChoiceQuestion;
                 break;
               case 'true-false':
                 question = {
-                  id: questionDocSnap.id,
-                  questionText: qData.questionText,
-                  points: qData.points,
+                  ...baseQuestionProps,
                   type: 'true-false',
-                  correctAnswer: qData.correctAnswer === undefined ? null : qData.correctAnswer,
+                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer),
                 } as TrueFalseQuestion;
                 break;
               case 'matching':
                 question = {
-                  id: questionDocSnap.id,
-                  questionText: qData.questionText,
-                  points: qData.points,
+                  ...baseQuestionProps,
                   type: 'matching',
-                  pairs: (qData.pairs || []).map((p: MatchingPair) => ({ ...p, id: p.id || `pair-${Math.random()}` })),
+                  pairs: (qData.pairs || []).map((p: any) => ({ 
+                      id: String(p.id || `pair-${Math.random()}`),
+                      premise: String(p.premise || ""),
+                      response: String(p.response || ""),
+                    })),
                 } as MatchingTypeQuestion;
                 break;
               default: 
-                question = { id: questionDocSnap.id, questionText: "Unknown question type", points: 0, type: 'multiple-choice', options: []};
+                question = { ...baseQuestionProps, type: 'multiple-choice', options: []}; // Fallback
             }
-            loadedQuestions.push(question);
+            if(question) loadedQuestions.push(question);
           });
           loadedBlocks.push({
             id: blockDoc.id, 
-            blockType: blockData.blockType,
-            blockTitle: blockData.blockTitle || "",
+            blockType: blockData.blockType || 'multiple-choice', // Fallback blockType
+            blockTitle: String(blockData.blockTitle || ""),
             questions: loadedQuestions,
           });
         }
         
         const fullExamData: FullExamData = {
-            ...examData, 
             id: selectedExamForDialog.id, 
-            title: selectedExamForDialog.title, 
-            description: selectedExamForDialog.description,
-            createdAt: selectedExamForDialog.createdAt,
-            updatedAt: selectedExamForDialog.updatedAt,
-            totalQuestions: selectedExamForDialog.totalQuestions,
-            totalPoints: selectedExamForDialog.totalPoints,
-            status: selectedExamForDialog.status,
+            title: String(examData.title || selectedExamForDialog.title || "Untitled Exam"), 
+            description: String(examData.description || selectedExamForDialog.description || ""),
+            createdAt: examData.createdAt || selectedExamForDialog.createdAt || Timestamp.now(),
+            updatedAt: examData.updatedAt || selectedExamForDialog.updatedAt || Timestamp.now(),
+            totalQuestions: Number(examData.totalQuestions || selectedExamForDialog.totalQuestions || 0),
+            totalPoints: Number(examData.totalPoints || selectedExamForDialog.totalPoints || 0),
+            status: (examData.status || selectedExamForDialog.status || "Draft") as FullExamData['status'],
             examBlocks: loadedBlocks,
         };
         
@@ -428,7 +465,7 @@ export default function RenderExamPage() {
         setViewMode('renderPreview');
         toast({
             title: "Exam Ready for Preview",
-            description: `Displaying PDF preview for "${selectedExamForDialog.title}".`,
+            description: `Displaying PDF preview for "${fullExamData.title}".`,
             duration: 5000,
         });
 
@@ -497,18 +534,33 @@ export default function RenderExamPage() {
     );
   }
 
-  if (viewMode === 'renderPreview' && examForPreview) {
-    return (
-        <PdfExamPreview 
-            exam={examForPreview} 
-            onBackToList={() => {
-                setViewMode('list');
-                setExamForPreview(null);
-            }}
-            onDownload={async () => await generateAndDownloadDocx(examForPreview)}
-        />
-    );
+  if (viewMode === 'renderPreview') {
+    if (examForPreview && examForPreview.id) { // Ensure examForPreview is valid before rendering PdfExamPreview
+        return (
+            <PdfExamPreview 
+                exam={examForPreview} 
+                onBackToList={() => {
+                    setViewMode('list');
+                    setExamForPreview(null);
+                }}
+                onDownload={async () => await generateAndDownloadDocx(examForPreview)}
+            />
+        );
+    } else {
+        // Fallback if examForPreview is not ready, though this case should ideally be handled by loading states
+        return (
+            <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center">
+                <Loader2 className="h-16 w-16 text-primary animate-spin mb-4" />
+                <h2 className="text-2xl font-semibold mb-2">Preparing Preview...</h2>
+                <p className="text-muted-foreground mb-4">If this takes too long, please try returning to the list and selecting the exam again.</p>
+                <Button onClick={() => { setViewMode('list'); setExamForPreview(null); }} variant="outline">
+                    Back to List
+                </Button>
+            </div>
+        );
+    }
   }
+
 
   return (
     <div className="space-y-6">
@@ -635,7 +687,7 @@ export default function RenderExamPage() {
                     <AlertDialogCancel disabled={isPreparingPreview === selectedExamForDialog.id} onClick={() => setSelectedExamForDialog(null)}>Cancel</AlertDialogCancel>
                     <AlertDialogAction 
                         onClick={handlePreparePreview}
-                        disabled={isPreparingPreview === selectedExamForDialog.id}
+                        disabled={isPreparingPreview === selectedExamForDialog.id || !selectedExamForDialog.id}
                     >
                         {isPreparingPreview === selectedExamForDialog.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Confirm & Preview

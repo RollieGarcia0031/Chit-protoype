@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { ChitLogo } from '@/components/icons/logo';
 import { Button } from '@/components/ui/button';
-import { Home, LogIn, UserPlus, LogOut, FilePlus2, ListChecks } from 'lucide-react'; // Added FilePlus2, ListChecks
+import { Home, LogIn, UserPlus, LogOut, FilePlus2, ListChecks, ClipboardCheck } from 'lucide-react'; // Added ClipboardCheck
 import { useAuth } from '@/contexts/auth-context';
 import {
   DropdownMenu,
@@ -96,6 +96,18 @@ export function AppSidebar() {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === '/render-exam'}
+                  tooltip={isExpanded ? undefined : "Render Exam"}
+                >
+                  <Link href="/render-exam" className="flex items-center">
+                    <ClipboardCheck />
+                    {isExpanded && <span>Render Exam</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </>
           )}
         </SidebarMenu>
@@ -179,3 +191,4 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
+

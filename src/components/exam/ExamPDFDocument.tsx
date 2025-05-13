@@ -2,7 +2,7 @@
 'use client'; 
 
 import type { FullExamData } from '@/types/exam-types';
-import type { MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from '@/types/exam-types';
+import type { MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, ExamBlock as ExamBlockType, ExamQuestion as ExamQuestionType } from '@/types/exam-types';
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 
 // Font registration can be complex; relying on defaults for now.
@@ -106,10 +106,10 @@ const toRoman = (num: number): string => {
 
 
 export function ExamPDFDocument({ exam }: { exam: FullExamData }) {
-  // This component assumes `exam` is not null.
-  // Robust checks for `exam` itself should be done by the parent component (PdfExamViewer).
-
   let questionCounter = 0;
+
+  // Filter out null/undefined blocks before mapping
+  const validExamBlocks = (exam.examBlocks || []).filter((block): block is ExamBlockType => block != null);
 
   return (
     <Document title={String(exam.title || "Exam Document")} author="Chit Exam Generator">
@@ -120,51 +120,58 @@ export function ExamPDFDocument({ exam }: { exam: FullExamData }) {
           Total Questions: {exam.totalQuestions || 0} | Total Points: {exam.totalPoints || 0} | Status: {String(exam.status || 'Draft')}
         </Text>
 
-        {(exam.examBlocks || []).map((block, blockIndex) => (
-          <View key={block?.id || `block-${blockIndex}`} style={{ marginBottom: 10 }} wrap={false}>
-            <Text style={styles.blockTitle}>
-              {toRoman(blockIndex + 1)}{(block?.blockTitle) ? `: ${String(block.blockTitle)}` : ''}
-            </Text>
-            {(block?.questions || []).map((question, questionIndexWithinBlock) => {
-              questionCounter++;
-              if (!question || !question.id) { 
-                return <Text key={`q-error-${blockIndex}-${questionIndexWithinBlock}`}>Invalid question data at Block {blockIndex+1}, Question index {questionIndexWithinBlock}</Text>;
-              }
-              const questionPrefix = question.type === 'true-false' ? '____ ' : '';
-              return (
-                <View key={question.id} style={styles.questionContainer}>
-                  <View style={styles.questionTextContainer}>
-                    <Text style={styles.questionText}>
-                        <Text style={styles.trueFalsePrefix}>{questionPrefix}</Text>
-                        {`${questionCounter}. ${String(question.questionText || '')} `}
-                    </Text>
-                    <Text style={styles.questionPoints}>{`(${question.points || 0} pts)`}</Text>
+        {validExamBlocks.map((block, blockIndex) => {
+          // Filter out null/undefined questions before mapping
+          const validQuestions = (block.questions || []).filter((q): q is ExamQuestionType => q != null);
+          
+          return (
+            <View key={block.id || `block-${blockIndex}`} style={{ marginBottom: 10 }} wrap={false}>
+              <Text style={styles.blockTitle}>
+                {toRoman(blockIndex + 1)}{(block.blockTitle) ? `: ${String(block.blockTitle)}` : ''}
+              </Text>
+              {validQuestions.map((question, questionIndexWithinBlock) => {
+                questionCounter++;
+                // The check `if (!question || !question.id)` was already there, which is good.
+                // This filter mostly ensures `question` itself is not null before this point.
+                if (!question.id) { 
+                  return <Text key={`q-error-${blockIndex}-${questionIndexWithinBlock}`}>Invalid question data at Block {blockIndex+1}, Question index {questionIndexWithinBlock}</Text>;
+                }
+                const questionPrefix = question.type === 'true-false' ? '____ ' : '';
+                return (
+                  <View key={question.id} style={styles.questionContainer}>
+                    <View style={styles.questionTextContainer}>
+                      <Text style={styles.questionText}>
+                          <Text style={styles.trueFalsePrefix}>{questionPrefix}</Text>
+                          {`${questionCounter}. ${String(question.questionText || '')} `}
+                      </Text>
+                      <Text style={styles.questionPoints}>{`(${question.points || 0} pts)`}</Text>
+                    </View>
+
+                    {question.type === 'multiple-choice' && (
+                      <View>
+                        {((question as MultipleChoiceQuestion).options || []).filter(opt => opt != null).map((option, optIndex) => (
+                          <Text key={option.id || `opt-${blockIndex}-${questionIndexWithinBlock}-${optIndex}`} style={styles.optionText}>
+                            {`${getAlphabetLetter(optIndex)}. ${String(option.text || '')}`}
+                          </Text>
+                        ))}
+                      </View>
+                    )}
+
+                    {question.type === 'matching' && (
+                      <View>
+                        {((question as MatchingTypeQuestion).pairs || []).filter(p => p != null).map((pair, pairIndex) => (
+                          <Text key={pair.id || `pair-${blockIndex}-${questionIndexWithinBlock}-${pairIndex}`} style={styles.matchingPairPremise}>
+                            {`${pairIndex + 1}. ${String(pair.premise || '')}\t\t____________________`}
+                          </Text>
+                        ))}
+                      </View>
+                    )}
                   </View>
-
-                  {question.type === 'multiple-choice' && (
-                    <View>
-                      {((question as MultipleChoiceQuestion).options || []).map((option, optIndex) => (
-                        <Text key={option?.id || `opt-${blockIndex}-${questionIndexWithinBlock}-${optIndex}`} style={styles.optionText}>
-                          {`${getAlphabetLetter(optIndex)}. ${String(option?.text || '')}`}
-                        </Text>
-                      ))}
-                    </View>
-                  )}
-
-                  {question.type === 'matching' && (
-                    <View>
-                      {((question as MatchingTypeQuestion).pairs || []).map((pair, pairIndex) => (
-                        <Text key={pair?.id || `pair-${blockIndex}-${questionIndexWithinBlock}-${pairIndex}`} style={styles.matchingPairPremise}>
-                          {`${pairIndex + 1}. ${String(pair?.premise || '')}\t\t____________________`}
-                        </Text>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        ))}
+                );
+              })}
+            </View>
+          );
+        })}
         <Text style={styles.footer}>
           Generated by Chit Exam Platform on {new Date().toLocaleDateString()}
         </Text>

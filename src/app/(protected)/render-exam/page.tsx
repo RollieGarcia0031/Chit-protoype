@@ -69,7 +69,7 @@ function PdfPreviewCard({
     onDownloadDocx,
     isDownloadingDocxFile 
 }: { 
-    exam: FullExamData; // exam prop should not be null here
+    exam: FullExamData; 
     onBack: () => void;
     onDownloadDocx: () => Promise<void>;
     isDownloadingDocxFile: boolean;
@@ -97,7 +97,6 @@ function PdfPreviewCard({
         </div>
       </CardHeader>
       <CardContent className="h-[calc(100vh-250px)] min-h-[600px]">
-        {/* DynamicPdfExamViewer handles null exam prop internally if needed, but here exam is guaranteed. */}
         <DynamicPdfExamViewer exam={exam} />
       </CardContent>
     </Card>
@@ -221,10 +220,11 @@ export default function RenderExamPage() {
             if (typeof qData !== 'object' || qData === null) return;
 
             let question: ExamQuestion | null = null;
+            const qPoints = Number(qData.points);
             const baseQuestionProps = {
-                id: questionDocSnap.id,
+                id: String(questionDocSnap.id),
                 questionText: String(qData.questionText || ""),
-                points: Number(qData.points || 0),
+                points: Number.isFinite(qPoints) ? qPoints : 0,
             };
 
             switch (qData.type as QuestionType) {
@@ -233,9 +233,9 @@ export default function RenderExamPage() {
                   ...baseQuestionProps,
                   type: 'multiple-choice',
                   options: (qData.options || []).map((opt: any) => ({ 
-                      id: String(opt.id || `opt-${Math.random()}`),
-                      text: String(opt.text || ""),
-                      isCorrect: Boolean(opt.isCorrect || false)
+                      id: String(opt?.id || `opt-${Math.random()}`),
+                      text: String(opt?.text || ""),
+                      isCorrect: Boolean(opt?.isCorrect || false)
                     })),
                 } as MultipleChoiceQuestion;
                 break;
@@ -251,9 +251,9 @@ export default function RenderExamPage() {
                   ...baseQuestionProps,
                   type: 'matching',
                   pairs: (qData.pairs || []).map((p: any) => ({ 
-                      id: String(p.id || `pair-${Math.random()}`),
-                      premise: String(p.premise || ""),
-                      response: String(p.response || ""), 
+                      id: String(p?.id || `pair-${Math.random()}`),
+                      premise: String(p?.premise || ""),
+                      response: String(p?.response || ""), 
                     })),
                 } as MatchingTypeQuestion;
                 break;

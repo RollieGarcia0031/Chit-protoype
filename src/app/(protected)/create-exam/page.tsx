@@ -159,10 +159,15 @@ export default function CreateExamPage() {
     if (aiSuggestionsEnabled && isInitialLoadComplete && !isLoadingExamData && !isSaving) {
       debouncedAIAnalysis();
     } else if (!aiSuggestionsEnabled) {
-        setAiFeedbackList([]); // Clear feedback if AI is turned off
-        setAiError(null);
+        // Only update if necessary to prevent potential loops
+        if (aiFeedbackList.length > 0) {
+            setAiFeedbackList([]);
+        }
+        if (aiError !== null) {
+            setAiError(null);
+        }
     }
-  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, debouncedAIAnalysis, isInitialLoadComplete, isLoadingExamData, isSaving]);
+  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, debouncedAIAnalysis, isInitialLoadComplete, isLoadingExamData, isSaving, aiFeedbackList, aiError]);
 
 
   // Effect to determine mode (create or edit) and load initial data accordingly

@@ -99,6 +99,78 @@ export default function CreateExamPage() {
       return;
     }
 
+    // Check for exam content completeness before calling AI
+    let isContentSufficientForAnalysis = true;
+    let missingInfoMessage = "";
+
+    if (examBlocks.length === 0) {
+        isContentSufficientForAnalysis = false;
+        missingInfoMessage = "Add at least one question block to get AI suggestions.";
+    } else {
+        for (const block of examBlocks) {
+            if (block.questions.length === 0) {
+                isContentSufficientForAnalysis = false;
+                missingInfoMessage = "Some question blocks are empty. Add questions to all blocks for analysis.";
+                break;
+            }
+            for (const q of block.questions) {
+                if (!q.questionText.trim()) {
+                    isContentSufficientForAnalysis = false;
+                    missingInfoMessage = "Some questions are missing text. Please fill them in.";
+                    break;
+                }
+                if (q.type === 'multiple-choice') {
+                    const mcq = q as MultipleChoiceQuestion;
+                    if (!mcq.options || mcq.options.length < 2) {
+                        isContentSufficientForAnalysis = false;
+                        missingInfoMessage = "Multiple-choice questions need at least two options.";
+                        break;
+                    }
+                    if (!mcq.options.some(opt => opt.isCorrect)) {
+                        isContentSufficientForAnalysis = false;
+                        missingInfoMessage = "Mark a correct answer for all multiple-choice questions.";
+                        break;
+                    }
+                    if (mcq.options.some(opt => !opt.text.trim())) {
+                        isContentSufficientForAnalysis = false;
+                        missingInfoMessage = "Fill in all option texts for multiple-choice questions.";
+                        break;
+                    }
+                } else if (q.type === 'true-false') {
+                    if ((q as TrueFalseQuestion).correctAnswer === null) {
+                        isContentSufficientForAnalysis = false;
+                        missingInfoMessage = "Select True or False for all true/false questions.";
+                        break;
+                    }
+                } else if (q.type === 'matching') {
+                    const matq = q as MatchingTypeQuestion;
+                    if (!matq.pairs || matq.pairs.length < 1) {
+                        isContentSufficientForAnalysis = false;
+                        missingInfoMessage = "Matching questions need at least one pair.";
+                        break;
+                    }
+                    if (matq.pairs.some(p => !p.premise.trim() || !p.response.trim())) {
+                        isContentSufficientForAnalysis = false;
+                        missingInfoMessage = "Fill in all premise and response texts for matching pairs.";
+                        break;
+                    }
+                }
+            }
+            if (!isContentSufficientForAnalysis) break;
+        }
+    }
+    
+    if (!isContentSufficientForAnalysis) {
+        setAiFeedbackList([{ 
+            suggestionText: missingInfoMessage || "AI analysis requires more complete exam content (e.g., all questions filled, answers selected, options defined).", 
+            severity: "info" 
+        }]);
+        setIsAnalyzingWithAI(false);
+        setAiError(null);
+        return;
+    }
+
+
     setIsAnalyzingWithAI(true);
     setAiError(null);
 
@@ -138,7 +210,7 @@ export default function CreateExamPage() {
     }
   }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, user, isSaving, isLoadingExamData]);
 
-  const debouncedAIAnalysis = useMemo(() => debounce(performAIAnalysis, 1500), [performAIAnalysis]);
+  const debouncedAIAnalysis = useMemo(() => debounce(performAIAnalysis, 20000), [performAIAnalysis]); // Rate limit to 20 seconds
 
   useEffect(() => {
     if (aiSuggestionsEnabled && isInitialLoadComplete && !isLoadingExamData && !isSaving) {
@@ -148,7 +220,7 @@ export default function CreateExamPage() {
         setAiError(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps 
-  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, isInitialLoadComplete, isLoadingExamData, isSaving]);
+  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, isInitialLoadComplete, isLoadingExamData, isSaving]); // debouncedAIAnalysis removed as it's stable
 
 
   useEffect(() => {
@@ -584,11 +656,39 @@ export default function CreateExamPage() {
         >
           {isAnalyzingWithAI ? <Loader2 className="h-6 w-6 animate-spin" /> : <Sparkles className="h-6 w-6" />}
           {aiFeedbackList.length > 0 && !isAnalyzingWithAI && (
+             aiFeedbackList.some(f => f.suggestionText !== "AI analysis requires more complete exam content (e.g., all questions filled, answers selected, options defined)." &&
+                                     f.suggestionText !== "Add at least one question block to get AI suggestions." &&
+                                     f.suggestionText !== "Some question blocks are empty. Add questions to all blocks for analysis." &&
+                                     f.suggestionText !== "Some questions are missing text. Please fill them in." &&
+                                     f.suggestionText !== "Multiple-choice questions need at least two options." &&
+                                     f.suggestionText !== "Mark a correct answer for all multiple-choice questions." &&
+                                     f.suggestionText !== "Fill in all option texts for multiple-choice questions." &&
+                                     f.suggestionText !== "Select True or False for all true/false questions." &&
+                                     f.suggestionText !== "Matching questions need at least one pair." &&
+                                     f.suggestionText !== "Fill in all premise and response texts for matching pairs." &&
+                                     f.suggestionText !== "AI analysis failed to produce output. Please try again." && // Exclude error message
+                                     f.suggestionText !== "Exam content is empty. Please add a title or some questions to analyze." && // Exclude from genkit flow
+                                     f.suggestionText !== "All question blocks are empty. Add questions to get feedback." // Exclude from genkit flow
+                                    ) 
+            ) && (
             <Badge 
               variant="destructive" 
               className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
             >
-              {aiFeedbackList.length}
+              {aiFeedbackList.filter(f => f.suggestionText !== "AI analysis requires more complete exam content (e.g., all questions filled, answers selected, options defined)." && 
+                                            f.suggestionText !== "Add at least one question block to get AI suggestions." &&
+                                            f.suggestionText !== "Some question blocks are empty. Add questions to all blocks for analysis." &&
+                                            f.suggestionText !== "Some questions are missing text. Please fill them in." &&
+                                            f.suggestionText !== "Multiple-choice questions need at least two options." &&
+                                            f.suggestionText !== "Mark a correct answer for all multiple-choice questions." &&
+                                            f.suggestionText !== "Fill in all option texts for multiple-choice questions." &&
+                                            f.suggestionText !== "Select True or False for all true/false questions." &&
+                                            f.suggestionText !== "Matching questions need at least one pair." &&
+                                            f.suggestionText !== "Fill in all premise and response texts for matching pairs." &&
+                                            f.suggestionText !== "AI analysis failed to produce output. Please try again." &&
+                                            f.suggestionText !== "Exam content is empty. Please add a title or some questions to analyze." &&
+                                            f.suggestionText !== "All question blocks are empty. Add questions to get feedback."
+                                        ).length}
             </Badge>
           )}
         </Button>
@@ -603,6 +703,7 @@ export default function CreateExamPage() {
             </DialogTitle>
             <DialogDescription>
               Review AI-generated feedback to improve your exam. Analysis is based on current exam content.
+              Content is analyzed approximately every 20 seconds if changes are made.
             </DialogDescription>
           </DialogHeader>
           <div className="flex-grow overflow-y-auto space-y-3 pr-2">
@@ -623,7 +724,7 @@ export default function CreateExamPage() {
               <div className="text-center py-10">
                 <Info className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
                 <p className="text-muted-foreground">No AI suggestions available at the moment.</p>
-                <p className="text-sm text-muted-foreground">Ensure AI suggestions are enabled and you have some exam content.</p>
+                <p className="text-sm text-muted-foreground">Ensure AI suggestions are enabled and you have some exam content that is sufficiently complete.</p>
               </div>
             )}
             {!isAnalyzingWithAI && !aiError && aiFeedbackList.length > 0 && (
@@ -654,9 +755,9 @@ export default function CreateExamPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAiDialogOpen(false)}>Close</Button>
-            <Button onClick={performAIAnalysis} disabled={isAnalyzingWithAI}>
+            <Button onClick={performAIAnalysis} disabled={isAnalyzingWithAI || !aiSuggestionsEnabled}>
               {isAnalyzingWithAI && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Re-analyze
+              Re-analyze Now
             </Button>
           </DialogFooter>
         </DialogContent>

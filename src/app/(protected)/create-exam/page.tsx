@@ -14,7 +14,7 @@ import { useState, type FormEvent, useEffect, useCallback, useMemo } from "react
 import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
 import { generateId, debounce } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
-import { PlusCircle, Loader2, Sparkles, AlertTriangle, CheckCircle, Info, XCircle } from "lucide-react";
+import { PlusCircle, Loader2, Sparkles, AlertTriangle, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from '@/lib/firebase/config';
@@ -148,18 +148,16 @@ export default function CreateExamPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps 
   }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, isInitialLoadComplete, isLoadingExamData, isSaving]);
-  // debouncedAIAnalysis is stable due to useMemo, so it's safe in deps. Direct inclusion of performAIAnalysis would cause loop.
 
 
-  // Effect to determine mode (create or edit) and load initial data accordingly
   useEffect(() => {
     const examIdFromUrl = searchParams.get('examId');
-    let localDataLoaded = false;
 
     if (examIdFromUrl) {
       setEditingExamId(examIdFromUrl);
-      setIsLoadingExamData(true);
+      setIsLoadingExamData(true); // Start loading if examId is present
     } else {
+      // Create mode or no examId in URL
       if (typeof window !== 'undefined' && !isInitialLoadComplete) {
         const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (savedData) {
@@ -190,33 +188,37 @@ export default function CreateExamPage() {
               }));
               setExamBlocks(validatedBlocks);
             }
-            localDataLoaded = true;
           } catch (error) {
             console.error("Error parsing exam data from localStorage:", error);
             localStorage.removeItem(LOCAL_STORAGE_KEY);
           }
         }
       }
+      setIsLoadingExamData(false); // Not loading from DB in create mode initially
     }
-    if (!isInitialLoadComplete) {
+     if (!isInitialLoadComplete) {
         setIsInitialLoadComplete(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]); // Only run when searchParams changes or on initial mount effectively
+  }, [searchParams]); 
 
 
-  // Effect to fetch exam data from Firestore when in edit mode
   useEffect(() => {
-    if (!editingExamId || !user || !isLoadingExamData || !isInitialLoadComplete) {
+    if (!editingExamId || !user || !isInitialLoadComplete || !isLoadingExamData ) { // Added !isLoadingExamData back
+      if (editingExamId && !isLoadingExamData && isInitialLoadComplete && examBlocks.length === 0 && examTitle === "") {
+          // This case might mean fetch failed or exam was empty, but we should not re-trigger loading unless intended.
+          // Perhaps set a "fetchAttempted" flag to avoid loops if data genuinely is empty.
+      }
       return;
     }
-
+    
     const fetchExamForEditing = async () => {
-      // Reset form states before fetching new data
+      // Reset form states before fetching new data only if we are truly about to fetch.
+      // This was part of the original problem causing loops.
       setExamTitle("");
       setExamDescription("");
       setExamBlocks([]);
-      setAiFeedbackList([]); // Clear AI feedback
+      setAiFeedbackList([]);
       
       try {
         const examDocRef = doc(db, EXAMS_COLLECTION_NAME, editingExamId);
@@ -302,12 +304,13 @@ export default function CreateExamPage() {
       }
     };
 
-    fetchExamForEditing();
+    if (isLoadingExamData) { // Ensure fetch only runs if isLoadingExamData is true
+        fetchExamForEditing();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingExamId, user, router, toast, isInitialLoadComplete]); // isLoadingExamData removed as per previous fix attempt. isInitialLoadComplete ensures this runs after initial setup.
+  }, [editingExamId, user, router, toast, isInitialLoadComplete, isLoadingExamData]); 
 
 
-  // Effect to save to local storage (only in create mode)
   useEffect(() => {
     if (editingExamId || !isInitialLoadComplete || typeof window === 'undefined' || isLoadingExamData) return;
 
@@ -426,7 +429,7 @@ export default function CreateExamPage() {
       localStorage.removeItem(LOCAL_STORAGE_KEY);
     }
     setEditingExamId(null); 
-    // setIsLoadingExamData(false); // Already handled by fetch logic
+    setIsLoadingExamData(false); // Explicitly set loading to false on reset
     if (searchParams.get('examId')) router.push('/create-exam'); 
   };
 
@@ -531,16 +534,8 @@ export default function CreateExamPage() {
     }
   };
 
-  const renderSeverityIcon = (severity?: 'error' | 'warning' | 'info') => {
-    switch (severity) {
-      case 'error': return <XCircle className="h-5 w-5 text-destructive mr-2 shrink-0" />;
-      case 'warning': return <AlertTriangle className="h-5 w-5 text-yellow-500 mr-2 shrink-0" />;
-      case 'info':
-      default: return <Info className="h-5 w-5 text-blue-500 mr-2 shrink-0" />;
-    }
-  };
 
-  if (isLoadingExamData && editingExamId && !isInitialLoadComplete) { // Check !isInitialLoadComplete as well
+  if (isLoadingExamData && editingExamId && !isInitialLoadComplete && examBlocks.length === 0) {
     return (
         <div className="space-y-6">
             <Card className="shadow-lg">
@@ -626,27 +621,10 @@ export default function CreateExamPage() {
               </div>
             )}
             {!isAnalyzingWithAI && !aiError && aiFeedbackList.length > 0 && (
-              <ul className="space-y-3">
+              <ul className="list-disc pl-5 space-y-2">
                 {aiFeedbackList.map((feedback, index) => (
-                  <li key={index} className="p-3 border rounded-md shadow-sm bg-card/50">
-                    <div className="flex items-start">
-                      {renderSeverityIcon(feedback.severity)}
-                      <div className="flex-grow">
-                        <p className="text-sm font-medium text-card-foreground">{feedback.suggestionText}</p>
-                        {feedback.elementPath && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                                Path: <code className="bg-muted px-1 py-0.5 rounded text-xs">{feedback.elementPath}</code>
-                            </p>
-                        )}
-                         {(feedback.blockId || feedback.questionId) && (
-                             <p className="text-xs text-muted-foreground mt-0.5">
-                                {feedback.blockId && `Block ID: ${feedback.blockId}`}
-                                {feedback.blockId && feedback.questionId && ", "}
-                                {feedback.questionId && `Question ID: ${feedback.questionId}`}
-                            </p>
-                         )}
-                      </div>
-                    </div>
+                  <li key={index} className="text-sm text-foreground">
+                    {feedback.suggestionText}
                   </li>
                 ))}
               </ul>
@@ -757,4 +735,3 @@ export default function CreateExamPage() {
     </div>
   );
 }
-

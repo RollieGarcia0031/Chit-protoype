@@ -74,7 +74,7 @@ Focus on identifying potential issues such as:
 - Issues with the difficulty level (if inferable).
 - Problems with the structure or format of questions.
 - For multiple-choice questions: Plausibility of distractors, clarity of the correct answer, presence of exactly one correct answer. Ensure options are distinct and not too similar or tricky.
-- For true-false questions: Unambiguous statements that are clearly true or false. Avoid double negatives or overly complex sentences.
+- For true-false questions: Unambiguous statements that are clearly true or false. Avoid double negatives or overly complex sentences. The 'correctAnswer' field in the input data (true, false, or null if not set) indicates the intended answer for true/false questions.
 - For matching questions: Clear and distinct premises and responses. Ensure a logical and fair matching is possible.
 
 Exam Details:
@@ -95,15 +95,8 @@ Block ID: {{this.id}} (Type: {{this.blockType}})
       - Opt ID {{this.id}}: "{{this.text}}" (Correct: {{this.isCorrect}})
       {{/each}}
     {{/if}}
-    {{#if (eq this.type "true-false")}}
-      {{#if (eq this.correctAnswer true)}}
-      Correct T/F Answer: true
-      {{else if (eq this.correctAnswer false)}}
-      Correct T/F Answer: false
-      {{else}}
-      Correct T/F Answer: Not specified
-      {{/if}}
-    {{/if}}
+    {{! The 'correctAnswer' field (true, false, or null) for true/false questions is available in the input data based on the schema. }}
+    {{! The AI should use the 'type' field and the 'correctAnswer' value from the input data. }}
     {{#if this.pairs}}
     Matching Pairs:
       {{#each this.pairs}}

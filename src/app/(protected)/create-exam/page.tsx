@@ -106,16 +106,16 @@ export default function CreateExamPage() {
 
   const triggerAIAnalysis = useCallback(async () => {
     if (!aiSuggestionsEnabled || isSaving || isLoadingExamData) {
-      setAiFeedbackList([]); // Clear old feedback if AI is disabled or busy
-      setAiError(null);
+      // setAiFeedbackList([]); // Clear old feedback if AI is disabled or busy - Handled by useEffect
+      // setAiError(null);
       return;
     }
     
     const hasQuestions = examBlocks.some(block => block.questions.length > 0);
     if (!examTitle.trim() && !hasQuestions) {
         // Don't run AI if there's nothing substantial to analyze
-        setAiFeedbackList([]);
-        setAiError(null);
+        // setAiFeedbackList([]); // Handled by useEffect
+        // setAiError(null);
         return;
     }
 
@@ -125,7 +125,6 @@ export default function CreateExamPage() {
       const analysisInput: AnalyzeExamInput = {
         examTitle: examTitle || "Untitled Exam",
         examDescription: examDescription,
-        // Ensure IDs are present for all elements for AI mapping
         examBlocks: examBlocks.map(block => ({
           ...block,
           id: block.id || generateId('block-ai'), 
@@ -138,7 +137,7 @@ export default function CreateExamPage() {
             ...(q.type === 'matching' && {
               pairs: (q as MatchingTypeQuestion).pairs.map(p => ({...p, id: p.id || generateId('pair-ai')}))
             }),
-          })) as any[] // Cast to any[] to satisfy Genkit schema temporarily if types mismatch subtly
+          })) as any[] 
         })),
       };
       const result = await analyzeExam(analysisInput);
@@ -159,7 +158,6 @@ export default function CreateExamPage() {
     if (aiSuggestionsEnabled && isInitialLoadComplete && !isLoadingExamData && !isSaving) {
       debouncedAIAnalysis();
     } else if (!aiSuggestionsEnabled) {
-        // Only update if necessary to prevent potential loops
         if (aiFeedbackList.length > 0) {
             setAiFeedbackList([]);
         }
@@ -175,9 +173,10 @@ export default function CreateExamPage() {
     const examIdFromUrl = searchParams.get('examId');
     if (examIdFromUrl) {
       setEditingExamId(examIdFromUrl);
-      setIsLoadingExamData(true); // Trigger Firestore load
-      if (!isInitialLoadComplete) setIsInitialLoadComplete(true);
+      setIsLoadingExamData(true); 
+      if (!isInitialLoadComplete) setIsInitialLoadComplete(true); // Mark initial setup as complete
     } else {
+       // Ensure this runs only once on initial load for new exams
       if (!isInitialLoadComplete && typeof window !== 'undefined') {
         const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (savedData) {
@@ -213,7 +212,7 @@ export default function CreateExamPage() {
             localStorage.removeItem(LOCAL_STORAGE_KEY);
           }
         }
-        setIsInitialLoadComplete(true);
+        setIsInitialLoadComplete(true); // Mark initial load complete
       }
     }
   }, [searchParams, isInitialLoadComplete]);
@@ -222,14 +221,16 @@ export default function CreateExamPage() {
   // Effect to fetch exam data from Firestore when in edit mode
   useEffect(() => {
     if (!editingExamId || !user || !isLoadingExamData) {
+      // If not editing, no user, or not in loading state for this specific exam fetch, do nothing.
       return;
     }
 
     const fetchExamForEditing = async () => {
+      // Reset form states before fetching new data for the exam being edited
       setExamTitle("");
       setExamDescription("");
       setExamBlocks([]);
-      setAiFeedbackList([]); // Clear AI feedback when loading new exam
+      setAiFeedbackList([]); // Clear any existing AI feedback
       
       try {
         const examDocRef = doc(db, EXAMS_COLLECTION_NAME, editingExamId);
@@ -263,11 +264,11 @@ export default function CreateExamPage() {
             switch (qData.type as QuestionType) {
               case 'multiple-choice':
                 question = {
-                  id: questionDocSnap.id, // Use Firestore ID as the question's ID for consistency
+                  id: questionDocSnap.id,
                   questionText: qData.questionText,
                   points: qData.points,
                   type: 'multiple-choice',
-                  options: (qData.options || []).map((opt: any) => ({ ...opt, id: opt.id || generateId('option')})), // ensure option ids
+                  options: (qData.options || []).map((opt: any) => ({ ...opt, id: opt.id || generateId('option')})),
                 } as MultipleChoiceQuestion;
                 break;
               case 'true-false':
@@ -285,7 +286,7 @@ export default function CreateExamPage() {
                   questionText: qData.questionText,
                   points: qData.points,
                   type: 'matching',
-                  pairs: (qData.pairs || []).map((p: any) => ({ ...p, id: p.id || generateId('pair')})), // ensure pair ids
+                  pairs: (qData.pairs || []).map((p: any) => ({ ...p, id: p.id || generateId('pair')})),
                 } as MatchingTypeQuestion;
                 break;
               default:
@@ -303,7 +304,7 @@ export default function CreateExamPage() {
           });
         }
         setExamBlocks(loadedBlocks);
-        localStorage.removeItem(LOCAL_STORAGE_KEY);
+        localStorage.removeItem(LOCAL_STORAGE_KEY); // Clear local draft after loading from DB
         toast({ title: "Exam Loaded", description: `Editing "${examData.title}". Your changes will be saved to the database.` });
 
       } catch (error) {
@@ -311,8 +312,8 @@ export default function CreateExamPage() {
         toast({ title: "Error Loading Exam", description: "Could not load the exam data for editing.", variant: "destructive" });
         router.push('/exams');
       } finally {
-        setIsLoadingExamData(false);
-        // Trigger AI analysis if enabled after loading exam data
+        setIsLoadingExamData(false); // Loading complete
+        // Trigger AI analysis if enabled, after loading exam data and states are stable.
         if (aiSuggestionsEnabled) {
             triggerAIAnalysis();
         }
@@ -320,11 +321,12 @@ export default function CreateExamPage() {
     };
 
     fetchExamForEditing();
-  }, [editingExamId, user, router, toast, isLoadingExamData, aiSuggestionsEnabled, triggerAIAnalysis]);
+  }, [editingExamId, user, isLoadingExamData, router, toast]); // Removed triggerAIAnalysis and aiSuggestionsEnabled
 
 
   // Effect to save to local storage (only in create mode)
   useEffect(() => {
+    // Do not save to localStorage if editing an existing exam, not yet fully initialized, or if currently loading data from Firestore
     if (editingExamId || !isInitialLoadComplete || typeof window === 'undefined' || isLoadingExamData) return;
 
     const examDataToSave = {
@@ -390,7 +392,7 @@ export default function CreateExamPage() {
       newOptionsForMC = Array.from({ length: numOptions }, (_, i) => ({
         id: generateId('option'),
         text: "",
-        isCorrect: i === 0 && numOptions > 0, // Default first option correct only if there are options
+        isCorrect: i === 0 && numOptions > 0, 
       }));
     }
 
@@ -407,7 +409,7 @@ export default function CreateExamPage() {
       case 'matching':
         newQuestion = { ...baseNewQuestionProps, type: 'matching', pairs: [{ id: generateId('pair'), premise: "", response: "" }] };
         break;
-      default: // Should not happen if blockType is correctly managed
+      default: 
         newQuestion = { ...baseNewQuestionProps, type: 'multiple-choice', options: newOptionsForMC };
         break;
     }
@@ -437,13 +439,12 @@ export default function CreateExamPage() {
     setExamBlocks([]);
     setAiFeedbackList([]);
     setAiError(null);
-    // setAiSuggestionsEnabled(false); // Optionally reset AI toggle
     if (!editingExamId && typeof window !== 'undefined') { 
       localStorage.removeItem(LOCAL_STORAGE_KEY);
     }
     setEditingExamId(null); 
     setIsLoadingExamData(false); 
-    if (searchParams.get('examId')) router.push('/create-exam');
+    if (searchParams.get('examId')) router.push('/create-exam'); // Clear query param if it was an edit
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -452,8 +453,8 @@ export default function CreateExamPage() {
       toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
       return;
     }
-    if (examBlocks.length === 0 || !examTitle.trim()) {
-      toast({ title: "Validation Error", description: "Exam title and at least one question block are required.", variant: "destructive" });
+    if (examBlocks.length === 0 || !examTitle.trim() || examBlocks.some(b => b.questions.length === 0)) {
+      toast({ title: "Validation Error", description: "Exam title and at least one question in each block are required.", variant: "destructive" });
       return;
     }
     setIsSaving(true);
@@ -480,7 +481,6 @@ export default function CreateExamPage() {
                 totalPoints,
             });
 
-            // Delete existing subcollections strategy
             const existingBlocksRef = collection(db, EXAMS_COLLECTION_NAME, editingExamId, "questionBlocks");
             const existingBlocksSnap = await getDocs(existingBlocksRef);
             for (const blockDocSnap of existingBlocksSnap.docs) {
@@ -504,25 +504,24 @@ export default function CreateExamPage() {
             });
         }
 
-        // Re-add/Add blocks and questions
         examBlocks.forEach((block, blockIndex) => {
-            const blockDocRef = doc(collection(db, EXAMS_COLLECTION_NAME, examDocId, "questionBlocks")); // New ID for block subcollection doc
+            const blockDocRef = doc(collection(db, EXAMS_COLLECTION_NAME, examDocId, "questionBlocks"));
             batch.set(blockDocRef, {
-                clientSideBlockId: block.id, // Store client-side ID for reference if needed
+                clientSideBlockId: block.id, 
                 blockType: block.blockType,
                 blockTitle: block.blockTitle || "",
                 orderIndex: blockIndex,
                 examId: examDocId,
             });
             block.questions.forEach((question, questionIndex) => {
-                const questionDocRef = doc(collection(db, EXAMS_COLLECTION_NAME, examDocId, "questionBlocks", blockDocRef.id, "questions")); // New ID for question subcollection doc
+                const questionDocRef = doc(collection(db, EXAMS_COLLECTION_NAME, examDocId, "questionBlocks", blockDocRef.id, "questions")); 
                 const questionData: any = {
-                    clientSideQuestionId: question.id, // Store client-side ID
+                    clientSideQuestionId: question.id, 
                     questionText: question.questionText,
                     points: question.points,
                     type: question.type,
                     orderIndex: questionIndex,
-                    blockCollectionId: blockDocRef.id, // Firestore ID of the parent block document
+                    blockCollectionId: blockDocRef.id, 
                     examId: examDocId,
                 };
                 if (question.type === 'multiple-choice') questionData.options = (question as MultipleChoiceQuestion).options.map(opt => ({ ...opt, id: opt.id || generateId('option-save') }));
@@ -709,7 +708,7 @@ export default function CreateExamPage() {
            <Button type="button" variant="outline" onClick={resetForm} disabled={isSaving || isLoadingExamData}>
             {editingExamId ? "Cancel Edit" : "Clear Form & Reset Draft"}
           </Button>
-          <Button type="submit" size="lg" disabled={isSaving || isLoadingExamData || examBlocks.length === 0 || !examTitle.trim()}>
+          <Button type="submit" size="lg" disabled={isSaving || isLoadingExamData || examBlocks.length === 0 || !examTitle.trim() || examBlocks.some(b => b.questions.length === 0)}>
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {isSaving ? 'Saving...' : (editingExamId ? 'Update Exam' : 'Save Exam')}
           </Button>

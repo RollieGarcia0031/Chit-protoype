@@ -120,8 +120,7 @@ interface ExamPDFDocumentProps {
 export function ExamPDFDocument({ exam }: ExamPDFDocumentProps): ReactNode {
   let currentQuestionNumber = 0;
 
-  // More robust check at the beginning
-  if (!exam || typeof exam !== 'object' || !exam.id) { 
+  if (!exam || typeof exam !== 'object' || !exam.id || !Array.isArray(exam.examBlocks)) { 
     return (
       <Document>
         <Page style={styles.page}>
@@ -142,7 +141,7 @@ export function ExamPDFDocument({ exam }: ExamPDFDocumentProps): ReactNode {
           </Text>
         </View>
 
-        {(exam.examBlocks || []).map((block, blockIndex) => {
+        {(exam.examBlocks).map((block, blockIndex) => {
           if (typeof block !== 'object' || block === null) return null;
           return (
             <View key={String(block.id || `block-${blockIndex}`)} style={styles.block}>
@@ -157,7 +156,7 @@ export function ExamPDFDocument({ exam }: ExamPDFDocumentProps): ReactNode {
                     <Text style={styles.questionText}>
                       {question.type === 'true-false' ? '____ ' : ''}
                       {currentQuestionNumber}. {String(question.questionText || '')}{' '}
-                      <Text style={styles.points}>({question.points || 0} pts)</Text>
+                      <Text style={styles.points}>({String(question.points || 0)} pts)</Text>
                     </Text>
 
                     {question.type === 'multiple-choice' && (

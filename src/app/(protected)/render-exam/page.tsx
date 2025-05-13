@@ -91,13 +91,12 @@ function PdfExamPreview({ exam, onBackToList, onDownload }: { exam: FullExamData
     setIsDownloading(false);
   };
 
-  // Add an explicit check here
-  if (!exam || !exam.examBlocks) { 
+  if (!exam || !exam.examBlocks || !Array.isArray(exam.examBlocks)) {
     return (
       <Card className="shadow-xl w-full">
         <CardHeader>
-          <CardTitle>Error</CardTitle>
-          <CardDescription>Exam data is incomplete or unavailable for preview.</CardDescription>
+          <CardTitle>Error Loading Preview</CardTitle>
+          <CardDescription>Exam data is incomplete or unavailable for preview. Please try again.</CardDescription>
         </CardHeader>
         <CardContent className="py-6">
           <Button onClick={onBackToList} variant="outline">
@@ -133,9 +132,11 @@ function PdfExamPreview({ exam, onBackToList, onDownload }: { exam: FullExamData
         </div>
       </CardHeader>
       <CardContent className="h-[calc(100vh-250px)] min-h-[600px]">
-        <PDFViewer width="100%" height="100%" showToolbar={false}>
-          <ExamPDFDocument exam={exam} />
-        </PDFViewer>
+        {typeof window !== "undefined" && (
+            <PDFViewer width="100%" height="100%" showToolbar={false}>
+            <ExamPDFDocument exam={exam} />
+            </PDFViewer>
+        )}
       </CardContent>
        <CardFooter className="flex justify-end gap-2 border-t pt-4">
          <Button variant="outline" onClick={onBackToList}>

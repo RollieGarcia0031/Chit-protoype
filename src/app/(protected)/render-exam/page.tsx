@@ -72,8 +72,8 @@ function ExamPreviewPlaceholder({
     <Card className="shadow-lg">
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-          <CardTitle className="text-xl font-semibold">Exam Preview: {exam.title}</CardTitle>
-          <CardDescription>This area shows a simplified preview. The full exam can be downloaded as a DOCX file.</CardDescription>
+          <CardTitle className="text-xl font-semibold text-foreground">Exam Preview: {exam.title}</CardTitle>
+          <CardDescription className="text-foreground">This area shows a simplified preview. The full exam can be downloaded as a DOCX file.</CardDescription>
         </div>
         <div className="flex gap-2">
             <Button variant="outline" onClick={onBack}>
@@ -91,48 +91,48 @@ function ExamPreviewPlaceholder({
         </div>
       </CardHeader>
       <CardContent className="h-[calc(100vh-300px)] min-h-[500px] p-6 border rounded-md bg-muted/30 overflow-auto">
-        <div className="prose prose-sm max-w-none">
-            <h1 className="text-center text-2xl font-bold mb-2">{exam.title}</h1>
+        <div className="prose prose-sm max-w-none"> {/* prose-sm sets base font to 14px */}
+            <h1 className="text-center text-2xl font-bold mb-2 text-foreground">{exam.title}</h1>
             
-            <div className="flex justify-between text-sm mb-4">
+            <div className="flex justify-between text-sm mb-4 text-foreground">
                 <span>Name: _________________________</span>
                 <span>Score: ____________</span>
             </div>
 
-            {exam.description && <p className="text-center text-muted-foreground italic mb-4">{exam.description}</p>}
+            {exam.description && <p className="text-center text-foreground italic mb-4 text-base">{exam.description}</p>}
             
             <hr className="my-4"/>
 
             {exam.examBlocks.map((block, blockIndex) => (
                 <div key={block.id} className="mb-6">
-                    <h2 className="text-lg font-semibold mb-1">
+                    <h2 className="text-lg font-semibold mb-1 text-foreground"> {/* Consistent font size for block labels */}
                         {toRoman(blockIndex + 1)}. {getQuestionTypeLabel(block.blockType)}
                     </h2>
-                    {block.blockTitle && <p className="text-sm text-muted-foreground mb-2 italic">{block.blockTitle}</p>}
+                    {block.blockTitle && <p className="text-base text-foreground mb-2 italic">{block.blockTitle}</p>} {/* Consistent font size and color */}
                     
                     {block.questions.map((question, qIndex) => {
                         const globalQuestionNumber = exam.examBlocks.slice(0, blockIndex).reduce((acc, b) => acc + b.questions.length, 0) + qIndex + 1;
                         return (
                             <div key={question.id} className="mb-3 pl-4">
-                                <p className="font-medium">
+                                <p className="font-medium text-base text-foreground"> {/* Consistent font size and color */}
                                     {question.type === 'true-false' ? '____ ' : ''}
                                     {globalQuestionNumber}. {question.questionText}
                                 </p>
                                 {question.type === 'multiple-choice' && (
                                     <ul className="list-none pl-6 mt-1 space-y-0.5">
                                         {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
-                                            <li key={opt.id}>{getAlphabetLetter(optIndex)}. {opt.text}</li>
+                                            <li key={opt.id} className="text-base text-foreground">{getAlphabetLetter(optIndex)}. {opt.text}</li> 
                                         ))}
                                     </ul>
                                 )}
                                 {question.type === 'matching' && (
                                     <div className="pl-6 mt-1 space-y-1">
                                         {(question as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (
-                                            <p key={pair.id} className="text-sm">
+                                            <p key={pair.id} className="text-base text-foreground"> {/* Consistent font size and color */}
                                                 {pairIndex + 1}. {pair.premise} <span className="inline-block w-24 border-b border-foreground/50 ml-2"></span>
                                             </p>
                                         ))}
-                                         <p className="text-xs text-muted-foreground mt-1"> (Responses for matching would be listed separately in a real exam paper) </p>
+                                         <p className="text-xs text-foreground mt-1"> (Responses for matching would be listed separately in a real exam paper) </p> {/* Consistent color */}
                                     </div>
                                 )}
                             </div>
@@ -270,7 +270,7 @@ export default function RenderExamPage() {
             const baseQuestionProps = {
                 id: String(questionDocSnap.id),
                 questionText: String(qData.questionText || ""),
-                points: Number.isFinite(qPoints) ? qPoints : 0, // Retain points for DOCX if needed later, but won't display in preview
+                points: Number.isFinite(qPoints) ? qPoints : 0, 
             };
 
             switch (qData.type as QuestionType) {
@@ -323,8 +323,8 @@ export default function RenderExamPage() {
             createdAt: examBaseData.createdAt || examDataFromSummary.createdAt || Timestamp.now(),
             updatedAt: examBaseData.updatedAt || examDataFromSummary.updatedAt || Timestamp.now(),
             totalQuestions: Number(examBaseData.totalQuestions || examDataFromSummary.totalQuestions || 0),
-            totalPoints: Number(examBaseData.totalPoints || examDataFromSummary.totalPoints || 0), // Retain for potential DOCX use
-            status: (examBaseData.status || examDataFromSummary.status || "Draft") as FullExamData['status'], // Retain for potential DOCX use
+            totalPoints: Number(examBaseData.totalPoints || examDataFromSummary.totalPoints || 0), 
+            status: (examBaseData.status || examDataFromSummary.status || "Draft") as FullExamData['status'], 
             examBlocks: loadedBlocks,
         };
         
@@ -355,19 +355,19 @@ export default function RenderExamPage() {
         let questionCounter = 0;
         const children: Paragraph[] = [
             new Paragraph({
-                text: String(examForPreview.title),
+                children: [new TextRun({ text: String(examForPreview.title), bold: true, size: 32 })], // Consistent font size and color
                 heading: HeadingLevel.HEADING_1,
                 alignment: AlignmentType.CENTER,
                 spacing: { after: 200 }
             }),
-            new Paragraph({ // Name and Score line
+            new Paragraph({ 
                 children: [
-                    new TextRun("Name: _________________________"),
+                    new TextRun({text: "Name: _________________________", size: 24}), // Consistent font size and color
                     new Tab(),
-                    new TextRun("Score: ____________"),
+                    new TextRun({text: "Score: ____________", size: 24}), // Consistent font size and color
                 ],
                 tabStops: [
-                    { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 1.5 }, // Adjust position as needed
+                    { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 1.5 }, 
                 ],
                 spacing: { after: 200 }
             }),
@@ -375,23 +375,22 @@ export default function RenderExamPage() {
 
         if (examForPreview.description) {
             children.push(new Paragraph({ 
-                children: [new TextRun({ text: String(examForPreview.description), italics: true })],
+                children: [new TextRun({ text: String(examForPreview.description), italics: true, size: 24 })], // Consistent font size and color
                 alignment: AlignmentType.CENTER, 
                 spacing: { after: 300 }
             }));
         }
-        // Removed total points/status paragraph
-
+        
         (examForPreview.examBlocks).forEach((block, blockIndex) => {
             children.push(new Paragraph({
-                text: `${toRoman(blockIndex + 1)}. ${getQuestionTypeLabel(block.blockType)}`,
+                 children: [new TextRun({ text: `${toRoman(blockIndex + 1)}. ${getQuestionTypeLabel(block.blockType)}`, bold: true, size: 28 })], // Consistent font size and color
                 heading: HeadingLevel.HEADING_2,
                 spacing: { before: 200, after: block.blockTitle ? 50 : 100 }
             }));
 
             if (block.blockTitle) {
                  children.push(new Paragraph({ 
-                    children: [new TextRun({ text: String(block.blockTitle), italics: true })],
+                    children: [new TextRun({ text: String(block.blockTitle), italics: true, size: 24 })], // Consistent font size and color
                     spacing: { after: 100 } 
                 }));
             }
@@ -401,8 +400,7 @@ export default function RenderExamPage() {
                 const questionPrefix = question.type === 'true-false' ? '____ ' : '';
                 children.push(new Paragraph({
                     children: [
-                        new TextRun(`${questionPrefix}${questionCounter}. ${String(question.questionText)} `),
-                        // Removed points TextRun: new TextRun({ text: `(${String(question.points)} pts)`, size: 18, color: "555555" }),
+                        new TextRun({text: `${questionPrefix}${questionCounter}. ${String(question.questionText)} `, size: 24}), // Consistent font size and color
                     ],
                     indent: { left: 720 }, 
                     spacing: { after: 80 }
@@ -411,7 +409,7 @@ export default function RenderExamPage() {
                 if (question.type === 'multiple-choice') {
                     ((question as MultipleChoiceQuestion).options).forEach((opt, optIndex) => {
                         children.push(new Paragraph({
-                            text: `${getAlphabetLetter(optIndex)}. ${String(opt.text)}`,
+                            children: [new TextRun({text: `${getAlphabetLetter(optIndex)}. ${String(opt.text)}`, size: 24})], // Consistent font size and color
                             indent: { left: 1080 }, 
                         }));
                     });
@@ -420,7 +418,7 @@ export default function RenderExamPage() {
                     
                     ((question as MatchingTypeQuestion).pairs).forEach((pair, pairIndex) => {
                          premises.push(new Paragraph({
-                            text: `${getAlphabetLetter(pairIndex)}. ${String(pair.premise)}\t\t____________________`,
+                            children: [new TextRun({text: `${getAlphabetLetter(pairIndex)}. ${String(pair.premise)}\t\t____________________`, size: 24})], // Consistent font size and color
                             indent: { left: 1080 }, 
                             tabStops: [
                                 { type: TabStopType.LEFT, position: 3600 }, 
@@ -428,7 +426,6 @@ export default function RenderExamPage() {
                         }));
                     });
                     children.push(...premises);
-                    // For a real exam, you might list responses separately or provide space for students to write them.
                 }
                 children.push(new Paragraph({ text: ""})); 
             });
@@ -445,6 +442,24 @@ export default function RenderExamPage() {
                         quickFormat: true,
                         paragraph: {
                             spacing: { line: 240 } 
+                        },
+                         run: { // Default run style for all text unless overridden
+                            font: "Calibri", // Example font
+                            size: 24, // 12pt font (24 half-points)
+                            color: "000000", // Black
+                        },
+                    }
+                ],
+                characterStyles: [ // For specific overrides if needed later
+                    {
+                        id: 'QuestionNumberChar',
+                        name: 'Question Number Char',
+                        basedOn: 'DefaultParagraphFont',
+                        run: {
+                            font: "Calibri",
+                            size: 24,
+                            color: "000000",
+                            bold: false,
                         }
                     }
                 ]
@@ -652,7 +667,7 @@ export default function RenderExamPage() {
                         </div>
                     </div>
                      <div className="flex items-center">
-                        <Info className="h-5 w-5 mr-2 text-muted-foreground" /> {/* Changed icon for status */}
+                        <Info className="h-5 w-5 mr-2 text-muted-foreground" /> 
                         <strong>Status:</strong> <span className="ml-1">{selectedExamForDialog.status}</span>
                     </div>
                 </div>
@@ -672,3 +687,4 @@ export default function RenderExamPage() {
     </div>
   );
 }
+

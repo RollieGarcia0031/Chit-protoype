@@ -15,10 +15,11 @@ import { generateId } from "@/lib/utils";
 
 interface ExamItemBlockProps {
   item: ExamQuestion;
-  questionType: QuestionType; // Type is now passed as a prop
+  questionType: QuestionType; 
   onItemChange: (item: ExamQuestion) => void;
   onItemRemove: () => void;
-  itemIndex: number; // Index of the question within its block
+  itemIndex: number; 
+  disabled?: boolean; // Added disabled prop
 }
 
 // Helper function to get alphabet letter for options
@@ -26,16 +27,16 @@ const getAlphabetLetter = (index: number): string => {
   return String.fromCharCode(65 + index); // 65 is ASCII for 'A'
 };
 
-export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, itemIndex }: ExamItemBlockProps) {
+export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, itemIndex, disabled = false }: ExamItemBlockProps) {
   const handleQuestionTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     onItemChange({ ...item, questionText: e.target.value });
   };
 
   const handlePointsChange = (e: ChangeEvent<HTMLInputElement>) => {
     const points = parseInt(e.target.value, 10);
-    if (!isNaN(points) && points >= 0) { // Basic validation: non-negative integer
+    if (!isNaN(points) && points >= 0) { 
       onItemChange({ ...item, points });
-    } else if (e.target.value === "") { // Allow clearing the input, default to 0 or handle as needed
+    } else if (e.target.value === "") { 
         onItemChange({ ...item, points: 0 });
     }
   };
@@ -62,7 +63,6 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
   const handleAddOption = () => {
     if (item.type === 'multiple-choice') {
       const newOptions = [...item.options, { id: generateId('option'), text: "", isCorrect: false }];
-      // If this is the first option being added to an empty list (e.g. after type change), make it correct by default
       if (newOptions.length === 1) {
         newOptions[0].isCorrect = true;
       }
@@ -72,7 +72,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
 
   const handleRemoveOption = (optionIndex: number) => {
     if (item.type === 'multiple-choice') {
-      if (item.options.length <= 1) return; // Keep at least one option for MCQs
+      if (item.options.length <= 1) return; 
       const newOptions = item.options.filter((_, i) => i !== optionIndex);
       if (!newOptions.some(opt => opt.isCorrect) && newOptions.length > 0) {
         newOptions[0].isCorrect = true;
@@ -114,7 +114,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
 
   const handleRemovePair = (pairIndex: number) => {
     if (item.type === 'matching') {
-      if (item.pairs.length <= 1) return; // Keep at least one pair for Matching
+      if (item.pairs.length <= 1) return; 
       const newPairs = item.pairs.filter((_, i) => i !== pairIndex);
       onItemChange({ ...item, pairs: newPairs });
     }
@@ -122,10 +122,10 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
 
 
   return (
-    <Card className="border-border shadow-sm bg-card/50"> {/* Slightly different background for nested card */}
+    <Card className="border-border shadow-sm bg-card/50">
       <CardHeader className="flex flex-row items-center justify-between py-3 px-4">
         <CardTitle className="text-md font-medium">Question {itemIndex + 1}</CardTitle>
-        <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block">
+        <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block" disabled={disabled}>
           <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
         </Button>
       </CardHeader>
@@ -139,6 +139,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
               onChange={handleQuestionTextChange}
               placeholder={questionType === 'matching' ? "e.g., Match the terms with their definitions." : "e.g., What is the capital of France?"}
               className="min-h-[70px] text-sm"
+              disabled={disabled}
             />
           </div>
           <div className="space-y-1 md:w-24">
@@ -151,6 +152,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
               min="0"
               placeholder="Pts"
               className="h-9 text-sm text-center"
+              disabled={disabled}
             />
           </div>
         </div>
@@ -167,6 +169,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                   checked={option.isCorrect}
                   onCheckedChange={() => handleCorrectOptionChange(option.id)}
                   aria-label={`Mark option ${getAlphabetLetter(optIndex)} as correct`}
+                  disabled={disabled}
                 />
                 <Label htmlFor={`option-text-${option.id}`} className="font-semibold text-sm">{getAlphabetLetter(optIndex)}.</Label>
                 <Input
@@ -176,15 +179,16 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                   onChange={(e) => handleOptionTextChange(optIndex, e.target.value)}
                   placeholder={`Option ${getAlphabetLetter(optIndex)} text`}
                   className="flex-grow h-9 text-sm"
+                  disabled={disabled}
                 />
                 {(item as MultipleChoiceQuestion).options.length > 1 && (
-                   <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveOption(optIndex)} aria-label={`Remove option ${getAlphabetLetter(optIndex)}`}>
+                   <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveOption(optIndex)} aria-label={`Remove option ${getAlphabetLetter(optIndex)}`} disabled={disabled}>
                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                    </Button>
                 )}
               </div>
             ))}
-            <Button type="button" variant="outline" onClick={handleAddOption} size="sm" className="text-xs">
+            <Button type="button" variant="outline" onClick={handleAddOption} size="sm" className="text-xs" disabled={disabled}>
               <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Add Option
             </Button>
           </div>
@@ -198,13 +202,14 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
               value={(item as TrueFalseQuestion).correctAnswer === null ? '' : String((item as TrueFalseQuestion).correctAnswer)}
               onValueChange={handleTrueFalseChange}
               className="flex space-x-3"
+              disabled={disabled}
             >
               <div className="flex items-center space-x-1.5">
-                <RadioGroupItem value="true" id={`true-${item.id}`} />
+                <RadioGroupItem value="true" id={`true-${item.id}`} disabled={disabled} />
                 <Label htmlFor={`true-${item.id}`} className="text-sm font-normal">True</Label>
               </div>
               <div className="flex items-center space-x-1.5">
-                <RadioGroupItem value="false" id={`false-${item.id}`} />
+                <RadioGroupItem value="false" id={`false-${item.id}`} disabled={disabled} />
                 <Label htmlFor={`false-${item.id}`} className="text-sm font-normal">False</Label>
               </div>
             </RadioGroup>
@@ -223,6 +228,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                   onChange={(e) => handlePairPremiseChange(pairIndex, e.target.value)}
                   placeholder={`Premise ${pairIndex + 1}`}
                   className="h-9 text-sm"
+                  disabled={disabled}
                 />
                 <span className="text-center text-muted-foreground hidden md:inline text-sm">=</span>
                 <Input
@@ -231,15 +237,16 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                   onChange={(e) => handlePairResponseChange(pairIndex, e.target.value)}
                   placeholder={`Response ${pairIndex + 1}`}
                   className="h-9 text-sm"
+                  disabled={disabled}
                 />
                  {(item as MatchingTypeQuestion).pairs.length > 1 && (
-                  <Button type="button" variant="ghost" size="icon" onClick={() => handleRemovePair(pairIndex)} aria-label={`Remove pair ${pairIndex + 1}`}>
+                  <Button type="button" variant="ghost" size="icon" onClick={() => handleRemovePair(pairIndex)} aria-label={`Remove pair ${pairIndex + 1}`} disabled={disabled}>
                     <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
                 )}
               </div>
             ))}
-            <Button type="button" variant="outline" onClick={handleAddPair} size="sm" className="text-xs">
+            <Button type="button" variant="outline" onClick={handleAddPair} size="sm" className="text-xs" disabled={disabled}>
               <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Add Pair
             </Button>
           </div>

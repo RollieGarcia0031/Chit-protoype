@@ -20,6 +20,7 @@ interface ExamQuestionGroupBlockProps {
   onUpdateQuestionInBlock: (blockIndex: number, questionIndex: number, updatedQuestion: ExamQuestion) => void;
   onRemoveQuestionFromBlock: (blockIndex: number, questionIndex: number) => void;
   onRemoveBlock: (blockIndex: number) => void;
+  disabled?: boolean; // Added disabled prop
 }
 
 export function ExamQuestionGroupBlock({
@@ -31,6 +32,7 @@ export function ExamQuestionGroupBlock({
   onUpdateQuestionInBlock,
   onRemoveQuestionFromBlock,
   onRemoveBlock,
+  disabled = false, // Default to false
 }: ExamQuestionGroupBlockProps) {
   return (
     <Card className="shadow-md border-border">
@@ -45,8 +47,9 @@ export function ExamQuestionGroupBlock({
           <Select
             value={block.blockType}
             onValueChange={(newType) => onBlockTypeChange(blockIndex, newType as QuestionType)}
+            disabled={disabled}
           >
-            <SelectTrigger className="w-[180px] h-9 text-sm">
+            <SelectTrigger className="w-[180px] h-9 text-sm" disabled={disabled}>
               <SelectValue placeholder="Select type" />
             </SelectTrigger>
             <SelectContent>
@@ -57,7 +60,7 @@ export function ExamQuestionGroupBlock({
               ))}
             </SelectContent>
           </Select>
-          <Button variant="destructive" size="icon" onClick={() => onRemoveBlock(blockIndex)} aria-label="Remove question block">
+          <Button variant="destructive" size="icon" onClick={() => onRemoveBlock(blockIndex)} aria-label="Remove question block" disabled={disabled}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
@@ -73,6 +76,7 @@ export function ExamQuestionGroupBlock({
             onChange={(e) => onBlockTitleChange(blockIndex, e.target.value)}
             placeholder="e.g., Answer all questions in this section."
             className="min-h-[60px] text-sm"
+            disabled={disabled}
           />
         </div>
         <div className="space-y-3">
@@ -84,6 +88,7 @@ export function ExamQuestionGroupBlock({
               onItemChange={(updatedItem) => onUpdateQuestionInBlock(blockIndex, questionIndex, updatedItem)}
               onItemRemove={() => onRemoveQuestionFromBlock(blockIndex, questionIndex)}
               itemIndex={questionIndex}
+              disabled={disabled}
             />
           ))}
         </div>
@@ -95,6 +100,7 @@ export function ExamQuestionGroupBlock({
           onClick={() => onAddQuestionToBlock(blockIndex)}
           size="sm"
           className="w-full md:w-auto"
+          disabled={disabled}
         >
           <PlusCircle className="mr-2 h-4 w-4" /> Add Question to this Block
         </Button>

@@ -11,8 +11,11 @@ import { useState, type FormEvent, useEffect } from "react";
 import type { ExamBlock, ExamQuestion, QuestionType, Option } from "@/types/exam-types";
 import { generateId } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, Loader2 } from "lucide-react"; // Added Loader2
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { db } from '@/lib/firebase/config'; // Import db
+import { collection, doc, writeBatch, serverTimestamp } from "firebase/firestore"; // Firestore imports
 
 const LOCAL_STORAGE_KEY = 'pendingExamData';
 
@@ -66,7 +69,9 @@ export default function CreateExamPage() {
   const [examDescription, setExamDescription] = useState("");
   const [examBlocks, setExamBlocks] = useState<ExamBlock[]>([]);
   const { toast } = useToast();
+  const { user } = useAuth(); // Get authenticated user
   const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); // Loading state for saving
 
   // Load data from localStorage on initial mount
   useEffect(() => {
@@ -78,7 +83,6 @@ export default function CreateExamPage() {
           if (parsedData.title) setExamTitle(parsedData.title);
           if (parsedData.description) setExamDescription(parsedData.description);
           if (parsedData.blocks && Array.isArray(parsedData.blocks)) {
-            // Ensure all IDs are present, regenerate if necessary (though unlikely needed if saved correctly)
             const validatedBlocks = parsedData.blocks.map((block: ExamBlock) => ({
               ...block,
               id: block.id || generateId('block'),
@@ -92,7 +96,7 @@ export default function CreateExamPage() {
                   })),
                 }),
                 ...(q.type === 'matching' && {
-                  pairs: q.pairs.map((p: any) => ({ // any for potential loaded data
+                  pairs: q.pairs.map((p: any) => ({
                     ...p,
                     id: p.id || generateId('pair'),
                   })),
@@ -103,12 +107,12 @@ export default function CreateExamPage() {
           }
         } catch (error) {
           console.error("Error parsing exam data from localStorage:", error);
-          localStorage.removeItem(LOCAL_STORAGE_KEY); // Clear corrupted data
+          localStorage.removeItem(LOCAL_STORAGE_KEY); 
         }
       }
     }
     setIsInitialLoadComplete(true);
-  }, []); // Runs only on mount
+  }, []); 
 
   // Save data to localStorage whenever it changes, after initial load
   useEffect(() => {
@@ -251,22 +255,91 @@ export default function CreateExamPage() {
     }
   };
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    const examData = {
+    if (!user) {
+      toast({
+        title: "Authentication Error",
+        description: "You must be logged in to save an exam.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (examBlocks.length === 0 || !examTitle.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Exam title and at least one question block are required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    const batch = writeBatch(db);
+
+    const examDocRef = doc(collection(db, "exams"));
+    batch.set(examDocRef, {
       title: examTitle,
       description: examDescription,
-      blocks: examBlocks,
-    };
-    console.log("Exam Data to save:", JSON.stringify(examData, null, 2)); 
-    if (typeof window !== 'undefined') {
+      userId: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    examBlocks.forEach((block, blockIndex) => {
+      const blockDocRef = doc(db, "exams", examDocRef.id, "questionBlocks", block.id);
+      batch.set(blockDocRef, {
+        blockType: block.blockType,
+        blockTitle: block.blockTitle || "",
+        orderIndex: blockIndex,
+      });
+
+      block.questions.forEach((question, questionIndex) => {
+        const questionDocRef = doc(db, "exams", examDocRef.id, "questionBlocks", block.id, "questions", question.id);
+        
+        const questionData: Partial<ExamQuestion> & { orderIndex: number, type: QuestionType } = {
+          questionText: question.questionText,
+          points: question.points,
+          type: question.type, 
+          orderIndex: questionIndex,
+        };
+
+        if (question.type === 'multiple-choice') {
+          questionData.options = question.options.map(opt => ({ ...opt }));
+        } else if (question.type === 'true-false') {
+          questionData.correctAnswer = question.correctAnswer;
+        } else if (question.type === 'matching') {
+          questionData.pairs = question.pairs.map(pair => ({ ...pair }));
+        }
+        
+        batch.set(questionDocRef, questionData);
+      });
+    });
+
+    try {
+      await batch.commit();
+      toast({
+        title: "Exam Saved Successfully",
+        description: `Exam "${examTitle}" has been saved to Firestore. Local draft cleared.`,
+      });
+      if (typeof window !== 'undefined') {
         localStorage.removeItem(LOCAL_STORAGE_KEY);
+      }
+      // Optionally reset form fields here if needed
+      // setExamTitle("");
+      // setExamDescription("");
+      // setExamBlocks([]);
+    } catch (e) {
+      console.error("Error saving exam to Firestore: ", e);
+      toast({
+        title: "Error Saving Exam",
+        description: "There was an issue saving your exam to the database. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
     }
-    toast({ title: "Exam Saved (Simulated)", description: "Exam data logged to console. Local draft cleared."});
-    // Optionally reset form fields here if needed
-    // setExamTitle("");
-    // setExamDescription("");
-    // setExamBlocks([]);
   };
 
 
@@ -289,6 +362,7 @@ export default function CreateExamPage() {
                   value={examTitle}
                   onChange={(e) => setExamTitle(e.target.value)}
                   required
+                  disabled={isSaving}
                 />
               </div>
               <div className="space-y-2">
@@ -299,6 +373,7 @@ export default function CreateExamPage() {
                   className="text-base min-h-[100px]"
                   value={examDescription}
                   onChange={(e) => setExamDescription(e.target.value)}
+                  disabled={isSaving}
                 />
               </div>
             </div>
@@ -322,9 +397,10 @@ export default function CreateExamPage() {
                 onUpdateQuestionInBlock={handleUpdateQuestionInBlock}
                 onRemoveQuestionFromBlock={handleRemoveQuestionFromBlock}
                 onRemoveBlock={handleRemoveExamBlock}
+                disabled={isSaving}
               />
             ))}
-            <Button type="button" variant="outline" onClick={handleAddExamBlock} className="w-full">
+            <Button type="button" variant="outline" onClick={handleAddExamBlock} className="w-full" disabled={isSaving}>
               <PlusCircle className="mr-2 h-5 w-5" />
               Add Question Block
             </Button>
@@ -332,8 +408,9 @@ export default function CreateExamPage() {
         </Card>
         
         <div className="flex justify-end pt-4">
-          <Button type="submit" size="lg" disabled={examBlocks.length === 0 || !examTitle}>
-            Save Exam
+          <Button type="submit" size="lg" disabled={isSaving || examBlocks.length === 0 || !examTitle.trim()}>
+            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isSaving ? 'Saving...' : 'Save Exam'}
           </Button>
         </div>
       </form>
@@ -350,4 +427,3 @@ export default function CreateExamPage() {
     </div>
   );
 }
-

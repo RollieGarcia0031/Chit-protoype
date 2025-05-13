@@ -102,6 +102,16 @@ const toRoman = (num: number): string => {
 
 
 export function ExamPDFDocument({ exam }: { exam: FullExamData }) {
+  if (!exam || !exam.title) { // Basic check for exam existence
+    return (
+      <Document>
+        <Page size="A4" style={styles.page}>
+          <Text style={styles.header}>Error: Exam data is not available or invalid.</Text>
+        </Page>
+      </Document>
+    );
+  }
+
   let questionCounter = 0;
 
   return (
@@ -110,30 +120,33 @@ export function ExamPDFDocument({ exam }: { exam: FullExamData }) {
         <Text style={styles.header}>{exam.title}</Text>
         {exam.description && <Text style={styles.description}>{exam.description}</Text>}
         <Text style={styles.examInfo}>
-          Total Questions: {exam.totalQuestions} | Total Points: {exam.totalPoints} | Status: {exam.status}
+          Total Questions: {exam.totalQuestions || 0} | Total Points: {exam.totalPoints || 0} | Status: {exam.status || 'Draft'}
         </Text>
 
-        {exam.examBlocks.map((block, blockIndex) => (
-          <View key={block.id} style={{ marginBottom: 10 }} wrap={false}>
+        {(exam.examBlocks || []).map((block, blockIndex) => (
+          <View key={block?.id || `block-${blockIndex}`} style={{ marginBottom: 10 }} wrap={false}>
             <Text style={styles.blockTitle}>
-              {toRoman(blockIndex + 1)}{block.blockTitle ? `: ${block.blockTitle}` : ''}
+              {toRoman(blockIndex + 1)}{(block?.blockTitle) ? `: ${block.blockTitle}` : ''}
             </Text>
-            {block.questions.map((question) => {
+            {(block?.questions || []).map((question, questionIndexWithinBlock) => {
               questionCounter++;
+              if (!question || !question.id) { // Skip if question is malformed
+                return <Text key={`q-error-${blockIndex}-${questionIndexWithinBlock}`}>Invalid question data at Block {blockIndex+1}, Question index {questionIndexWithinBlock}</Text>;
+              }
               const questionPrefix = question.type === 'true-false' ? '____ ' : '';
               return (
                 <View key={question.id} style={styles.questionContainer}>
                   <Text style={styles.questionText}>
                     <Text style={styles.trueFalsePrefix}>{questionPrefix}</Text>
-                    {`${questionCounter}. ${question.questionText} `}
-                    <Text style={styles.questionPoints}>{`(${question.points} pts)`}</Text>
+                    {`${questionCounter}. ${question.questionText || ''} `}
+                    <Text style={styles.questionPoints}>{`(${question.points || 0} pts)`}</Text>
                   </Text>
 
                   {question.type === 'multiple-choice' && (
                     <View>
-                      {(question as MultipleChoiceQuestion).options.map((option, optIndex) => (
-                        <Text key={option.id} style={styles.optionText}>
-                          {`${getAlphabetLetter(optIndex)}. ${option.text}`}
+                      {((question as MultipleChoiceQuestion).options || []).map((option, optIndex) => (
+                        <Text key={option?.id || `opt-${blockIndex}-${questionIndexWithinBlock}-${optIndex}`} style={styles.optionText}>
+                          {`${getAlphabetLetter(optIndex)}. ${option?.text || ''}`}
                         </Text>
                       ))}
                     </View>
@@ -141,9 +154,9 @@ export function ExamPDFDocument({ exam }: { exam: FullExamData }) {
 
                   {question.type === 'matching' && (
                     <View>
-                      {(question as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (
-                        <Text key={pair.id} style={styles.matchingPairPremise}>
-                          {`${pairIndex + 1}. ${pair.premise}\t\t____________________`}
+                      {((question as MatchingTypeQuestion).pairs || []).map((pair, pairIndex) => (
+                        <Text key={pair?.id || `pair-${blockIndex}-${questionIndexWithinBlock}-${pairIndex}`} style={styles.matchingPairPremise}>
+                          {`${pairIndex + 1}. ${pair?.premise || ''}\t\t____________________`}
                         </Text>
                       ))}
                     </View>

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { useState, type FormEvent, useEffect, useCallback, useMemo } from "react";
 import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
 import { generateId, debounce } from "@/lib/utils";
@@ -204,17 +205,14 @@ export default function CreateExamPage() {
 
 
   useEffect(() => {
-    if (!editingExamId || !user || !isInitialLoadComplete || !isLoadingExamData ) { // Added !isLoadingExamData back
+    if (!editingExamId || !user || !isInitialLoadComplete || !isLoadingExamData ) { 
       if (editingExamId && !isLoadingExamData && isInitialLoadComplete && examBlocks.length === 0 && examTitle === "") {
           // This case might mean fetch failed or exam was empty, but we should not re-trigger loading unless intended.
-          // Perhaps set a "fetchAttempted" flag to avoid loops if data genuinely is empty.
       }
       return;
     }
     
     const fetchExamForEditing = async () => {
-      // Reset form states before fetching new data only if we are truly about to fetch.
-      // This was part of the original problem causing loops.
       setExamTitle("");
       setExamDescription("");
       setExamBlocks([]);
@@ -304,7 +302,7 @@ export default function CreateExamPage() {
       }
     };
 
-    if (isLoadingExamData) { // Ensure fetch only runs if isLoadingExamData is true
+    if (isLoadingExamData) { 
         fetchExamForEditing();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -429,7 +427,7 @@ export default function CreateExamPage() {
       localStorage.removeItem(LOCAL_STORAGE_KEY);
     }
     setEditingExamId(null); 
-    setIsLoadingExamData(false); // Explicitly set loading to false on reset
+    setIsLoadingExamData(false); 
     if (searchParams.get('examId')) router.push('/create-exam'); 
   };
 
@@ -585,6 +583,14 @@ export default function CreateExamPage() {
           disabled={isAnalyzingWithAI}
         >
           {isAnalyzingWithAI ? <Loader2 className="h-6 w-6 animate-spin" /> : <Sparkles className="h-6 w-6" />}
+          {aiFeedbackList.length > 0 && !isAnalyzingWithAI && (
+            <Badge 
+              variant="destructive" 
+              className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
+            >
+              {aiFeedbackList.length}
+            </Badge>
+          )}
         </Button>
       )}
 
@@ -621,10 +627,26 @@ export default function CreateExamPage() {
               </div>
             )}
             {!isAnalyzingWithAI && !aiError && aiFeedbackList.length > 0 && (
-              <ul className="list-disc pl-5 space-y-2">
+               <ul className="space-y-2">
                 {aiFeedbackList.map((feedback, index) => (
-                  <li key={index} className="text-sm text-foreground">
-                    {feedback.suggestionText}
+                  <li key={index} className="text-sm text-foreground p-3 bg-muted/50 rounded-md shadow-sm">
+                    <p className="font-medium">Suggestion:</p>
+                    <ul className="list-disc pl-5 mt-1 text-muted-foreground">
+                       {feedback.suggestionText.split('\n').map((line, lineIndex) => {
+                          if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+                            return <li key={lineIndex}>{line.trim().substring(2)}</li>;
+                          }
+                          return line.trim() ? <li key={lineIndex}>{line.trim()}</li> : null;
+                       }).filter(Boolean)}
+                    </ul>
+                    {feedback.elementPath && (
+                       <p className="text-xs text-primary/80 mt-1">Related to: <code>{feedback.elementPath}</code></p>
+                    )}
+                    {feedback.severity && (
+                       <Badge variant={feedback.severity === 'error' ? 'destructive' : feedback.severity === 'warning' ? 'secondary' : 'outline'} className="mt-1.5 text-xs">
+                         {feedback.severity.charAt(0).toUpperCase() + feedback.severity.slice(1)}
+                       </Badge>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -735,3 +757,4 @@ export default function CreateExamPage() {
     </div>
   );
 }
+

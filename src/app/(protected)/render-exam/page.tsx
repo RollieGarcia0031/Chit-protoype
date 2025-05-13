@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star, FileType2, ArrowLeft } from "lucide-react";
+import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star, FileType2, ArrowLeft, Info } from "lucide-react"; // Added Info
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from "@/lib/firebase/config";
@@ -34,7 +34,7 @@ import { saveAs } from 'file-saver';
 const DynamicPdfExamViewer = dynamic(() => import('@/components/exam/PdfExamViewer'), {
   ssr: false,
   loading: () => (
-    <div className="flex items-center justify-center h-full w-full">
+    <div className="flex items-center justify-center h-full w-full bg-card">
       <Loader2 className="h-8 w-8 animate-spin text-primary" />
       <p className="ml-2 text-muted-foreground">Loading PDF Previewer...</p>
     </div>
@@ -69,7 +69,7 @@ function PdfPreviewCard({
     onDownloadDocx,
     isDownloadingDocxFile 
 }: { 
-    exam: FullExamData; 
+    exam: FullExamData; // exam prop should not be null here
     onBack: () => void;
     onDownloadDocx: () => Promise<void>;
     isDownloadingDocxFile: boolean;
@@ -97,6 +97,7 @@ function PdfPreviewCard({
         </div>
       </CardHeader>
       <CardContent className="h-[calc(100vh-250px)] min-h-[600px]">
+        {/* DynamicPdfExamViewer handles null exam prop internally if needed, but here exam is guaranteed. */}
         <DynamicPdfExamViewer exam={exam} />
       </CardContent>
     </Card>
@@ -111,8 +112,8 @@ export default function RenderExamPage() {
   const [isLoadingExams, setIsLoadingExams] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  const [isLoadingPreviewData, setIsLoadingPreviewData] = useState<string | null>(null); // For dialog button
-  const [isDownloadingDocxFile, setIsDownloadingDocxFile] = useState(false); // For download button in preview
+  const [isLoadingPreviewData, setIsLoadingPreviewData] = useState<string | null>(null); 
+  const [isDownloadingDocxFile, setIsDownloadingDocxFile] = useState(false); 
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [selectedExamForDialog, setSelectedExamForDialog] = useState<ExamSummaryData | null>(null);
 
@@ -371,7 +372,7 @@ export default function RenderExamPage() {
                         }));
                     });
                 }
-                children.push(new Paragraph({ text: ""}));
+                children.push(new Paragraph({ text: ""})); // Empty paragraph for spacing after question
             });
         });
         

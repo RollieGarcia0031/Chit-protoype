@@ -3,7 +3,7 @@
 
 import type { FullExamData } from '@/types/exam-types';
 import type { MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from '@/types/exam-types';
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 
 // Font registration can be complex; relying on defaults for now.
 // Font.register({ family: 'Roboto', src: '/fonts/Roboto-Regular.ttf' }); 
@@ -47,9 +47,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginLeft: 15, 
   },
+   questionTextContainer: { 
+    flexDirection: 'row',
+    marginBottom: 3,
+  },
   questionText: {
     fontSize: 10,
-    marginBottom: 3,
+    flex: 1,
   },
   questionPoints: {
     fontSize: 8,
@@ -102,51 +106,46 @@ const toRoman = (num: number): string => {
 
 
 export function ExamPDFDocument({ exam }: { exam: FullExamData }) {
-  if (!exam || !exam.title) { // Basic check for exam existence
-    return (
-      <Document>
-        <Page size="A4" style={styles.page}>
-          <Text style={styles.header}>Error: Exam data is not available or invalid.</Text>
-        </Page>
-      </Document>
-    );
-  }
+  // This component assumes `exam` is not null.
+  // Robust checks for `exam` itself should be done by the parent component (PdfExamViewer).
 
   let questionCounter = 0;
 
   return (
-    <Document title={exam.title || "Exam Document"} author="Chit Exam Generator">
+    <Document title={String(exam.title || "Exam Document")} author="Chit Exam Generator">
       <Page size="A4" style={styles.page}>
-        <Text style={styles.header}>{exam.title}</Text>
-        {exam.description && <Text style={styles.description}>{exam.description}</Text>}
+        <Text style={styles.header}>{String(exam.title || 'Untitled Exam')}</Text>
+        {exam.description && <Text style={styles.description}>{String(exam.description)}</Text>}
         <Text style={styles.examInfo}>
-          Total Questions: {exam.totalQuestions || 0} | Total Points: {exam.totalPoints || 0} | Status: {exam.status || 'Draft'}
+          Total Questions: {exam.totalQuestions || 0} | Total Points: {exam.totalPoints || 0} | Status: {String(exam.status || 'Draft')}
         </Text>
 
         {(exam.examBlocks || []).map((block, blockIndex) => (
           <View key={block?.id || `block-${blockIndex}`} style={{ marginBottom: 10 }} wrap={false}>
             <Text style={styles.blockTitle}>
-              {toRoman(blockIndex + 1)}{(block?.blockTitle) ? `: ${block.blockTitle}` : ''}
+              {toRoman(blockIndex + 1)}{(block?.blockTitle) ? `: ${String(block.blockTitle)}` : ''}
             </Text>
             {(block?.questions || []).map((question, questionIndexWithinBlock) => {
               questionCounter++;
-              if (!question || !question.id) { // Skip if question is malformed
+              if (!question || !question.id) { 
                 return <Text key={`q-error-${blockIndex}-${questionIndexWithinBlock}`}>Invalid question data at Block {blockIndex+1}, Question index {questionIndexWithinBlock}</Text>;
               }
               const questionPrefix = question.type === 'true-false' ? '____ ' : '';
               return (
                 <View key={question.id} style={styles.questionContainer}>
-                  <Text style={styles.questionText}>
-                    <Text style={styles.trueFalsePrefix}>{questionPrefix}</Text>
-                    {`${questionCounter}. ${question.questionText || ''} `}
+                  <View style={styles.questionTextContainer}>
+                    <Text style={styles.questionText}>
+                        <Text style={styles.trueFalsePrefix}>{questionPrefix}</Text>
+                        {`${questionCounter}. ${String(question.questionText || '')} `}
+                    </Text>
                     <Text style={styles.questionPoints}>{`(${question.points || 0} pts)`}</Text>
-                  </Text>
+                  </View>
 
                   {question.type === 'multiple-choice' && (
                     <View>
                       {((question as MultipleChoiceQuestion).options || []).map((option, optIndex) => (
                         <Text key={option?.id || `opt-${blockIndex}-${questionIndexWithinBlock}-${optIndex}`} style={styles.optionText}>
-                          {`${getAlphabetLetter(optIndex)}. ${option?.text || ''}`}
+                          {`${getAlphabetLetter(optIndex)}. ${String(option?.text || '')}`}
                         </Text>
                       ))}
                     </View>
@@ -156,7 +155,7 @@ export function ExamPDFDocument({ exam }: { exam: FullExamData }) {
                     <View>
                       {((question as MatchingTypeQuestion).pairs || []).map((pair, pairIndex) => (
                         <Text key={pair?.id || `pair-${blockIndex}-${questionIndexWithinBlock}-${pairIndex}`} style={styles.matchingPairPremise}>
-                          {`${pairIndex + 1}. ${pair?.premise || ''}\t\t____________________`}
+                          {`${pairIndex + 1}. ${String(pair?.premise || '')}\t\t____________________`}
                         </Text>
                       ))}
                     </View>

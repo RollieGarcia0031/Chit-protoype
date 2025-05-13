@@ -1,13 +1,12 @@
 'use client';
-
-import { useState, useEffect } from 'react';
 import { PDFViewer } from '@react-pdf/renderer';
+import { useState, useEffect } from 'react';
 import { ExamPDFDocument } from '@/components/exam/ExamPDFDocument';
 import type { FullExamData } from '@/types/exam-types';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Info } from 'lucide-react'; // Added Info icon
 
 interface PdfExamViewerProps {
-  exam: FullExamData;
+  exam: FullExamData | null; // Prop can be null
 }
 
 export default function PdfExamViewer({ exam }: PdfExamViewerProps) {
@@ -19,24 +18,25 @@ export default function PdfExamViewer({ exam }: PdfExamViewerProps) {
 
   if (!isClient) {
     return (
-      <div className="flex items-center justify-center h-full w-full">
+      <div className="flex items-center justify-center h-full w-full bg-card">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="ml-2 text-muted-foreground">Loading PDF Document...</p>
+        <p className="ml-2 text-muted-foreground">Loading PDF Previewer...</p>
       </div>
     );
   }
 
-  if (!exam) {
+  if (!exam) { // Check if exam data is actually available
     return (
-         <div className="flex items-center justify-center h-full w-full">
-            <Loader2 className="h-8 w-8 animate-spin text-destructive" />
-            <p className="ml-2 text-destructive-foreground">Error: Exam data is not available.</p>
+         <div className="flex items-center justify-center h-full w-full bg-card">
+            <Info className="h-8 w-8 text-muted-foreground" /> {/* Using Info icon for missing data */}
+            <p className="ml-2 text-muted-foreground">Exam data not available for preview.</p>
         </div>
     );
   }
 
+  // PDFViewer is only rendered if isClient is true AND exam data is present
   return (
-    <PDFViewer width="100%" height="100%" showToolbar={false}>
+    <PDFViewer width="100%" height="100%" showToolbar={false} style={{ border: 'none' }}>
       <ExamPDFDocument exam={exam} />
     </PDFViewer>
   );

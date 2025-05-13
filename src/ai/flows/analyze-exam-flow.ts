@@ -132,16 +132,12 @@ Block (ID: {{this.id}}, Type: {{this.blockType}}):
       * "{{this.text}}" (Is Marked Correct: {{this.isCorrect}}) (Option ID: {{this.id}})
       {{/each}}
     {{/if}}
-    {{#if (isTruthy this.correctAnswer)}}
+    {{#if (eq (typeOf this.correctAnswer) "boolean")}}
     Correct Answer (True/False): {{this.correctAnswer}}
     {{else}}
-      {{#if (eq (typeOf this.correctAnswer) "boolean")}}
-    Correct Answer (True/False): {{this.correctAnswer}} 
-      {{else}}
-        {{#if (is_null this.correctAnswer)}}
+        {{#if (eq this.correctAnswer null)}}
     Correct Answer (True/False): Not set by user
         {{/if}}
-      {{/if}}
     {{/if}}
     {{#if this.pairs}}
     Pairs (Matching):
@@ -159,7 +155,6 @@ If there are no questions in any block, return an empty \`suggestions\` array.
 `,
   // Register necessary Handlebars helpers
   handlebarsHelpers: {
-    is_null: (value: any) => value === null,
     eq: (a: any, b: any) => a === b,
     isTruthy: (value: any) => !!value, // Checks for truthiness, careful with `false`
     typeOf: (value: any) => typeof value,

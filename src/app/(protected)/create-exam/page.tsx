@@ -22,12 +22,11 @@ import { collection, doc, writeBatch, serverTimestamp, getDoc, getDocs, query, o
 import { useSearchParams, useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EXAMS_COLLECTION_NAME } from "@/config/firebase-constants";
-import { analyzeExamFlow, type AnalyzeExamInput, type AnalyzeExamOutput, type AnalyzeExamInputSchema } from "@/ai/flows/analyze-exam-flow";
-import type { z } from 'zod';
+import { analyzeExamFlow, type AnalyzeExamInput, type AnalyzeExamOutput } from "@/ai/flows/analyze-exam-flow";
 
 const LOCAL_STORAGE_KEY = 'pendingExamData';
 
-type AISuggestion = z.infer<AnalyzeExamOutputSchema>['suggestions'][0];
+type AISuggestion = AnalyzeExamOutput['suggestions'][0];
 
 const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'): ExamQuestion => {
   const baseQuestionProps = {

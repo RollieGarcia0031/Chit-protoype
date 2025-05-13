@@ -41,7 +41,7 @@ const ExamBlockSchema = z.object({
   questions: z.array(ExamQuestionSchema).describe("List of questions within this block."),
 });
 
-export const AnalyzeExamInputSchema = z.object({
+const AnalyzeExamInputSchema = z.object({
   examTitle: z.string().describe("The overall title of the exam."),
   examDescription: z.string().optional().describe("The overall description or instructions for the exam."),
   examBlocks: z.array(ExamBlockSchema).describe("An array of question blocks that make up the exam."),
@@ -56,7 +56,7 @@ const SuggestionSchema = z.object({
   elementPath: z.string().optional().describe("A dot-notation path to the specific element the suggestion refers to (e.g., 'examTitle', 'examBlocks[0].blockTitle', 'examBlocks[0].questions[1].questionText', 'examBlocks[0].questions[1].options[0].text')."),
 });
 
-export const AnalyzeExamOutputSchema = z.object({
+const AnalyzeExamOutputSchema = z.object({
   suggestions: z.array(SuggestionSchema).describe("A list of suggestions for improving the exam content and structure."),
 });
 export type AnalyzeExamOutput = z.infer<typeof AnalyzeExamOutputSchema>;

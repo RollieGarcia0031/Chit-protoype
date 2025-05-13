@@ -6,6 +6,7 @@
  * - analyzeExam - A function that processes an exam draft and returns AI suggestions.
  * - AnalyzeExamInput - The input type for the analyzeExam function.
  * - AnalyzeExamOutput - The return type for the analyzeExam function.
+ * - QuestionSuggestion - The type for individual question feedback.
  */
 
 import {ai} from '@/ai/genkit';
@@ -60,14 +61,14 @@ const GenkitExamBlockSchema = z.object({
   questions: z.array(GenkitExamQuestionSchema).describe("An array of questions contained within this block."),
 });
 
-export const AnalyzeExamInputSchema = z.object({
+const AnalyzeExamInputSchema = z.object({
   examTitle: z.string().describe("The overall title of the exam being analyzed."),
   examDescription: z.string().optional().describe("An optional description for the exam."),
   examBlocks: z.array(GenkitExamBlockSchema).describe("An array of question blocks that constitute the exam content."),
 });
 export type AnalyzeExamInput = z.infer<typeof AnalyzeExamInputSchema>;
 
-export const QuestionSuggestionSchema = z.object({
+const QuestionSuggestionSchema = z.object({
   questionId: z.string().describe("The ID of the question this feedback pertains to. This MUST match one of the input question IDs."),
   feedback: z.string().describe("Specific, constructive feedback regarding the question's clarity, correctness of the answer, potential ambiguities, grammar, spelling, and overall quality. If the question is well-formed and the answer correct, state this. If issues are found, explain them and suggest improvements."),
   hasIssue: z.boolean().describe("Set to true if a significant potential issue (e.g., factually incorrect answer, critical ambiguity, major grammatical error affecting meaning) was identified. Set to false if the question and answer seem generally correct and clear, even if minor stylistic suggestions are made."),
@@ -75,7 +76,7 @@ export const QuestionSuggestionSchema = z.object({
 export type QuestionSuggestion = z.infer<typeof QuestionSuggestionSchema>;
 
 
-export const AnalyzeExamOutputSchema = z.object({
+const AnalyzeExamOutputSchema = z.object({
   suggestions: z.array(QuestionSuggestionSchema).describe("An array of feedback entries, one for each question analyzed from the input."),
 });
 export type AnalyzeExamOutput = z.infer<typeof AnalyzeExamOutputSchema>;
@@ -184,3 +185,4 @@ const analyzeExamFlow = ai.defineFlow(
     return { suggestions: output.suggestions || [] };
   }
 );
+

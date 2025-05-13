@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { ChitLogo } from '@/components/icons/logo';
 import { Button } from '@/components/ui/button';
-import { Home, LogIn, UserPlus, LogOut } from 'lucide-react';
+import { Home, LogIn, UserPlus, LogOut, FilePlus2, ListChecks } from 'lucide-react'; // Added FilePlus2, ListChecks
 import { useAuth } from '@/contexts/auth-context';
 import {
   DropdownMenu,
@@ -32,7 +32,7 @@ export function AppSidebar() {
   const { user, logOut, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const { state: sidebarState } = useSidebar(); // Get sidebar state for conditional rendering
+  const { state: sidebarState } = useSidebar();
 
   const handleLogout = async () => {
     await logOut();
@@ -50,9 +50,9 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" variant="sidebar" side="left">
       <SidebarHeader className="p-4 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2" aria-label="Chit Home">
-          <ChitLogo className="h-8 w-auto text-primary" />
+          {/* Pass showText prop to control logo's text visibility */}
+          <ChitLogo className="h-8 w-auto text-primary" showText={isExpanded} />
         </Link>
-        {/* Optional: Add a trigger here if needed, or rely on AppTopBar's trigger */}
       </SidebarHeader>
       <SidebarContent className="flex-grow">
         <SidebarMenu>
@@ -68,7 +68,36 @@ export function AppSidebar() {
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
-          {/* Add other navigation items here */}
+
+          {/* Authenticated navigation items */}
+          {user && (
+            <>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === '/create-exam'}
+                  tooltip={isExpanded ? undefined : "Create Exam"}
+                >
+                  <Link href="/create-exam" className="flex items-center">
+                    <FilePlus2 />
+                    {isExpanded && <span>Create Exam</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === '/exams'}
+                  tooltip={isExpanded ? undefined : "View Exams"}
+                >
+                  <Link href="/exams" className="flex items-center">
+                    <ListChecks />
+                    {isExpanded && <span>View Exams</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </>
+          )}
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter className="p-2 border-t border-sidebar-border">

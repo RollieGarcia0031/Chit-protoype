@@ -10,6 +10,8 @@ import type { ExamBlock, ExamQuestion, QuestionType } from "@/types/exam-types";
 import { QUESTION_TYPES } from "@/types/exam-types";
 import { ExamItemBlock } from "./ExamItemBlock";
 import { Textarea } from "../ui/textarea";
+import type { QuestionSuggestion } from "@/ai/flows/analyze-exam-flow";
+
 
 interface ExamQuestionGroupBlockProps {
   block: ExamBlock;
@@ -20,7 +22,8 @@ interface ExamQuestionGroupBlockProps {
   onUpdateQuestionInBlock: (blockIndex: number, questionIndex: number, updatedQuestion: ExamQuestion) => void;
   onRemoveQuestionFromBlock: (blockIndex: number, questionIndex: number) => void;
   onRemoveBlock: (blockIndex: number) => void;
-  disabled?: boolean; // Added disabled prop
+  disabled?: boolean;
+  aiFeedbacks?: (QuestionSuggestion | undefined)[]; // Array of feedback, one per question in this block
 }
 
 export function ExamQuestionGroupBlock({
@@ -32,7 +35,8 @@ export function ExamQuestionGroupBlock({
   onUpdateQuestionInBlock,
   onRemoveQuestionFromBlock,
   onRemoveBlock,
-  disabled = false, // Default to false
+  disabled = false,
+  aiFeedbacks = [],
 }: ExamQuestionGroupBlockProps) {
   return (
     <Card className="shadow-md border-border">
@@ -84,11 +88,12 @@ export function ExamQuestionGroupBlock({
             <ExamItemBlock
               key={question.id}
               item={question}
-              questionType={block.blockType} // Pass the block's type to the question item
+              questionType={block.blockType}
               onItemChange={(updatedItem) => onUpdateQuestionInBlock(blockIndex, questionIndex, updatedItem)}
               onItemRemove={() => onRemoveQuestionFromBlock(blockIndex, questionIndex)}
               itemIndex={questionIndex}
               disabled={disabled}
+              aiFeedback={aiFeedbacks[questionIndex]} // Pass the specific feedback for this question
             />
           ))}
         </div>

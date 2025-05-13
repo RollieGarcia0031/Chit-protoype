@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Trash2, PlusCircle } from "lucide-react";
+import { Trash2, PlusCircle, Sparkles, AlertCircle } from "lucide-react";
 import type { ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
 import { generateId } from "@/lib/utils";
+import type { QuestionSuggestion } from "@/ai/flows/analyze-exam-flow";
 
 interface ExamItemBlockProps {
   item: ExamQuestion;
@@ -19,7 +20,8 @@ interface ExamItemBlockProps {
   onItemChange: (item: ExamQuestion) => void;
   onItemRemove: () => void;
   itemIndex: number; 
-  disabled?: boolean; // Added disabled prop
+  disabled?: boolean;
+  aiFeedback?: QuestionSuggestion; // Added AI feedback prop
 }
 
 // Helper function to get alphabet letter for options
@@ -27,7 +29,7 @@ const getAlphabetLetter = (index: number): string => {
   return String.fromCharCode(65 + index); // 65 is ASCII for 'A'
 };
 
-export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, itemIndex, disabled = false }: ExamItemBlockProps) {
+export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, itemIndex, disabled = false, aiFeedback }: ExamItemBlockProps) {
   const handleQuestionTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     onItemChange({ ...item, questionText: e.target.value });
   };
@@ -44,79 +46,87 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
   // --- Multiple Choice Specific Handlers ---
   const handleOptionTextChange = (optionIndex: number, text: string) => {
     if (item.type === 'multiple-choice') {
-      const newOptions = [...item.options];
+      const newOptions = [...(item as MultipleChoiceQuestion).options];
       newOptions[optionIndex].text = text;
-      onItemChange({ ...item, options: newOptions });
+      onItemChange({ ...item, options: newOptions } as MultipleChoiceQuestion);
     }
   };
 
   const handleCorrectOptionChange = (optionId: string) => {
     if (item.type === 'multiple-choice') {
-      const newOptions = item.options.map(opt => ({
+      const newOptions = (item as MultipleChoiceQuestion).options.map(opt => ({
         ...opt,
         isCorrect: opt.id === optionId,
       }));
-      onItemChange({ ...item, options: newOptions });
+      onItemChange({ ...item, options: newOptions } as MultipleChoiceQuestion);
     }
   };
   
   const handleAddOption = () => {
     if (item.type === 'multiple-choice') {
-      const newOptions = [...item.options, { id: generateId('option'), text: "", isCorrect: false }];
-      if (newOptions.length === 1) {
+      const currentOptions = (item as MultipleChoiceQuestion).options;
+      const newOptions = [...currentOptions, { id: generateId('option'), text: "", isCorrect: false }];
+      if (newOptions.length === 1) { // If this is the first option being added
         newOptions[0].isCorrect = true;
+      } else if (currentOptions.length > 0 && !currentOptions.some(opt => opt.isCorrect) && newOptions.length > 0) {
+        // If no option was correct before and we add more, make the first one correct by default
+        // This logic might need refinement based on desired UX for adding options when none are correct
+        if (newOptions.length > 0) newOptions[0].isCorrect = true;
       }
-      onItemChange({ ...item, options: newOptions });
+      onItemChange({ ...item, options: newOptions } as MultipleChoiceQuestion);
     }
   };
 
   const handleRemoveOption = (optionIndex: number) => {
     if (item.type === 'multiple-choice') {
-      if (item.options.length <= 1) return; 
-      const newOptions = item.options.filter((_, i) => i !== optionIndex);
+      const currentOptions = (item as MultipleChoiceQuestion).options;
+      if (currentOptions.length <= 1) return; 
+      const newOptions = currentOptions.filter((_, i) => i !== optionIndex);
+      // If the removed option was the only correct one, make the new first option correct
       if (!newOptions.some(opt => opt.isCorrect) && newOptions.length > 0) {
         newOptions[0].isCorrect = true;
       }
-      onItemChange({ ...item, options: newOptions });
+      onItemChange({ ...item, options: newOptions } as MultipleChoiceQuestion);
     }
   };
 
   // --- True/False Specific Handlers ---
   const handleTrueFalseChange = (value: string) => {
     if (item.type === 'true-false') {
-      onItemChange({ ...item, correctAnswer: value === 'true' });
+      onItemChange({ ...item, correctAnswer: value === 'true' } as TrueFalseQuestion);
     }
   };
 
   // --- Matching Type Specific Handlers ---
   const handlePairPremiseChange = (pairIndex: number, premise: string) => {
     if (item.type === 'matching') {
-      const newPairs = [...item.pairs];
+      const newPairs = [...(item as MatchingTypeQuestion).pairs];
       newPairs[pairIndex].premise = premise;
-      onItemChange({ ...item, pairs: newPairs });
+      onItemChange({ ...item, pairs: newPairs } as MatchingTypeQuestion);
     }
   };
 
   const handlePairResponseChange = (pairIndex: number, response: string) => {
     if (item.type === 'matching') {
-      const newPairs = [...item.pairs];
+      const newPairs = [...(item as MatchingTypeQuestion).pairs];
       newPairs[pairIndex].response = response;
-      onItemChange({ ...item, pairs: newPairs });
+      onItemChange({ ...item, pairs: newPairs } as MatchingTypeQuestion);
     }
   };
 
   const handleAddPair = () => {
     if (item.type === 'matching') {
-      const newPairs = [...item.pairs, { id: generateId('pair'), premise: "", response: "" }];
-      onItemChange({ ...item, pairs: newPairs });
+      const newPairs = [...(item as MatchingTypeQuestion).pairs, { id: generateId('pair'), premise: "", response: "" }];
+      onItemChange({ ...item, pairs: newPairs } as MatchingTypeQuestion);
     }
   };
 
   const handleRemovePair = (pairIndex: number) => {
     if (item.type === 'matching') {
-      if (item.pairs.length <= 1) return; 
-      const newPairs = item.pairs.filter((_, i) => i !== pairIndex);
-      onItemChange({ ...item, pairs: newPairs });
+      const currentPairs = (item as MatchingTypeQuestion).pairs;
+      if (currentPairs.length <= 1) return; 
+      const newPairs = currentPairs.filter((_, i) => i !== pairIndex);
+      onItemChange({ ...item, pairs: newPairs } as MatchingTypeQuestion);
     }
   };
 
@@ -249,6 +259,25 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
             <Button type="button" variant="outline" onClick={handleAddPair} size="sm" className="text-xs" disabled={disabled}>
               <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Add Pair
             </Button>
+          </div>
+        )}
+
+        {/* AI Feedback Display */}
+        {aiFeedback && aiFeedback.feedback && (
+          <div className={`mt-3 p-3 rounded-md text-sm border ${
+            aiFeedback.hasIssue 
+              ? 'bg-destructive/10 border-destructive/40 text-destructive-foreground' 
+              : 'bg-blue-500/10 border-blue-500/40 text-blue-700 dark:text-blue-300'
+          }`}>
+            <div className="flex items-center font-medium">
+              {aiFeedback.hasIssue ? (
+                <AlertCircle className={`mr-2 h-4.5 w-4.5 ${aiFeedback.hasIssue ? 'text-destructive' : 'text-blue-600'}`} />
+              ) : (
+                <Sparkles className={`mr-2 h-4.5 w-4.5 ${aiFeedback.hasIssue ? 'text-destructive' : 'text-blue-600'}`} />
+              )}
+              AI Suggestion
+            </div>
+            <p className="mt-1 ml-[26px] text-xs whitespace-pre-wrap">{aiFeedback.feedback}</p>
           </div>
         )}
       </CardContent>

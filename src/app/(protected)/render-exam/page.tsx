@@ -5,21 +5,33 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, Loader2, AlertTriangle, DownloadCloud } from "lucide-react";
+import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, getDocs, Timestamp, orderBy, doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { EXAMS_COLLECTION_NAME } from "@/config/firebase-constants";
-import type { ExamBlock, ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, Option } from "@/types/exam-types";
+import type { ExamBlock, ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
 import Link from "next/link";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { format } from 'date-fns';
 
 interface ExamSummaryData {
   id: string;
   title: string;
   description?: string;
   createdAt: Timestamp;
+  updatedAt: Timestamp;
   totalQuestions: number;
   totalPoints: number;
   status: "Draft" | "Published" | "Archived";
@@ -36,7 +48,9 @@ export default function RenderExamPage() {
   const [exams, setExams] = useState<ExamSummaryData[]>([]);
   const [isLoadingExams, setIsLoadingExams] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isGeneratingDocx, setIsGeneratingDocx] = useState<string | null>(null); // Stores ID of exam being processed
+  const [isGeneratingDocx, setIsGeneratingDocx] = useState<string | null>(null);
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
+  const [selectedExamForDialog, setSelectedExamForDialog] = useState<ExamSummaryData | null>(null);
 
   const fetchExams = async () => {
     if (!user) {
@@ -77,34 +91,40 @@ export default function RenderExamPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
-  const handleGenerateDocx = async (examId: string, examTitle: string) => {
-    if (!user) {
-        toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
+  const handleOpenConfirmDialog = (exam: ExamSummaryData) => {
+    setSelectedExamForDialog(exam);
+    setIsConfirmDialogOpen(true);
+  };
+
+  const handleGenerateDocx = async () => {
+    if (!user || !selectedExamForDialog) {
+        toast({ title: "Error", description: "No exam selected or user not authenticated.", variant: "destructive" });
         return;
     }
-    setIsGeneratingDocx(examId);
+    setIsGeneratingDocx(selectedExamForDialog.id);
     
     try {
         // Fetch full exam data
-        const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examId);
+        const examDocRef = doc(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id);
         const examSnap = await getDoc(examDocRef);
 
         if (!examSnap.exists() || examSnap.data().userId !== user.uid) {
           toast({ title: "Error", description: "Exam not found or permission denied.", variant: "destructive" });
           setIsGeneratingDocx(null);
+          setIsConfirmDialogOpen(false);
           return;
         }
 
         const examData = examSnap.data() as Omit<FullExamData, 'id' | 'examBlocks'>;
         const loadedBlocks: ExamBlock[] = [];
-        const blocksCollectionRef = collection(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks");
+        const blocksCollectionRef = collection(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id, "questionBlocks");
         const blocksQuery = query(blocksCollectionRef, orderBy("orderIndex"));
         const blocksSnapshot = await getDocs(blocksQuery);
 
         for (const blockDoc of blocksSnapshot.docs) {
           const blockData = blockDoc.data();
           const loadedQuestions: ExamQuestion[] = [];
-          const questionsCollectionRef = collection(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks", blockDoc.id, "questions");
+          const questionsCollectionRef = collection(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id, "questionBlocks", blockDoc.id, "questions");
           const questionsQuery = query(questionsCollectionRef, orderBy("orderIndex"));
           const questionsSnapshot = await getDocs(questionsQuery);
 
@@ -139,7 +159,7 @@ export default function RenderExamPage() {
                   pairs: (qData.pairs || []).map((p: any) => ({ ...p})),
                 } as MatchingTypeQuestion;
                 break;
-              default: // Fallback, should not happen with valid data
+              default: 
                 question = { id: questionDocSnap.id, questionText: "Unknown question type", points: 0, type: 'multiple-choice', options: []};
             }
             loadedQuestions.push(question);
@@ -154,14 +174,21 @@ export default function RenderExamPage() {
         
         const fullExamData: FullExamData = {
             ...examData,
-            id: examId,
+            id: selectedExamForDialog.id,
+            title: selectedExamForDialog.title, // Ensure title from summary is used
+            description: selectedExamForDialog.description,
+            createdAt: selectedExamForDialog.createdAt,
+            updatedAt: selectedExamForDialog.updatedAt,
+            totalQuestions: selectedExamForDialog.totalQuestions,
+            totalPoints: selectedExamForDialog.totalPoints,
+            status: selectedExamForDialog.status,
             examBlocks: loadedBlocks,
         };
 
         console.log("Full Exam Data for DOCX generation:", fullExamData);
         toast({
             title: "DOCX Generation (Placeholder)",
-            description: `DOCX generation for "${examTitle}" is not yet implemented. Full exam data has been logged to the console.`,
+            description: `DOCX generation for "${selectedExamForDialog.title}" is not yet implemented. Full exam data has been logged to the console.`,
             duration: 5000,
         });
 
@@ -170,6 +197,8 @@ export default function RenderExamPage() {
         toast({ title: "Error", description: "Could not fetch full exam data for DOCX generation.", variant: "destructive"});
     } finally {
         setIsGeneratingDocx(null);
+        setIsConfirmDialogOpen(false);
+        setSelectedExamForDialog(null);
     }
   };
 
@@ -255,13 +284,13 @@ export default function RenderExamPage() {
                 {exams.map((exam) => (
                   <TableRow key={exam.id}>
                     <TableCell className="font-medium">{exam.title}</TableCell>
-                    <TableCell>{exam.createdAt.toDate().toLocaleDateString()}</TableCell>
+                    <TableCell>{format(exam.createdAt.toDate(), "PPP")}</TableCell>
                     <TableCell className="text-center">{exam.totalQuestions}</TableCell>
                     <TableCell className="text-right">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleGenerateDocx(exam.id, exam.title)}
+                        onClick={() => handleOpenConfirmDialog(exam)}
                         disabled={isGeneratingDocx === exam.id}
                       >
                         {isGeneratingDocx === exam.id ? (
@@ -295,6 +324,66 @@ export default function RenderExamPage() {
             </CardFooter>
         )}
       </Card>
+
+      {selectedExamForDialog && (
+        <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Confirm DOCX Generation</AlertDialogTitle>
+                    <AlertDialogDescription>
+                    Please review the exam details before generating the DOCX file.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="space-y-3 py-2 text-sm">
+                    <div className="flex items-center">
+                        <FileText className="h-5 w-5 mr-2 text-primary" />
+                        <strong>Title:</strong> <span className="ml-1">{selectedExamForDialog.title}</span>
+                    </div>
+                    {selectedExamForDialog.description && (
+                        <div className="flex items-start">
+                           <HelpCircle className="h-5 w-5 mr-2 text-muted-foreground flex-shrink-0 mt-0.5" />
+                           <div>
+                             <strong>Description:</strong>
+                             <p className="ml-1 text-muted-foreground text-xs">{selectedExamForDialog.description}</p>
+                           </div>
+                        </div>
+                    )}
+                    <div className="flex items-center">
+                        <CalendarDays className="h-5 w-5 mr-2 text-muted-foreground" />
+                        <strong>Created:</strong> <span className="ml-1">{format(selectedExamForDialog.createdAt.toDate(), "PPP p")}</span>
+                    </div>
+                     <div className="flex items-center">
+                        <CalendarDays className="h-5 w-5 mr-2 text-muted-foreground" />
+                        <strong>Last Updated:</strong> <span className="ml-1">{format(selectedExamForDialog.updatedAt.toDate(), "PPP p")}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4">
+                        <div className="flex items-center">
+                            <HelpCircle className="h-5 w-5 mr-2 text-muted-foreground" />
+                            <strong>Questions:</strong> <span className="ml-1">{selectedExamForDialog.totalQuestions}</span>
+                        </div>
+                        <div className="flex items-center">
+                            <Star className="h-5 w-5 mr-2 text-muted-foreground" />
+                            <strong>Total Points:</strong> <span className="ml-1">{selectedExamForDialog.totalPoints}</span>
+                        </div>
+                    </div>
+                     <div className="flex items-center">
+                        <HelpCircle className="h-5 w-5 mr-2 text-muted-foreground" />
+                        <strong>Status:</strong> <span className="ml-1">{selectedExamForDialog.status}</span>
+                    </div>
+                </div>
+                <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isGeneratingDocx === selectedExamForDialog.id} onClick={() => setSelectedExamForDialog(null)}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction 
+                        onClick={handleGenerateDocx}
+                        disabled={isGeneratingDocx === selectedExamForDialog.id}
+                    >
+                        {isGeneratingDocx === selectedExamForDialog.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Confirm & Generate
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }

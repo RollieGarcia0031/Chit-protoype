@@ -1,16 +1,17 @@
 
 import type { Metadata } from 'next';
 import { GeistSans } from 'geist/font/sans';
-// import { GeistMono } from 'geist/font/mono';
 import './globals.css';
-import { AppHeader } from '@/components/layout/header';
 import { AppFooter } from '@/components/layout/footer';
+import { AppSidebar } from '@/components/layout/app-sidebar';
+import { AppTopBar } from '@/components/layout/app-top-bar';
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/contexts/auth-context';
+import { SidebarProvider } from '@/components/ui/sidebar';
 
 export const metadata: Metadata = {
-  title: 'ViteStart App',
-  description: 'A Next.js template by Firebase Studio',
+  title: 'Chit',
+  description: 'Connect and share with Chit.',
 };
 
 export default function RootLayout({
@@ -20,13 +21,21 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${GeistSans.variable}`}>
-      <body className="flex min-h-screen flex-col antialiased">
+      <body className="antialiased">
         <AuthProvider>
-          <AppHeader />
-          <main className="flex-grow container mx-auto px-4 py-8 sm:px-6 lg:px-8">
-            {children}
-          </main>
-          <AppFooter />
+          <SidebarProvider defaultOpen={true}> {/* Desktop sidebar initially open */}
+            <AppSidebar />
+            {/* This div is the main content area to the right of the sidebar */}
+            <div className="flex flex-col flex-1 min-h-screen md:ml-[var(--sidebar-width)] data-[sidebar-collapsed=true]:md:ml-[var(--sidebar-width-icon)] group-[.is-mobile]/sidebar-provider:ml-0 transition-[margin-left] duration-300 ease-in-out">
+              <AppTopBar />
+              <main className="flex-grow">
+                <div className="container mx-auto px-4 py-8 sm:px-6 lg:px-8">
+                  {children}
+                </div>
+              </main>
+              <AppFooter />
+            </div>
+          </SidebarProvider>
           <Toaster />
         </AuthProvider>
       </body>

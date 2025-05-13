@@ -1,14 +1,15 @@
+
 import type { SVGProps } from 'react';
 
-export function ViteStartLogo(props: SVGProps<SVGSVGElement>) {
+export function ChitLogo(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
-      width="150"
+      width="100" // Adjusted width for a shorter name
       height="30"
-      viewBox="0 0 150 30"
+      viewBox="0 0 100 30"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      aria-label="ViteStart Logo"
+      aria-label="Chit Logo"
       {...props}
     >
       <text
@@ -19,7 +20,7 @@ export function ViteStartLogo(props: SVGProps<SVGSVGElement>) {
         fontWeight="bold"
         fill="currentColor"
       >
-        ViteStart
+        Chit
       </text>
     </svg>
   );

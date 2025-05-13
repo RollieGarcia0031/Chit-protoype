@@ -18,7 +18,7 @@ export default {
   	extend: {
       fontFamily: {
         sans: ["var(--font-geist-sans)"],
-        mono: ["var(--font-geist-mono)"],
+        // mono: ["var(--font-geist-mono)"], // Removed as GeistMono is not used
       },
   		colors: {
   			background: 'hsl(var(--background))',

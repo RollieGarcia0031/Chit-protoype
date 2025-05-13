@@ -50,7 +50,7 @@ const toRoman = (num: number): string => {
   return result;
 };
 
-// Placeholder for the new preview component/area
+// Placeholder for the exam preview area
 function ExamPreviewPlaceholder({ 
     exam, 
     onBack,
@@ -67,7 +67,7 @@ function ExamPreviewPlaceholder({
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle className="text-xl font-semibold">Exam Preview: {exam.title}</CardTitle>
-          <CardDescription>Preview functionality will be updated. Click download for the DOCX file.</CardDescription>
+          <CardDescription>This area shows a simplified preview. The full exam can be downloaded as a DOCX file.</CardDescription>
         </div>
         <div className="flex gap-2">
             <Button variant="outline" onClick={onBack}>
@@ -84,13 +84,59 @@ function ExamPreviewPlaceholder({
             </Button>
         </div>
       </CardHeader>
-      <CardContent className="h-[calc(100vh-250px)] min-h-[600px] flex items-center justify-center bg-muted/50">
-        <div className="text-center">
-          <Info className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <p className="text-lg text-muted-foreground">Exam preview area.</p>
-          <p className="text-sm text-muted-foreground">The content for "{exam.title}" will be displayed here using a new library soon.</p>
+      <CardContent className="h-[calc(100vh-300px)] min-h-[500px] p-6 border rounded-md bg-muted/30 overflow-auto">
+        <div className="prose prose-sm max-w-none">
+            <h1 className="text-center text-2xl font-bold mb-2">{exam.title}</h1>
+            {exam.description && <p className="text-center text-muted-foreground italic mb-4">{exam.description}</p>}
+            <div className="flex justify-between text-xs text-muted-foreground mb-6">
+                <span>Total Questions: {exam.totalQuestions}</span>
+                <span>Total Points: {exam.totalPoints}</span>
+                <span>Status: {exam.status}</span>
+            </div>
+
+            <hr className="my-4"/>
+
+            {exam.examBlocks.map((block, blockIndex) => (
+                <div key={block.id} className="mb-6">
+                    <h2 className="text-lg font-semibold mb-2">
+                        {toRoman(blockIndex + 1)}{block.blockTitle ? `: ${block.blockTitle}` : ''}
+                    </h2>
+                    {block.questions.map((question, qIndex) => {
+                        const globalQuestionNumber = exam.examBlocks.slice(0, blockIndex).reduce((acc, b) => acc + b.questions.length, 0) + qIndex + 1;
+                        return (
+                            <div key={question.id} className="mb-3 pl-4">
+                                <p className="font-medium">
+                                    {question.type === 'true-false' ? '____ ' : ''}
+                                    {globalQuestionNumber}. {question.questionText} 
+                                    <span className="text-xs text-muted-foreground ml-1">({question.points} pts)</span>
+                                </p>
+                                {question.type === 'multiple-choice' && (
+                                    <ul className="list-none pl-6 mt-1 space-y-0.5">
+                                        {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
+                                            <li key={opt.id}>{getAlphabetLetter(optIndex)}. {opt.text}</li>
+                                        ))}
+                                    </ul>
+                                )}
+                                {question.type === 'matching' && (
+                                    <div className="pl-6 mt-1 space-y-1">
+                                        {(question as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (
+                                            <p key={pair.id} className="text-sm">
+                                                {pairIndex + 1}. {pair.premise} <span className="inline-block w-24 border-b border-foreground/50 ml-2"></span>
+                                            </p>
+                                        ))}
+                                         <p className="text-xs text-muted-foreground mt-1"> (Responses for matching would be listed separately in a real exam paper) </p>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            ))}
         </div>
       </CardContent>
+       <CardFooter>
+        <p className="text-xs text-muted-foreground">This is a simplified preview. For full formatting, please download the DOCX file.</p>
+      </CardFooter>
     </Card>
   );
 }
@@ -109,7 +155,7 @@ export default function RenderExamPage() {
   const [selectedExamForDialog, setSelectedExamForDialog] = useState<ExamSummaryData | null>(null);
 
   const [examForPreview, setExamForPreview] = useState<FullExamData | null>(null);
-  const [showPreview, setShowPreview] = useState(false); // Renamed from showPdfPreview
+  const [showPreview, setShowPreview] = useState(false);
 
 
   const fetchExams = async () => {
@@ -198,12 +244,12 @@ export default function RenderExamPage() {
         const blocksQuery = query(blocksCollectionRef, orderBy("orderIndex"));
         const blocksSnapshot = await getDocs(blocksQuery);
 
-        for (const blockDoc of blocksSnapshot.docs) {
-          const blockData = blockDoc.data();
+        for (const blockDocSnap of blocksSnapshot.docs) {
+          const blockData = blockDocSnap.data();
           if (typeof blockData !== 'object' || blockData === null) continue;
 
           const loadedQuestions: ExamQuestion[] = [];
-          const questionsCollectionRef = collection(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id, "questionBlocks", blockDoc.id, "questions");
+          const questionsCollectionRef = collection(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id, "questionBlocks", blockDocSnap.id, "questions");
           const questionsQuery = query(questionsCollectionRef, orderBy("orderIndex"));
           const questionsSnapshot = await getDocs(questionsQuery);
 
@@ -227,7 +273,7 @@ export default function RenderExamPage() {
                   options: (qData.options || []).map((opt: any) => ({ 
                       id: String(opt?.id || `opt-${Math.random()}`),
                       text: String(opt?.text || ""),
-                      isCorrect: Boolean(opt?.isCorrect || false) // Keep isCorrect for DOCX generation logic
+                      isCorrect: Boolean(opt?.isCorrect || false)
                     })),
                 } as MultipleChoiceQuestion;
                 break;
@@ -235,7 +281,7 @@ export default function RenderExamPage() {
                 question = {
                   ...baseQuestionProps,
                   type: 'true-false',
-                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer), // Keep correctAnswer for DOCX
+                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer),
                 } as TrueFalseQuestion;
                 break;
               case 'matching':
@@ -255,7 +301,7 @@ export default function RenderExamPage() {
             if(question) loadedQuestions.push(question);
           });
           loadedBlocks.push({
-            id: blockDoc.id, 
+            id: blockDocSnap.id, 
             blockType: blockData.blockType || 'multiple-choice', 
             blockTitle: String(blockData.blockTitle || ""),
             questions: loadedQuestions,
@@ -299,7 +345,7 @@ export default function RenderExamPage() {
     setIsDownloadingDocxFile(true);
     try {
         let questionCounter = 0;
-        const children = [
+        const children: Paragraph[] = [
             new Paragraph({
                 text: String(examForPreview.title),
                 heading: HeadingLevel.HEADING_1,
@@ -354,15 +400,32 @@ export default function RenderExamPage() {
                         }));
                     });
                 } else if (question.type === 'matching') {
+                    const premises: Paragraph[] = [];
+                    const responsesSection: Paragraph[] = [new Paragraph({text: "Responses:", indent: {left: 1080}, spacing: {before: 100}})];
+                    
                     ((question as MatchingTypeQuestion).pairs).forEach((pair, pairIndex) => {
-                         children.push(new Paragraph({
-                            text: `${pairIndex + 1}. ${String(pair.premise)}\t\t____________________`,
-                            indent: { left: 1080 },
+                         premises.push(new Paragraph({
+                            text: `${getAlphabetLetter(pairIndex)}. ${String(pair.premise)}\t\t____________________`,
+                            indent: { left: 1080 }, // For A, B, C...
                             tabStops: [
-                                { type: TabStopType.LEFT, position: 2880 }, 
+                                { type: TabStopType.LEFT, position: 3600 }, // Position for the line
                             ],
                         }));
+                        responsesSection.push(new Paragraph({
+                            text: `${pairIndex + 1}. ${String(pair.response)}`, // Numeric for responses
+                            indent: {left: 1440} // Indent responses further
+                        }))
                     });
+                    children.push(...premises);
+                    // For a real exam, you might list responses separately or provide space for students to write them.
+                    // Here, we'll just note that responses would be handled.
+                    // children.push(new Paragraph({ text: "Matching Responses:", indent: { left: 1080 }, spacing: {before: 100} }));
+                    // ((question as MatchingTypeQuestion).pairs).forEach((pair, pairIndex) => {
+                    //     children.push(new Paragraph({
+                    //        text: `${pairIndex + 1}. ${String(pair.response)}`, // Example: List responses numerically
+                    //        indent: { left: 1440 },
+                    //    }));
+                    // });
                 }
                 children.push(new Paragraph({ text: ""})); 
             });
@@ -606,3 +669,4 @@ export default function RenderExamPage() {
     </div>
   );
 }
+

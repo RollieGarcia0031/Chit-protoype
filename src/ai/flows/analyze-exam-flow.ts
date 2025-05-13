@@ -57,7 +57,7 @@ const SuggestionSchema = z.object({
 });
 
 const AnalyzeExamOutputSchema = z.object({
-  suggestions: z.array(SuggestionSchema).describe("A list of suggestions for improving the exam content and structure."),
+  suggestions: z.array(SuggestionSchema).describe("A list of suggestions for improving the exam content and structure. Response should be a bulleted list of suggestions."),
 });
 export type AnalyzeExamOutput = z.infer<typeof AnalyzeExamOutputSchema>;
 
@@ -96,8 +96,10 @@ Block ID: {{this.id}} (Type: {{this.blockType}})
       {{/each}}
     {{/if}}
     {{#if (eq this.type "true-false")}}
-      {{#if (ne this.correctAnswer null)}}
-      Correct T/F Answer: {{this.correctAnswer}}
+      {{#if (eq this.correctAnswer true)}}
+      Correct T/F Answer: true
+      {{else if (eq this.correctAnswer false)}}
+      Correct T/F Answer: false
       {{else}}
       Correct T/F Answer: Not specified
       {{/if}}
@@ -112,8 +114,9 @@ Block ID: {{this.id}} (Type: {{this.blockType}})
 --------------------
 {{/each}}
 
-Based on your analysis, provide a list of suggestions. For each suggestion:
-- Include 'suggestionText' with your feedback.
+Based on your analysis, provide a list of suggestions as a bulleted list under the 'suggestionText' field of each suggestion object. 
+For each suggestion:
+- Include 'suggestionText' with your feedback (as a bulleted list if multiple points for one suggestion).
 - Optionally include 'blockId' and 'questionId' if the suggestion is specific to a block or question.
 - Optionally include 'severity' ('error', 'warning', 'info'). Default to 'info'.
 - Optionally include 'elementPath' to pinpoint the exact field. Examples:
@@ -168,3 +171,4 @@ const analyzeExamFlowInstance = ai.defineFlow(
 export async function analyzeExamFlow(input: AnalyzeExamInput): Promise<AnalyzeExamOutput> {
   return analyzeExamFlowInstance(input);
 }
+

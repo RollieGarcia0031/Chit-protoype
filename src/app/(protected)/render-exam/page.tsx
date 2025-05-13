@@ -5,14 +5,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star, ArrowLeft, FileType2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { CSSProperties } from 'react';
 import { useAuth } from "@/contexts/auth-context";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, getDocs, Timestamp, orderBy, doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { EXAMS_COLLECTION_NAME } from "@/config/firebase-constants";
-import type { ExamBlock, ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
+import type { ExamBlock, ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair, Option } from "@/types/exam-types";
 import Link from "next/link";
 import {
   AlertDialog,
@@ -41,6 +43,94 @@ interface FullExamData extends ExamSummaryData {
     examBlocks: ExamBlock[];
 }
 
+type ViewMode = 'list' | 'renderPreview';
+
+const getAlphabetLetter = (index: number): string => String.fromCharCode(65 + index);
+
+// Component to render the exam preview
+function ExamPreview({ exam, onBackToList, onDownload }: { exam: FullExamData, onBackToList: () => void, onDownload: () => void }) {
+  return (
+    <Card className="shadow-xl">
+      <CardHeader>
+        <div className="flex justify-between items-start">
+            <div>
+                <CardTitle className="text-3xl font-bold tracking-tight flex items-center mb-1">
+                    <FileType2 className="mr-3 h-8 w-8 text-primary" />
+                    {exam.title}
+                </CardTitle>
+                {exam.description && <CardDescription className="text-base mt-1">{exam.description}</CardDescription>}
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+                <Button variant="outline" onClick={onBackToList} size="sm">
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Back to List
+                </Button>
+                 <Button onClick={onDownload} size="sm">
+                    <DownloadCloud className="mr-2 h-4 w-4" />
+                    Download DOCX (Placeholder)
+                </Button>
+            </div>
+        </div>
+        <div className="text-xs text-muted-foreground mt-3 space-y-0.5">
+            <p>Created: {format(exam.createdAt.toDate(), "PPP p")}</p>
+            <p>Last Updated: {format(exam.updatedAt.toDate(), "PPP p")}</p>
+            <p>Status: {exam.status} | Questions: {exam.totalQuestions} | Total Points: {exam.totalPoints}</p>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {exam.examBlocks.map((block, blockIndex) => (
+          <div key={block.id} className="p-4 border rounded-lg shadow-sm bg-card/50">
+            <h3 className="text-xl font-semibold mb-1">
+              Block {blockIndex + 1}: {block.blockType.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+            </h3>
+            {block.blockTitle && <p className="text-sm text-muted-foreground mb-3">{block.blockTitle}</p>}
+            {block.questions.map((question, qIndex) => (
+              <div key={question.id} className="mb-4 p-3 border-t">
+                <p className="font-medium text-base">
+                  Q{qIndex + 1}: {question.questionText} <span className="text-xs text-muted-foreground">({question.points} pts)</span>
+                </p>
+                {question.type === 'multiple-choice' && (
+                  <ul className="list-none pl-5 mt-1 text-sm space-y-0.5">
+                    {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
+                      <li key={opt.id} className={opt.isCorrect ? "font-semibold text-primary" : ""}>
+                        {getAlphabetLetter(optIndex)}. {opt.text} {opt.isCorrect ? "(Correct)" : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {question.type === 'true-false' && (
+                  <p className="pl-5 mt-1 text-sm">
+                    Correct Answer: <span className="font-semibold">{(question as TrueFalseQuestion).correctAnswer ? 'True' : 'False'}</span>
+                  </p>
+                )}
+                {question.type === 'matching' && (
+                  <ul className="list-none pl-5 mt-1 text-sm space-y-1">
+                    {(question as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (
+                      <li key={pair.id}>
+                        {pairIndex + 1}. {pair.premise} <span className="text-muted-foreground mx-1">&rarr;</span> {pair.response}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+      </CardContent>
+       <CardFooter className="flex justify-end gap-2">
+         <Button variant="outline" onClick={onBackToList}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Exam List
+        </Button>
+        <Button onClick={onDownload}>
+            <DownloadCloud className="mr-2 h-4 w-4" />
+            Download DOCX (Placeholder)
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
 
 export default function RenderExamPage() {
   const { user, loading: authLoading } = useAuth();
@@ -48,9 +138,14 @@ export default function RenderExamPage() {
   const [exams, setExams] = useState<ExamSummaryData[]>([]);
   const [isLoadingExams, setIsLoadingExams] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
   const [isGeneratingDocx, setIsGeneratingDocx] = useState<string | null>(null);
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [selectedExamForDialog, setSelectedExamForDialog] = useState<ExamSummaryData | null>(null);
+
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [examForPreview, setExamForPreview] = useState<FullExamData | null>(null);
+
 
   const fetchExams = async () => {
     if (!user) {
@@ -96,15 +191,26 @@ export default function RenderExamPage() {
     setIsConfirmDialogOpen(true);
   };
 
+  const handleActualDocxDownloadPlaceholder = () => {
+     if (!examForPreview) return;
+      toast({
+        title: "DOCX Download (Placeholder)",
+        description: `Initiating download for "${examForPreview.title}". This is a placeholder; actual DOCX generation is not yet implemented. Full exam data logged to console.`,
+        duration: 7000,
+      });
+      console.log("Placeholder: Download DOCX for exam:", examForPreview);
+  };
+
   const handleGenerateDocx = async () => {
     if (!user || !selectedExamForDialog) {
         toast({ title: "Error", description: "No exam selected or user not authenticated.", variant: "destructive" });
+        setIsConfirmDialogOpen(false);
+        setSelectedExamForDialog(null);
         return;
     }
     setIsGeneratingDocx(selectedExamForDialog.id);
     
     try {
-        // Fetch full exam data
         const examDocRef = doc(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id);
         const examSnap = await getDoc(examDocRef);
 
@@ -112,6 +218,7 @@ export default function RenderExamPage() {
           toast({ title: "Error", description: "Exam not found or permission denied.", variant: "destructive" });
           setIsGeneratingDocx(null);
           setIsConfirmDialogOpen(false);
+          setSelectedExamForDialog(null);
           return;
         }
 
@@ -138,7 +245,7 @@ export default function RenderExamPage() {
                   questionText: qData.questionText,
                   points: qData.points,
                   type: 'multiple-choice',
-                  options: (qData.options || []).map((opt: any) => ({ ...opt })),
+                  options: (qData.options || []).map((opt: Option) => ({ ...opt, id: opt.id || `opt-${Math.random()}` })),
                 } as MultipleChoiceQuestion;
                 break;
               case 'true-false':
@@ -156,7 +263,7 @@ export default function RenderExamPage() {
                   questionText: qData.questionText,
                   points: qData.points,
                   type: 'matching',
-                  pairs: (qData.pairs || []).map((p: any) => ({ ...p})),
+                  pairs: (qData.pairs || []).map((p: MatchingPair) => ({ ...p, id: p.id || `pair-${Math.random()}` })),
                 } as MatchingTypeQuestion;
                 break;
               default: 
@@ -173,9 +280,9 @@ export default function RenderExamPage() {
         }
         
         const fullExamData: FullExamData = {
-            ...examData,
-            id: selectedExamForDialog.id,
-            title: selectedExamForDialog.title, // Ensure title from summary is used
+            ...examData, // spread basic fields from examSnap.data()
+            id: selectedExamForDialog.id, // ensure ID from summary is used
+            title: selectedExamForDialog.title, 
             description: selectedExamForDialog.description,
             createdAt: selectedExamForDialog.createdAt,
             updatedAt: selectedExamForDialog.updatedAt,
@@ -184,17 +291,18 @@ export default function RenderExamPage() {
             status: selectedExamForDialog.status,
             examBlocks: loadedBlocks,
         };
-
-        console.log("Full Exam Data for DOCX generation:", fullExamData);
+        
+        setExamForPreview(fullExamData);
+        setViewMode('renderPreview');
         toast({
-            title: "DOCX Generation (Placeholder)",
-            description: `DOCX generation for "${selectedExamForDialog.title}" is not yet implemented. Full exam data has been logged to the console.`,
+            title: "Exam Ready for Preview",
+            description: `Displaying content for "${selectedExamForDialog.title}". DOCX generation is a placeholder.`,
             duration: 5000,
         });
 
     } catch (error) {
-        console.error("Error fetching full exam data for DOCX:", error);
-        toast({ title: "Error", description: "Could not fetch full exam data for DOCX generation.", variant: "destructive"});
+        console.error("Error fetching full exam data:", error);
+        toast({ title: "Error", description: "Could not fetch full exam data for preview.", variant: "destructive"});
     } finally {
         setIsGeneratingDocx(null);
         setIsConfirmDialogOpen(false);
@@ -202,7 +310,8 @@ export default function RenderExamPage() {
     }
   };
 
-  if (authLoading || isLoadingExams) {
+
+  if (authLoading || (isLoadingExams && viewMode === 'list')) {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -245,7 +354,7 @@ export default function RenderExamPage() {
     );
   }
 
-  if (error) {
+  if (error && viewMode === 'list') {
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center">
         <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
@@ -253,6 +362,19 @@ export default function RenderExamPage() {
         <p className="text-muted-foreground mb-4">{error}</p>
         <Button onClick={fetchExams}>Try Again</Button>
       </div>
+    );
+  }
+
+  if (viewMode === 'renderPreview' && examForPreview) {
+    return (
+        <ExamPreview 
+            exam={examForPreview} 
+            onBackToList={() => {
+                setViewMode('list');
+                setExamForPreview(null);
+            }}
+            onDownload={handleActualDocxDownloadPlaceholder}
+        />
     );
   }
 
@@ -274,8 +396,9 @@ export default function RenderExamPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[40%]">Title</TableHead>
-                  <TableHead>Date Created</TableHead>
+                  <TableHead className="w-[35%]">Title</TableHead>
+                  <TableHead className="hidden sm:table-cell">Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Date Created</TableHead>
                   <TableHead className="text-center">Questions</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -284,7 +407,13 @@ export default function RenderExamPage() {
                 {exams.map((exam) => (
                   <TableRow key={exam.id}>
                     <TableCell className="font-medium">{exam.title}</TableCell>
-                    <TableCell>{format(exam.createdAt.toDate(), "PPP")}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                       <Badge variant={exam.status === 'Published' ? 'default' : exam.status === 'Draft' ? 'secondary' : 'outline'}
+                        className={exam.status === 'Archived' ? 'bg-muted text-muted-foreground' : ''}>
+                           {exam.status}
+                       </Badge>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">{format(exam.createdAt.toDate(), "PPP")}</TableCell>
                     <TableCell className="text-center">{exam.totalQuestions}</TableCell>
                     <TableCell className="text-right">
                       <Button

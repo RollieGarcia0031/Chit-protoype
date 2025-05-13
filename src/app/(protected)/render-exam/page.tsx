@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { format } from 'date-fns';
 import dynamic from 'next/dynamic';
-import { Packer, Document as DocxDocument, Paragraph, TextRun, HeadingLevel, AlignmentType, Tab, TabStopPosition, TabStopType, Numbering, Indent } from 'docx';
+import { Packer, Document as DocxDocument, Paragraph, TextRun, HeadingLevel, AlignmentType, Tab, TabStopPosition, TabStopType, Numbering, Indent, LevelFormat } from 'docx';
 import { saveAs } from 'file-saver';
 import { ExamPDFDocument } from '@/components/exam/ExamPDFDocument';
 
@@ -91,6 +91,24 @@ function PdfExamPreview({ exam, onBackToList, onDownload }: { exam: FullExamData
     setIsDownloading(false);
   };
 
+  // Add an explicit check here
+  if (!exam || !exam.examBlocks) { 
+    return (
+      <Card className="shadow-xl w-full">
+        <CardHeader>
+          <CardTitle>Error</CardTitle>
+          <CardDescription>Exam data is incomplete or unavailable for preview.</CardDescription>
+        </CardHeader>
+        <CardContent className="py-6">
+          <Button onClick={onBackToList} variant="outline">
+             <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to List
+            </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="shadow-xl w-full">
       <CardHeader>
@@ -115,7 +133,7 @@ function PdfExamPreview({ exam, onBackToList, onDownload }: { exam: FullExamData
         </div>
       </CardHeader>
       <CardContent className="h-[calc(100vh-250px)] min-h-[600px]">
-        <PDFViewer width="100%" height="100%" showToolbar={true}>
+        <PDFViewer width="100%" height="100%" showToolbar={false}>
           <ExamPDFDocument exam={exam} />
         </PDFViewer>
       </CardContent>
@@ -628,4 +646,3 @@ export default function RenderExamPage() {
     </div>
   );
 }
-

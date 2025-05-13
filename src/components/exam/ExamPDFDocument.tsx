@@ -120,65 +120,74 @@ interface ExamPDFDocumentProps {
 export function ExamPDFDocument({ exam }: ExamPDFDocumentProps): ReactNode {
   let currentQuestionNumber = 0;
 
-  if (!exam) { // Basic guard against null/undefined exam
+  // More robust check at the beginning
+  if (!exam || typeof exam !== 'object' || !exam.id) { 
     return (
       <Document>
         <Page style={styles.page}>
-          <Text>Error: Exam data is not available.</Text>
+          <Text>Error: Invalid or incomplete exam data provided for PDF generation.</Text>
         </Page>
       </Document>
     );
   }
 
   return (
-    <Document title={exam.title || 'Exam'} author="Chit Exam Generator">
+    <Document title={String(exam.title || 'Exam Document')} author="Chit Exam Generator">
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
-          <Text style={styles.examTitle}>{exam.title || 'Untitled Exam'}</Text>
-          {exam.description && <Text style={styles.examDescription}>{exam.description}</Text>}
+          <Text style={styles.examTitle}>{String(exam.title || 'Untitled Exam')}</Text>
+          {exam.description && <Text style={styles.examDescription}>{String(exam.description)}</Text>}
            <Text style={styles.metadata}>
-            Total Questions: {exam.totalQuestions || 0} | Total Points: {exam.totalPoints || 0} | Status: {exam.status || 'N/A'}
+            Total Questions: {exam.totalQuestions || 0} | Total Points: {exam.totalPoints || 0} | Status: {String(exam.status || 'N/A')}
           </Text>
         </View>
 
         {(exam.examBlocks || []).map((block, blockIndex) => {
+          if (typeof block !== 'object' || block === null) return null;
           return (
-            <View key={block.id || `block-${blockIndex}`} style={styles.block}>
+            <View key={String(block.id || `block-${blockIndex}`)} style={styles.block}>
               <Text style={styles.blockTitle}>
-                {toRoman(blockIndex + 1)}{block.blockTitle ? `: ${block.blockTitle}` : ''}
+                {toRoman(blockIndex + 1)}{block.blockTitle ? `: ${String(block.blockTitle)}` : ''}
               </Text>
               {(block.questions || []).map((question) => {
+                if (typeof question !== 'object' || question === null) return null;
                 currentQuestionNumber++;
                 return (
-                  <View key={question.id || `question-${currentQuestionNumber}`} style={styles.questionContainer}>
+                  <View key={String(question.id || `question-${currentQuestionNumber}`)} style={styles.questionContainer}>
                     <Text style={styles.questionText}>
                       {question.type === 'true-false' ? '____ ' : ''}
-                      {currentQuestionNumber}. {question.questionText || ''}{' '}
+                      {currentQuestionNumber}. {String(question.questionText || '')}{' '}
                       <Text style={styles.points}>({question.points || 0} pts)</Text>
                     </Text>
 
                     {question.type === 'multiple-choice' && (
                       <View style={styles.optionsList}>
-                        {((question as MultipleChoiceQuestion).options || []).map((opt, optIndex) => (
-                          <Text key={opt.id || `opt-${optIndex}`} style={styles.optionText}>
-                            {getAlphabetLetter(optIndex)}. {opt.text || ''}
-                          </Text>
-                        ))}
+                        {((question as MultipleChoiceQuestion).options || []).map((opt, optIndex) => {
+                           if (typeof opt !== 'object' || opt === null) return null;
+                          return (
+                            <Text key={String(opt.id || `opt-${optIndex}`)} style={styles.optionText}>
+                              {getAlphabetLetter(optIndex)}. {String(opt.text || '')}
+                            </Text>
+                          );
+                        })}
                       </View>
                     )}
 
                     {question.type === 'matching' && (
                       <View style={styles.optionsList}>
-                        {((question as MatchingTypeQuestion).pairs || []).map((pair, pairIndex) => (
-                          <View key={pair.id || `pair-${pairIndex}`} style={{ flexDirection: 'column', marginBottom: 2 }}>
-                            <Text style={styles.matchingPairPremise}>
-                              {pairIndex + 1}. {pair.premise || ''}
-                            </Text>
-                            <Text style={styles.matchingPairLine}>
-                              {'       '}_________________________
-                            </Text>
-                          </View>
-                        ))}
+                        {((question as MatchingTypeQuestion).pairs || []).map((pair, pairIndex) => {
+                           if (typeof pair !== 'object' || pair === null) return null;
+                          return (
+                            <View key={String(pair.id || `pair-${pairIndex}`)} style={{ flexDirection: 'column', marginBottom: 2 }}>
+                              <Text style={styles.matchingPairPremise}>
+                                {pairIndex + 1}. {String(pair.premise || '')}
+                              </Text>
+                              <Text style={styles.matchingPairLine}>
+                                {'       '}_________________________
+                              </Text>
+                            </View>
+                          );
+                        })}
                       </View>
                     )}
                   </View>

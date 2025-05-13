@@ -1,4 +1,6 @@
 // src/types/exam-types.ts
+import type { Timestamp } from "firebase/firestore";
+
 export interface Option {
   id: string;
   text: string;
@@ -48,4 +50,21 @@ export interface ExamBlock {
   blockType: QuestionType;
   questions: ExamQuestion[];
   blockTitle?: string; // Optional title/instructions for the entire block
+}
+
+// Interface for summary data shown in lists
+export interface ExamSummaryData {
+  id: string;
+  title: string;
+  description?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  totalQuestions: number;
+  totalPoints: number;
+  status: "Draft" | "Published" | "Archived";
+}
+
+// Interface for the full exam data including blocks and questions
+export interface FullExamData extends ExamSummaryData {
+    examBlocks: ExamBlock[];
 }

@@ -1,15 +1,12 @@
 // src/components/exam/ExamPDFDocument.tsx
-'use client'; // This might not be strictly necessary if @react-pdf/renderer handles client/server context well
+'use client'; 
 
-import type { FullExamData } from '@/app/(protected)/render-exam/page'; // Adjust path as needed
+import type { FullExamData } from '@/types/exam-types';
 import type { MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from '@/types/exam-types';
 import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
 
-// Register a font (optional, but good for consistent rendering)
-// Example: Using a common font like Roboto
-// Make sure to have the font files (e.g., .ttf) available or use a CDN if @react-pdf/renderer supports it directly.
-// For simplicity, we'll rely on default fonts if specific font registration is complex for this environment.
-// Font.register({ family: 'Roboto', src: '/fonts/Roboto-Regular.ttf' }); // Example, ensure path is correct
+// Font registration can be complex; relying on defaults for now.
+// Font.register({ family: 'Roboto', src: '/fonts/Roboto-Regular.ttf' }); 
 
 const styles = StyleSheet.create({
   page: {
@@ -45,11 +42,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 15,
     marginBottom: 8,
-    // textDecoration: 'underline',
   },
   questionContainer: {
     marginBottom: 10,
-    marginLeft: 15, // Indent questions
+    marginLeft: 15, 
   },
   questionText: {
     fontSize: 10,
@@ -62,16 +58,16 @@ const styles = StyleSheet.create({
   },
   optionText: {
     fontSize: 10,
-    marginLeft: 30, // Indent options
+    marginLeft: 30, 
     marginBottom: 2,
   },
   matchingPairPremise: {
     fontSize: 10,
-    marginLeft: 30, // Indent matching items
+    marginLeft: 30, 
     marginBottom: 2,
   },
   trueFalsePrefix: {
-    // For the '____'
+    // Style for '____ '
   },
   footer: {
     position: 'absolute',
@@ -152,7 +148,6 @@ export function ExamPDFDocument({ exam }: { exam: FullExamData }) {
                       ))}
                     </View>
                   )}
-                  {/* True/False questions don't need extra rendering for options here as per current design */}
                 </View>
               );
             })}

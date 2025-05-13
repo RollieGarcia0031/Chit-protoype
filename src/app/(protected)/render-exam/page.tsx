@@ -1,19 +1,20 @@
 // src/app/(protected)/render-exam/page.tsx
 'use client';
 
+import dynamic from 'next/dynamic';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star, FileType2, ArrowLeft } from "lucide-react";
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, getDocs, Timestamp, orderBy, doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { EXAMS_COLLECTION_NAME } from "@/config/firebase-constants";
-import type { ExamBlock, ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
+import type { FullExamData, ExamSummaryData, ExamBlock, ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
 import Link from "next/link";
 import {
   AlertDialog,
@@ -28,24 +29,17 @@ import {
 import { format } from 'date-fns';
 import { Packer, Document as DocxDocument, Paragraph, TextRun, HeadingLevel, AlignmentType, TabStopPosition, TabStopType } from 'docx';
 import { saveAs } from 'file-saver';
-import { PDFViewer } from '@react-pdf/renderer';
-import { ExamPDFDocument } from '@/components/exam/ExamPDFDocument';
 
-
-interface ExamSummaryData {
-  id: string;
-  title: string;
-  description?: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-  totalQuestions: number;
-  totalPoints: number;
-  status: "Draft" | "Published" | "Archived";
-}
-
-export interface FullExamData extends ExamSummaryData {
-    examBlocks: ExamBlock[];
-}
+// Dynamically import the PDF Viewer component
+const DynamicPdfExamViewer = dynamic(() => import('@/components/exam/PdfExamViewer'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full w-full">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <p className="ml-2 text-muted-foreground">Loading PDF Previewer...</p>
+    </div>
+  ),
+});
 
 
 const getAlphabetLetter = (index: number): string => String.fromCharCode(65 + index);
@@ -68,13 +62,8 @@ const toRoman = (num: number): string => {
   return result;
 };
 
-function PdfExamPreview({ exam, onBack }: { exam: FullExamData; onBack: () => void }) {
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
+// This component wraps the dynamically loaded PDF viewer in a card structure
+function PdfPreviewCard({ exam, onBack }: { exam: FullExamData; onBack: () => void }) {
   return (
     <Card className="shadow-lg">
       <CardHeader className="flex flex-row items-center justify-between">
@@ -88,16 +77,7 @@ function PdfExamPreview({ exam, onBack }: { exam: FullExamData; onBack: () => vo
         </Button>
       </CardHeader>
       <CardContent className="h-[calc(100vh-250px)] min-h-[600px]">
-        {isClient ? (
-            <PDFViewer width="100%" height="100%" showToolbar={false}>
-              <ExamPDFDocument exam={exam} />
-            </PDFViewer>
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="ml-2 text-muted-foreground">Loading PDF preview...</p>
-          </div>
-        )}
+        <DynamicPdfExamViewer exam={exam} />
       </CardContent>
     </Card>
   );
@@ -448,7 +428,7 @@ export default function RenderExamPage() {
   }
 
   if (showPdfPreview && examForPreview) {
-    return <PdfExamPreview exam={examForPreview} onBack={handleBackToList} />;
+    return <PdfPreviewCard exam={examForPreview} onBack={handleBackToList} />;
   }
 
   return (

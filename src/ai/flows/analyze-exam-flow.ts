@@ -51,9 +51,9 @@ export type AnalyzeExamInput = z.infer<typeof AnalyzeExamInputSchema>;
 const SuggestionSchema = z.object({
   blockId: z.string().optional().describe("The ID of the block this suggestion pertains to, if applicable."),
   questionId: z.string().optional().describe("The ID of the question this suggestion pertains to, if applicable."),
-  suggestionText: z.string().describe("The detailed suggestion or feedback provided by the AI."),
+  suggestionText: z.string().describe("The detailed suggestion or feedback provided by the AI. Should refer to items by their 1-based number (e.g., 'Block 1, Question 2')."),
   severity: z.enum(['error', 'warning', 'info']).default('info').optional().describe("Severity of the suggestion (e.g., error, warning, info)."),
-  elementPath: z.string().optional().describe("A dot-notation path to the specific element the suggestion refers to (e.g., 'examTitle', 'examBlocks[0].blockTitle', 'examBlocks[0].questions[1].questionText', 'examBlocks[0].questions[1].options[0].text')."),
+  elementPath: z.string().optional().describe("A dot-notation path to the specific element the suggestion refers to (e.g., 'examTitle', 'examBlocks[0].blockTitle', 'examBlocks[0].questions[1].questionText', 'examBlocks[0].questions[1].options[0].text'). Uses zero-based indexing."),
 });
 
 const AnalyzeExamOutputSchema = z.object({
@@ -82,56 +82,65 @@ Title: {{{examTitle}}}
 {{#if examDescription}}Description: {{{examDescription}}}{{/if}}
 
 Exam Blocks:
-{{#each examBlocks}}
-Block ID: {{this.id}} (Type: {{this.blockType}})
-{{#if this.blockTitle}}Block Instructions: {{{this.blockTitle}}}{{/if}}
+{{#each examBlocks as |block blockIndex|}}
+Block (Index: {{blockIndex}}) - ID: {{block.id}}, Type: {{block.blockType}}
+{{#if block.blockTitle}}Block Instructions: {{{block.blockTitle}}}{{/if}}
   Questions:
-  {{#each this.questions}}
-  - Question ID: {{this.id}} (Type: {{this.type}}, Points: {{this.points}})
-    Text: {{{this.questionText}}}
-    {{#if this.options}}
-    Options:
-      {{#each this.options}}
-      - Opt ID {{this.id}}: "{{this.text}}" (Correct: {{this.isCorrect}})
+  {{#each block.questions as |question questionIndex|}}
+  - Question (Index: {{questionIndex}} in Block {{blockIndex}}) - ID: {{question.id}}, Type: {{question.type}}, Points: {{question.points}}
+    Text: {{{question.questionText}}}
+    {{#if question.options}}
+    Options (for Question at index {{questionIndex}} in Block at index {{blockIndex}}):
+      {{#each question.options as |option optionIndex|}}
+      - Option (Index: {{optionIndex}}) ID {{option.id}}: "{{option.text}}" (Correct: {{option.isCorrect}})
       {{/each}}
     {{/if}}
-    {{! The 'correctAnswer' field (true, false, or null) for true/false questions is available in the input data based on the schema. }}
-    {{! The AI should use the 'type' field and the 'correctAnswer' value from the input data. }}
-    {{#if this.pairs}}
-    Matching Pairs:
-      {{#each this.pairs}}
-      - Pair ID {{this.id}}: Premise: "{{this.premise}}" --- Response: "{{this.response}}"
+    {{#if (eq question.type "true-false")}}
+    Correct Answer for True/False (Question at index {{questionIndex}}): {{#if (isTruthy question.correctAnswer)}}True{{else if (isFalsey question.correctAnswer)}}False{{else}}Not Set{{/if}}
+    {{/if}}
+    {{#if question.pairs}}
+    Matching Pairs (for Question at index {{questionIndex}} in Block at index {{blockIndex}}):
+      {{#each question.pairs as |pair pairIndex|}}
+      - Pair (Index: {{pairIndex}}) ID {{pair.id}}: Premise: "{{pair.premise}}" --- Response: "{{pair.response}}"
       {{/each}}
     {{/if}}
   {{/each}}
 --------------------
 {{/each}}
 
-Based on your analysis, provide a list of suggestions as a bulleted list under the 'suggestionText' field of each suggestion object. 
+Based on your analysis, provide a list of suggestions as a bulleted list under the 'suggestionText' field of each suggestion object.
 For each suggestion:
-- Include 'suggestionText' with your feedback (as a bulleted list if multiple points for one suggestion).
-- Optionally include 'blockId' and 'questionId' if the suggestion is specific to a block or question.
+- In 'suggestionText', refer to blocks and questions by their 1-based numbers. For example, if the input shows "Block (Index: 0)", refer to it as "Block 1". If it shows "Question (Index: 1 in Block 0)", refer to it as "Question 2 in Block 1".
+- Make the 'suggestionText' clear and easy for a non-technical user to understand where the issue is located. For instance, "In Block 1, Question 2, the phrasing is ambiguous..." or "The title for Block 2 could be more specific."
+- Optionally include 'blockId' and 'questionId' if the suggestion is specific to a block or question (use the actual IDs from the input).
 - Optionally include 'severity' ('error', 'warning', 'info'). Default to 'info'.
-- Optionally include 'elementPath' to pinpoint the exact field. Examples:
+- Optionally include 'elementPath' to pinpoint the exact field using zero-based indices for programmatic use. Examples:
   - 'examTitle'
-  - 'examBlocks[INDEX].blockTitle'
-  - 'examBlocks[INDEX].questions[INDEX].questionText'
-  - 'examBlocks[INDEX].questions[INDEX].options[INDEX].text'
-  - 'examBlocks[INDEX].questions[INDEX].correctAnswer'
-  - 'examBlocks[INDEX].questions[INDEX].pairs[INDEX].premise'
-  (Replace INDEX with the actual zero-based index).
+  - 'examBlocks[0].blockTitle'
+  - 'examBlocks[0].questions[1].questionText'
+  - 'examBlocks[0].questions[1].options[0].text'
+  - 'examBlocks[0].questions[1].correctAnswer'
+  - 'examBlocks[0].questions[1].pairs[0].premise'
+  (Replace INDEX with the actual zero-based index from the input, e.g., if input says "Block (Index: 2)", the path uses \`examBlocks[2]\`).
 
 Return your entire response as a single, valid JSON object matching the specified output schema. If no suggestions, return an empty "suggestions" array.
 `,
 config: {
-    temperature: 0.3, // Lower temperature for more factual and less creative suggestions
-    safetySettings: [ // Relax safety settings if needed for educational content review, but be cautious
+    temperature: 0.3, 
+    safetySettings: [ 
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
       { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
     ],
   },
+  // Register custom Handlebars helpers if needed, e.g., for `eq`, `isTruthy`, `isFalsey`
+  // For Genkit, custom helpers are typically not directly registered in definePrompt.
+  // Instead, pre-process data or rely on AI's ability to interpret the structure.
+  // The provided `eq`, `isTruthy`, `isFalsey` are illustrative.
+  // If Gemini struggles, simplify the prompt or pre-process data.
+  // For now, we'll rely on the AI understanding the boolean `correctAnswer` field for true/false questions.
+  // And the `type` field to determine context.
 });
 
 const analyzeExamFlowInstance = ai.defineFlow(
@@ -141,7 +150,6 @@ const analyzeExamFlowInstance = ai.defineFlow(
     outputSchema: AnalyzeExamOutputSchema,
   },
   async (input) => {
-    // Basic validation: Ensure there's something to analyze
     if (!input.examTitle && input.examBlocks.length === 0) {
       return { suggestions: [{ suggestionText: "Exam content is empty. Please add a title or some questions to analyze.", severity: "warning" }] };
     }
@@ -152,11 +160,8 @@ const analyzeExamFlowInstance = ai.defineFlow(
 
     const {output} = await analyzeExamPrompt(input);
     if (!output) {
-      // This case should ideally be handled by the prompt ensuring JSON output,
-      // but as a fallback, return an error suggestion.
       return { suggestions: [{ suggestionText: "AI analysis failed to produce output. Please try again.", severity: "error" }] };
     }
-    // Ensure suggestions array exists, even if empty, to match schema
     return { suggestions: output.suggestions || [] };
   }
 );
@@ -164,4 +169,3 @@ const analyzeExamFlowInstance = ai.defineFlow(
 export async function analyzeExamFlow(input: AnalyzeExamInput): Promise<AnalyzeExamOutput> {
   return analyzeExamFlowInstance(input);
 }
-

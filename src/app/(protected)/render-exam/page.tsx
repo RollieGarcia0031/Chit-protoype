@@ -47,8 +47,29 @@ type ViewMode = 'list' | 'renderPreview';
 
 const getAlphabetLetter = (index: number): string => String.fromCharCode(65 + index);
 
+const toRoman = (num: number): string => {
+  if (num < 1 || num > 3999) return String(num); // Basic fallback for out-of-range numbers
+  const romanNumerals: Array<[number, string]> = [
+    [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
+    [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
+    [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']
+  ];
+  let result = '';
+  let n = num;
+  for (const [value, symbol] of romanNumerals) {
+    while (n >= value) {
+      result += symbol;
+      n -= value;
+    }
+  }
+  return result;
+};
+
+
 // Component to render the exam preview
 function ExamPreview({ exam, onBackToList, onDownload }: { exam: FullExamData, onBackToList: () => void, onDownload: () => void }) {
+  let currentQuestionNumber = 0;
+
   return (
     <Card className="shadow-xl">
       <CardHeader>
@@ -81,39 +102,43 @@ function ExamPreview({ exam, onBackToList, onDownload }: { exam: FullExamData, o
         {exam.examBlocks.map((block, blockIndex) => (
           <div key={block.id} className="p-4 border rounded-lg shadow-sm bg-card/50">
             <h3 className="text-xl font-semibold mb-1">
-              Block {blockIndex + 1}: {block.blockType.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              Block {toRoman(blockIndex + 1)}: {block.blockType.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
             </h3>
             {block.blockTitle && <p className="text-sm text-muted-foreground mb-3">{block.blockTitle}</p>}
-            {block.questions.map((question, qIndex) => (
-              <div key={question.id} className="mb-4 p-3 border-t">
-                <p className="font-medium text-base">
-                  Q{qIndex + 1}: {question.questionText} <span className="text-xs text-muted-foreground">({question.points} pts)</span>
-                </p>
-                {question.type === 'multiple-choice' && (
-                  <ul className="list-none pl-5 mt-1 text-sm space-y-0.5">
-                    {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
-                      <li key={opt.id} className={opt.isCorrect ? "font-semibold text-primary" : ""}>
-                        {getAlphabetLetter(optIndex)}. {opt.text} {opt.isCorrect ? "(Correct)" : ""}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {question.type === 'true-false' && (
-                  <p className="pl-5 mt-1 text-sm">
-                    Correct Answer: <span className="font-semibold">{(question as TrueFalseQuestion).correctAnswer ? 'True' : 'False'}</span>
+            {block.questions.map((question) => {
+              currentQuestionNumber++;
+              return (
+                <div key={question.id} className="mb-4 p-3 border-t">
+                  <p className="font-medium text-base">
+                    {currentQuestionNumber}. {question.questionText} <span className="text-xs text-muted-foreground">({question.points} pts)</span>
                   </p>
-                )}
-                {question.type === 'matching' && (
-                  <ul className="list-none pl-5 mt-1 text-sm space-y-1">
-                    {(question as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (
-                      <li key={pair.id}>
-                        {pairIndex + 1}. {pair.premise} <span className="text-muted-foreground mx-1">&rarr;</span> {pair.response}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
+                  {question.type === 'multiple-choice' && (
+                    <ul className="list-none pl-5 mt-1 text-sm space-y-0.5">
+                      {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
+                        <li key={opt.id}>
+                          {getAlphabetLetter(optIndex)}. {opt.text}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {question.type === 'true-false' && (
+                    // Correct answer is intentionally hidden for preview
+                    <p className="pl-5 mt-1 text-sm text-muted-foreground italic">
+                      (True/False)
+                    </p>
+                  )}
+                  {question.type === 'matching' && (
+                    <ul className="list-none pl-5 mt-1 text-sm space-y-1">
+                      {(question as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (
+                        <li key={pair.id}>
+                          {pairIndex + 1}. {pair.premise} <span className="text-muted-foreground mx-1">&rarr;</span> {pair.response}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ))}
       </CardContent>

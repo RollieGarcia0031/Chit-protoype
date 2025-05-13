@@ -1,4 +1,3 @@
-
 // src/app/(protected)/create-exam/page.tsx
 'use client';
 
@@ -210,7 +209,7 @@ export default function CreateExamPage() {
     }
   }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, user, isSaving, isLoadingExamData]);
 
-  const debouncedAIAnalysis = useMemo(() => debounce(performAIAnalysis, 20000), [performAIAnalysis]); // Rate limit to 20 seconds
+  const debouncedAIAnalysis = useMemo(() => debounce(performAIAnalysis, 20000), [performAIAnalysis]);
 
   useEffect(() => {
     if (aiSuggestionsEnabled && isInitialLoadComplete && !isLoadingExamData && !isSaving) {
@@ -219,8 +218,7 @@ export default function CreateExamPage() {
         setAiFeedbackList([]); 
         setAiError(null);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps 
-  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, isInitialLoadComplete, isLoadingExamData, isSaving]); // debouncedAIAnalysis removed as it's stable
+  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, isInitialLoadComplete, isLoadingExamData, isSaving, debouncedAIAnalysis]);
 
 
   useEffect(() => {
@@ -858,4 +856,3 @@ export default function CreateExamPage() {
     </div>
   );
 }
-

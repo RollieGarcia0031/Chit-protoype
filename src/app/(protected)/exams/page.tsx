@@ -12,7 +12,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from "@/lib/firebase/config";
-import { collection, query, where, getDocs, Timestamp, orderBy, doc, deleteDoc, getDocsFromServer,getCountFromServer } from "firebase/firestore";
+import { collection, query, where, getDocs, Timestamp, orderBy, doc, deleteDoc, getDocsFromServer } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -25,6 +25,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+
+const EXAMS_COLLECTION_NAME = 'chit1'; // Updated collection name
 
 interface ExamData {
   id: string;
@@ -54,7 +56,7 @@ export default function ViewExamsPage() {
     setIsLoadingExams(true);
     setError(null);
     try {
-      const examsCollectionRef = collection(db, "exams");
+      const examsCollectionRef = collection(db, EXAMS_COLLECTION_NAME); // Use updated collection name
       const q = query(examsCollectionRef, where("userId", "==", user.uid), orderBy("createdAt", "desc"));
       const querySnapshot = await getDocs(q);
       const fetchedExams: ExamData[] = [];
@@ -87,27 +89,22 @@ export default function ViewExamsPage() {
   const handleDeleteExam = async (examId: string) => {
     setDeletingExamId(examId);
     try {
-        // Firestore does not support cascading deletes from client-side directly in a single operation.
-        // A robust solution often involves Cloud Functions for complex deletions.
-        // For client-side, we delete the main doc. Subcollections would remain (orphaned).
-        // To delete subcollections: iterate and delete each doc within them first.
-        
         // 1. Delete questions within each question block
-        const questionBlocksRef = collection(db, "exams", examId, "questionBlocks");
+        const questionBlocksRef = collection(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks");
         const questionBlocksSnapshot = await getDocsFromServer(questionBlocksRef);
 
         for (const blockDoc of questionBlocksSnapshot.docs) {
-            const questionsRef = collection(db, "exams", examId, "questionBlocks", blockDoc.id, "questions");
+            const questionsRef = collection(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks", blockDoc.id, "questions");
             const questionsSnapshot = await getDocsFromServer(questionsRef);
             for (const questionDoc of questionsSnapshot.docs) {
-                await deleteDoc(doc(db, "exams", examId, "questionBlocks", blockDoc.id, "questions", questionDoc.id));
+                await deleteDoc(doc(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks", blockDoc.id, "questions", questionDoc.id));
             }
             // 2. Delete the question block itself
-            await deleteDoc(doc(db, "exams", examId, "questionBlocks", blockDoc.id));
+            await deleteDoc(doc(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks", blockDoc.id));
         }
         
         // 3. Delete the main exam document
-        await deleteDoc(doc(db, "exams", examId));
+        await deleteDoc(doc(db, EXAMS_COLLECTION_NAME, examId));
 
         toast({
             title: "Exam Deleted",
@@ -294,3 +291,4 @@ export default function ViewExamsPage() {
     </div>
   );
 }
+

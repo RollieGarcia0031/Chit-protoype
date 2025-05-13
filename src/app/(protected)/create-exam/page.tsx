@@ -18,6 +18,7 @@ import { db } from '@/lib/firebase/config';
 import { collection, doc, writeBatch, serverTimestamp } from "firebase/firestore";
 
 const LOCAL_STORAGE_KEY = 'pendingExamData';
+const EXAMS_COLLECTION_NAME = 'chit1'; // Updated collection name
 
 const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'): ExamQuestion => {
   const baseQuestionProps = {
@@ -292,12 +293,12 @@ export default function CreateExamPage() {
     });
 
     const batch = writeBatch(db);
-    const examDocRef = doc(collection(db, "exams"));
+    const examDocRef = doc(collection(db, EXAMS_COLLECTION_NAME)); // Use updated collection name
 
     batch.set(examDocRef, {
       title: examTitle,
       description: examDescription,
-      userId: user.uid,
+      userId: user.uid, // User information is already included
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       totalQuestions: totalQuestions,
@@ -306,17 +307,17 @@ export default function CreateExamPage() {
     });
 
     examBlocks.forEach((block, blockIndex) => {
-      const blockDocRef = doc(collection(db, "exams", examDocRef.id, "questionBlocks")); // Use auto-generated ID
+      const blockDocRef = doc(collection(db, EXAMS_COLLECTION_NAME, examDocRef.id, "questionBlocks")); 
       batch.set(blockDocRef, {
-        originalBlockId: block.id, // Keep track of original local ID if needed for debugging or specific mapping
+        originalBlockId: block.id, 
         blockType: block.blockType,
         blockTitle: block.blockTitle || "",
         orderIndex: blockIndex,
-        examId: examDocRef.id, // Link back to parent exam
+        examId: examDocRef.id, 
       });
 
       block.questions.forEach((question, questionIndex) => {
-        const questionDocRef = doc(collection(db, "exams", examDocRef.id, "questionBlocks", blockDocRef.id, "questions")); // Use auto-generated ID
+        const questionDocRef = doc(collection(db, EXAMS_COLLECTION_NAME, examDocRef.id, "questionBlocks", blockDocRef.id, "questions")); 
 
         const questionData: Partial<ExamQuestion> & { orderIndex: number, type: QuestionType, blockId: string, examId: string } = {
           originalQuestionId: question.id,
@@ -444,3 +445,4 @@ export default function CreateExamPage() {
     </div>
   );
 }
+

@@ -1,3 +1,4 @@
+
 // src/app/(protected)/create-exam/page.tsx
 'use client';
 
@@ -7,9 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useState, type FormEvent } from "react";
-import type { ExamBlock, ExamQuestion, QuestionType } from "@/types/exam-types";
+import type { ExamBlock, ExamQuestion, QuestionType, Option, MatchingPair } from "@/types/exam-types";
 import { generateId } from "@/lib/utils";
-import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock"; // New component
+import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
 import { PlusCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -45,10 +46,13 @@ const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'
         // questionText for matching serves as instruction
         pairs: [{ id: generateId('pair'), premise: "", response: "" }],
       };
-    default: // Should not be reached if types are handled correctly
+    default: 
+      // Should not be reached if types are handled correctly.
+      // Fallback to multiple-choice to ensure a valid question structure.
+      console.warn(`createDefaultQuestion received an unknown type: ${type}. Defaulting to multiple-choice.`);
       return {
         ...baseQuestionProps,
-        type: 'multiple-choice', // Fallback
+        type: 'multiple-choice', 
         options: [
             { id: generateId('option'), text: "", isCorrect: true },
             { id: generateId('option'), text: "", isCorrect: false },
@@ -65,9 +69,9 @@ export default function CreateExamPage() {
   const { toast } = useToast();
 
   const handleAddExamBlock = () => {
-    let newBlockType: QuestionType = 'multiple-choice'; // Default for the very first block
+    let newBlockType: QuestionType = 'multiple-choice'; 
     if (examBlocks.length > 0) {
-      newBlockType = examBlocks[examBlocks.length - 1].blockType; // Inherit from last block
+      newBlockType = examBlocks[examBlocks.length - 1].blockType; 
     }
     const initialQuestion = createDefaultQuestion(newBlockType);
     const newBlock: ExamBlock = {
@@ -91,7 +95,7 @@ export default function CreateExamPage() {
     newBlocks[blockIndex] = {
       ...currentBlock,
       blockType: newType,
-      questions: [initialQuestion], // Reset questions in the block to one default of the new type
+      questions: [initialQuestion], 
     };
     setExamBlocks(newBlocks);
     toast({ title: "Block Type Changed", description: `Questions in block ${blockIndex + 1} reset for new type.`});
@@ -106,7 +110,70 @@ export default function CreateExamPage() {
   const handleAddQuestionToBlock = (blockIndex: number) => {
     const newBlocks = [...examBlocks];
     const block = newBlocks[blockIndex];
-    const newQuestion = createDefaultQuestion(block.blockType);
+    
+    // There will always be at least one question due to how blocks are initialized.
+    const lastQuestion = block.questions[block.questions.length - 1];
+    
+    const inheritedPoints = lastQuestion.points;
+    let newOptionsForMC: Option[] = [ // Default options for MC if not inheriting or malformed
+      { id: generateId('option'), text: "", isCorrect: true },
+      { id: generateId('option'), text: "", isCorrect: false },
+    ];
+
+    if (block.blockType === 'multiple-choice' && lastQuestion.type === 'multiple-choice') {
+      // Ensure options array exists and has elements. If not, default to 2 options.
+      const numOptions = (lastQuestion.options && lastQuestion.options.length > 0) ? lastQuestion.options.length : 2;
+      newOptionsForMC = Array.from({ length: numOptions }, (_, i) => ({
+        id: generateId('option'),
+        text: "",
+        isCorrect: i === 0 && numOptions > 0, // Make the first option correct if options exist
+      }));
+    }
+    
+    const baseNewQuestionProps = {
+      id: generateId('question'),
+      questionText: "", // New questions start with empty text
+      points: inheritedPoints,
+    };
+
+    let newQuestion: ExamQuestion;
+
+    switch (block.blockType) {
+      case 'multiple-choice':
+        newQuestion = {
+          ...baseNewQuestionProps,
+          type: 'multiple-choice',
+          options: newOptionsForMC,
+        };
+        break;
+      case 'true-false':
+        newQuestion = {
+          ...baseNewQuestionProps,
+          type: 'true-false',
+          correctAnswer: null, 
+        };
+        break;
+      case 'matching':
+        newQuestion = {
+          ...baseNewQuestionProps,
+          type: 'matching',
+          pairs: [{ id: generateId('pair'), premise: "", response: "" }], // New matching questions start with one pair
+        };
+        break;
+      default:
+        // This is a fallback, should not be reached with valid block types.
+        console.warn(`Unhandled block type in handleAddQuestionToBlock: ${block.blockType}. Defaulting to multiple-choice.`);
+        newQuestion = {
+          ...baseNewQuestionProps,
+          type: 'multiple-choice', // Fallback to MC
+          options: [ 
+              { id: generateId('option'), text: "", isCorrect: true },
+              { id: generateId('option'), text: "", isCorrect: false },
+          ],
+        };
+        break;
+    }
+
     block.questions.push(newQuestion);
     setExamBlocks(newBlocks);
   };
@@ -139,9 +206,8 @@ export default function CreateExamPage() {
       description: examDescription,
       blocks: examBlocks,
     };
-    console.log("Exam Data to save:", JSON.stringify(examData, null, 2)); // Pretty print for readability
+    console.log("Exam Data to save:", JSON.stringify(examData, null, 2)); 
     toast({ title: "Exam Saved (Simulated)", description: "Exam data logged to console."});
-    // Here you would typically send data to a backend or state management
   };
 
 
@@ -183,7 +249,7 @@ export default function CreateExamPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="text-2xl font-semibold">Question Blocks</CardTitle>
-            <CardDescription>Add blocks of questions. Each block contains questions of the same type. New blocks inherit the type of the previous block.</CardDescription>
+            <CardDescription>Add blocks of questions. Each block contains questions of the same type. New blocks inherit the type of the previous block. New questions inherit points and (for MCQs) option count from the previous question in the block.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {examBlocks.map((block, blockIndex) => (
@@ -225,3 +291,4 @@ export default function CreateExamPage() {
     </div>
   );
 }
+

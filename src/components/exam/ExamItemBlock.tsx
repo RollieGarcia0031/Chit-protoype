@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Trash2, PlusCircle } from "lucide-react";
-import type { ExamQuestion, QuestionType, Option, MatchingPair, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
+import type { ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
 import { generateId } from "@/lib/utils";
 
 interface ExamItemBlockProps {
@@ -29,6 +29,15 @@ const getAlphabetLetter = (index: number): string => {
 export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, itemIndex }: ExamItemBlockProps) {
   const handleQuestionTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     onItemChange({ ...item, questionText: e.target.value });
+  };
+
+  const handlePointsChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const points = parseInt(e.target.value, 10);
+    if (!isNaN(points) && points >= 0) { // Basic validation: non-negative integer
+      onItemChange({ ...item, points });
+    } else if (e.target.value === "") { // Allow clearing the input, default to 0 or handle as needed
+        onItemChange({ ...item, points: 0 });
+    }
   };
 
   // --- Multiple Choice Specific Handlers ---
@@ -121,16 +130,31 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
         </Button>
       </CardHeader>
       <CardContent className="space-y-4 px-4 pb-4">
-        <div>
-          <Label htmlFor={`questionText-${item.id}`} className="mb-1 block text-sm">Question Text / Instructions</Label>
-          <Textarea
-            id={`questionText-${item.id}`}
-            value={item.questionText}
-            onChange={handleQuestionTextChange}
-            placeholder={questionType === 'matching' ? "e.g., Match the terms with their definitions." : "e.g., What is the capital of France?"}
-            className="min-h-[70px] text-sm"
-          />
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 items-start">
+          <div className="space-y-1">
+            <Label htmlFor={`questionText-${item.id}`} className="text-sm">Question Text / Instructions</Label>
+            <Textarea
+              id={`questionText-${item.id}`}
+              value={item.questionText}
+              onChange={handleQuestionTextChange}
+              placeholder={questionType === 'matching' ? "e.g., Match the terms with their definitions." : "e.g., What is the capital of France?"}
+              className="min-h-[70px] text-sm"
+            />
+          </div>
+          <div className="space-y-1 md:w-24">
+            <Label htmlFor={`points-${item.id}`} className="text-sm">Points</Label>
+            <Input
+              id={`points-${item.id}`}
+              type="number"
+              value={item.points}
+              onChange={handlePointsChange}
+              min="0"
+              placeholder="Pts"
+              className="h-9 text-sm text-center"
+            />
+          </div>
         </div>
+        
 
         {/* Multiple Choice Fields */}
         {questionType === 'multiple-choice' && item.type === 'multiple-choice' && (

@@ -16,12 +16,17 @@ import { useToast } from "@/hooks/use-toast";
 
 // Helper to create a default question based on type
 const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'): ExamQuestion => {
+  const baseQuestionProps = {
+    id: generateId(idPrefix),
+    questionText: "",
+    points: 1, // Default points for a new question
+  };
+
   switch (type) {
     case 'multiple-choice':
       return {
-        id: generateId(idPrefix),
+        ...baseQuestionProps,
         type: 'multiple-choice',
-        questionText: "",
         options: [
           { id: generateId('option'), text: "", isCorrect: true },
           { id: generateId('option'), text: "", isCorrect: false },
@@ -29,23 +34,21 @@ const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'
       };
     case 'true-false':
       return {
-        id: generateId(idPrefix),
+        ...baseQuestionProps,
         type: 'true-false',
-        questionText: "",
         correctAnswer: null,
       };
     case 'matching':
       return {
-        id: generateId(idPrefix),
+        ...baseQuestionProps,
         type: 'matching',
-        questionText: "", // Serves as instruction
+        // questionText for matching serves as instruction
         pairs: [{ id: generateId('pair'), premise: "", response: "" }],
       };
     default: // Should not be reached if types are handled correctly
       return {
-        id: generateId(idPrefix),
+        ...baseQuestionProps,
         type: 'multiple-choice', // Fallback
-        questionText: "",
         options: [
             { id: generateId('option'), text: "", isCorrect: true },
             { id: generateId('option'), text: "", isCorrect: false },
@@ -136,7 +139,7 @@ export default function CreateExamPage() {
       description: examDescription,
       blocks: examBlocks,
     };
-    console.log("Exam Data to save:", examData);
+    console.log("Exam Data to save:", JSON.stringify(examData, null, 2)); // Pretty print for readability
     toast({ title: "Exam Saved (Simulated)", description: "Exam data logged to console."});
     // Here you would typically send data to a backend or state management
   };

@@ -8,6 +8,7 @@ export interface Option {
 export interface BaseQuestion {
   id: string; // Unique ID for each question
   questionText: string;
+  points: number; // Points for this question
 }
 
 export interface MultipleChoiceQuestion extends BaseQuestion {

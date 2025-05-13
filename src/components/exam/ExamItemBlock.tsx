@@ -1,3 +1,4 @@
+
 // src/components/exam/ExamItemBlock.tsx
 'use client';
 
@@ -9,10 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Trash2, PlusCircle, Sparkles, AlertCircle } from "lucide-react";
+import { Trash2, PlusCircle } from "lucide-react";
 import type { ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
 import { generateId } from "@/lib/utils";
-import type { QuestionSuggestion } from "@/ai/flows/analyze-exam-flow";
 
 interface ExamItemBlockProps {
   item: ExamQuestion;
@@ -21,7 +21,6 @@ interface ExamItemBlockProps {
   onItemRemove: () => void;
   itemIndex: number; 
   disabled?: boolean;
-  aiFeedback?: QuestionSuggestion; // Added AI feedback prop
 }
 
 // Helper function to get alphabet letter for options
@@ -29,7 +28,7 @@ const getAlphabetLetter = (index: number): string => {
   return String.fromCharCode(65 + index); // 65 is ASCII for 'A'
 };
 
-export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, itemIndex, disabled = false, aiFeedback }: ExamItemBlockProps) {
+export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, itemIndex, disabled = false }: ExamItemBlockProps) {
   const handleQuestionTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     onItemChange({ ...item, questionText: e.target.value });
   };
@@ -259,25 +258,6 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
             <Button type="button" variant="outline" onClick={handleAddPair} size="sm" className="text-xs" disabled={disabled}>
               <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Add Pair
             </Button>
-          </div>
-        )}
-
-        {/* AI Feedback Display */}
-        {aiFeedback && aiFeedback.feedback && (
-          <div className={`mt-3 p-3 rounded-md text-sm border ${
-            aiFeedback.hasIssue 
-              ? 'bg-destructive/10 border-destructive/40 text-destructive-foreground' 
-              : 'bg-blue-500/10 border-blue-500/40 text-blue-700 dark:text-blue-300'
-          }`}>
-            <div className="flex items-center font-medium">
-              {aiFeedback.hasIssue ? (
-                <AlertCircle className={`mr-2 h-4.5 w-4.5 ${aiFeedback.hasIssue ? 'text-destructive' : 'text-blue-600'}`} />
-              ) : (
-                <Sparkles className={`mr-2 h-4.5 w-4.5 ${aiFeedback.hasIssue ? 'text-destructive' : 'text-blue-600'}`} />
-              )}
-              AI Suggestion
-            </div>
-            <p className="mt-1 ml-[26px] text-xs whitespace-pre-wrap">{aiFeedback.feedback}</p>
           </div>
         )}
       </CardContent>

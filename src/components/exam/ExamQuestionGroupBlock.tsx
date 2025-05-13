@@ -1,3 +1,4 @@
+
 // src/components/exam/ExamQuestionGroupBlock.tsx
 'use client';
 
@@ -10,7 +11,6 @@ import type { ExamBlock, ExamQuestion, QuestionType } from "@/types/exam-types";
 import { QUESTION_TYPES } from "@/types/exam-types";
 import { ExamItemBlock } from "./ExamItemBlock";
 import { Textarea } from "../ui/textarea";
-import type { QuestionSuggestion } from "@/ai/flows/analyze-exam-flow";
 
 
 interface ExamQuestionGroupBlockProps {
@@ -23,7 +23,6 @@ interface ExamQuestionGroupBlockProps {
   onRemoveQuestionFromBlock: (blockIndex: number, questionIndex: number) => void;
   onRemoveBlock: (blockIndex: number) => void;
   disabled?: boolean;
-  aiFeedbacks?: (QuestionSuggestion | undefined)[]; // Array of feedback, one per question in this block
 }
 
 export function ExamQuestionGroupBlock({
@@ -36,7 +35,6 @@ export function ExamQuestionGroupBlock({
   onRemoveQuestionFromBlock,
   onRemoveBlock,
   disabled = false,
-  aiFeedbacks = [],
 }: ExamQuestionGroupBlockProps) {
   return (
     <Card className="shadow-md border-border">
@@ -93,7 +91,6 @@ export function ExamQuestionGroupBlock({
               onItemRemove={() => onRemoveQuestionFromBlock(blockIndex, questionIndex)}
               itemIndex={questionIndex}
               disabled={disabled}
-              aiFeedback={aiFeedbacks[questionIndex]} // Pass the specific feedback for this question
             />
           ))}
         </div>

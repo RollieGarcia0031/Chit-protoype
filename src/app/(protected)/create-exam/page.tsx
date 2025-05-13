@@ -7,12 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
-import { useState, type FormEvent, useEffect, useCallback, useMemo } from "react";
+import { useState, type FormEvent, useEffect, useCallback } from "react";
 import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
 import { generateId } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
-import { PlusCircle, Loader2, Sparkles, Info } from "lucide-react";
+import { PlusCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from '@/lib/firebase/config';
@@ -20,8 +19,6 @@ import { collection, doc, writeBatch, serverTimestamp, getDoc, getDocs, query, o
 import { useSearchParams, useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EXAMS_COLLECTION_NAME } from "@/config/firebase-constants";
-import { analyzeExam, type AnalyzeExamInput, type QuestionSuggestion } from "@/ai/flows/analyze-exam-flow";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 
 const LOCAL_STORAGE_KEY = 'pendingExamData';
@@ -68,22 +65,6 @@ const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'
   }
 };
 
-// Debounce utility function
-function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
-  let timeout: NodeJS.Timeout | null = null;
-
-  const debounced = (...args: Parameters<F>) => {
-    if (timeout !== null) {
-      clearTimeout(timeout);
-      timeout = null;
-    }
-    timeout = setTimeout(() => func(...args), waitFor);
-  };
-
-  return debounced as (...args: Parameters<F>) => ReturnType<F>;
-}
-
-
 export default function CreateExamPage() {
   const [examTitle, setExamTitle] = useState("");
   const [examDescription, setExamDescription] = useState("");
@@ -97,76 +78,6 @@ export default function CreateExamPage() {
   const router = useRouter();
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
   const [isLoadingExamData, setIsLoadingExamData] = useState(false);
-
-  // AI Suggestions State
-  const [aiSuggestionsEnabled, setAiSuggestionsEnabled] = useState(false);
-  const [aiFeedbackList, setAiFeedbackList] = useState<QuestionSuggestion[]>([]);
-  const [isAnalyzingWithAI, setIsAnalyzingWithAI] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  const triggerAIAnalysis = useCallback(async () => {
-    if (!aiSuggestionsEnabled || isSaving || isLoadingExamData) {
-      // setAiFeedbackList([]); // Clear old feedback if AI is disabled or busy - Handled by useEffect
-      // setAiError(null);
-      return;
-    }
-    
-    const hasQuestions = examBlocks.some(block => block.questions.length > 0);
-    if (!examTitle.trim() && !hasQuestions) {
-        // Don't run AI if there's nothing substantial to analyze
-        // setAiFeedbackList([]); // Handled by useEffect
-        // setAiError(null);
-        return;
-    }
-
-    setIsAnalyzingWithAI(true);
-    setAiError(null);
-    try {
-      const analysisInput: AnalyzeExamInput = {
-        examTitle: examTitle || "Untitled Exam",
-        examDescription: examDescription,
-        examBlocks: examBlocks.map(block => ({
-          ...block,
-          id: block.id || generateId('block-ai'), 
-          questions: block.questions.map(q => ({
-            ...q,
-            id: q.id || generateId('question-ai'),
-            ...(q.type === 'multiple-choice' && {
-              options: (q as MultipleChoiceQuestion).options.map(opt => ({...opt, id: opt.id || generateId('option-ai') }))
-            }),
-            ...(q.type === 'matching' && {
-              pairs: (q as MatchingTypeQuestion).pairs.map(p => ({...p, id: p.id || generateId('pair-ai')}))
-            }),
-          })) as any[] 
-        })),
-      };
-      const result = await analyzeExam(analysisInput);
-      setAiFeedbackList(result.suggestions || []);
-    } catch (error) {
-      console.error("AI analysis error:", error);
-      toast({ title: "AI Analysis Failed", description: "Could not get AI suggestions.", variant: "destructive" });
-      setAiError("An error occurred while fetching AI suggestions.");
-      setAiFeedbackList([]);
-    } finally {
-      setIsAnalyzingWithAI(false);
-    }
-  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, toast, isSaving, isLoadingExamData]);
-
-  const debouncedAIAnalysis = useMemo(() => debounce(triggerAIAnalysis, 1500), [triggerAIAnalysis]);
-
-  useEffect(() => {
-    if (aiSuggestionsEnabled && isInitialLoadComplete && !isLoadingExamData && !isSaving) {
-      debouncedAIAnalysis();
-    } else if (!aiSuggestionsEnabled) {
-        if (aiFeedbackList.length > 0) {
-            setAiFeedbackList([]);
-        }
-        if (aiError !== null) {
-            setAiError(null);
-        }
-    }
-  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, debouncedAIAnalysis, isInitialLoadComplete, isLoadingExamData, isSaving, aiFeedbackList, aiError]);
-
 
   // Effect to determine mode (create or edit) and load initial data accordingly
   useEffect(() => {
@@ -230,7 +141,6 @@ export default function CreateExamPage() {
       setExamTitle("");
       setExamDescription("");
       setExamBlocks([]);
-      setAiFeedbackList([]); // Clear any existing AI feedback
       
       try {
         const examDocRef = doc(db, EXAMS_COLLECTION_NAME, editingExamId);
@@ -313,15 +223,12 @@ export default function CreateExamPage() {
         router.push('/exams');
       } finally {
         setIsLoadingExamData(false); // Loading complete
-        // Trigger AI analysis if enabled, after loading exam data and states are stable.
-        if (aiSuggestionsEnabled) {
-            triggerAIAnalysis();
-        }
       }
     };
 
     fetchExamForEditing();
-  }, [editingExamId, user, isLoadingExamData, router, toast]); // Removed triggerAIAnalysis and aiSuggestionsEnabled
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingExamId, user, router, toast]); // isLoadingExamData is intentionally kept in deps to trigger fetch on its change
 
 
   // Effect to save to local storage (only in create mode)
@@ -437,8 +344,6 @@ export default function CreateExamPage() {
     setExamTitle("");
     setExamDescription("");
     setExamBlocks([]);
-    setAiFeedbackList([]);
-    setAiError(null);
     if (!editingExamId && typeof window !== 'undefined') { 
       localStorage.removeItem(LOCAL_STORAGE_KEY);
     }
@@ -630,57 +535,12 @@ export default function CreateExamPage() {
         </Card>
 
         <Card className="shadow-lg">
-            <CardHeader>
-                <CardTitle className="text-2xl font-semibold">AI Assistant</CardTitle>
-                <CardDescription>
-                Enable AI suggestions to get feedback on your questions and answers. 
-                Suggestions will appear below each question as you type.
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="flex items-center space-x-3">
-                    <Switch
-                        id="ai-suggestions-switch"
-                        checked={aiSuggestionsEnabled}
-                        onCheckedChange={setAiSuggestionsEnabled}
-                        disabled={isSaving || isLoadingExamData}
-                        aria-label="Toggle AI suggestions"
-                    />
-                    <Label htmlFor="ai-suggestions-switch" className="text-base">
-                        Enable AI Suggestions
-                    </Label>
-                    {isAnalyzingWithAI && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
-                </div>
-                {aiSuggestionsEnabled && !isAnalyzingWithAI && aiFeedbackList.length === 0 && !aiError && examBlocks.some(b => b.questions.length > 0) && (
-                     <Alert variant="default" className="bg-blue-500/5 border-blue-500/30">
-                        <Info className="h-4 w-4 text-blue-600" />
-                        <AlertTitle className="text-blue-700">AI Ready</AlertTitle>
-                        <AlertDescription className="text-blue-600">
-                            AI suggestions are active. Feedback will appear as you build your exam.
-                        </AlertDescription>
-                    </Alert>
-                )}
-                {aiSuggestionsEnabled && aiError && (
-                    <Alert variant="destructive">
-                        <Info className="h-4 w-4" />
-                        <AlertTitle>AI Error</AlertTitle>
-                        <AlertDescription>
-                            {aiError} Please try toggling AI suggestions off and on, or check your connection.
-                        </AlertDescription>
-                    </Alert>
-                )}
-            </CardContent>
-        </Card>
-
-
-        <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="text-2xl font-semibold">Question Blocks</CardTitle>
             <CardDescription>Add blocks of questions. Each block contains questions of the same type. New blocks inherit the type of the previous block. New questions inherit points and (for MCQs) option count from the previous question in the block.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {examBlocks.map((block, blockIndex) => {
-              const blockSpecificFeedback = block.questions.map(q => aiFeedbackList.find(f => f.questionId === q.id));
               return (
                 <ExamQuestionGroupBlock
                   key={block.id}
@@ -693,7 +553,6 @@ export default function CreateExamPage() {
                   onRemoveQuestionFromBlock={handleRemoveQuestionFromBlock}
                   onRemoveBlock={handleRemoveExamBlock}
                   disabled={isSaving || isLoadingExamData}
-                  aiFeedbacks={aiSuggestionsEnabled ? blockSpecificFeedback : []}
                 />
               );
             })}
@@ -717,4 +576,3 @@ export default function CreateExamPage() {
     </div>
   );
 }
-

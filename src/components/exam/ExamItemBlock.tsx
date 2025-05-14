@@ -16,10 +16,10 @@ import { generateId } from "@/lib/utils";
 
 interface ExamItemBlockProps {
   item: ExamQuestion;
-  questionType: QuestionType; 
+  questionType: QuestionType;
   onItemChange: (item: ExamQuestion) => void;
   onItemRemove: () => void;
-  itemIndex: number; 
+  itemIndex: number;
   disabled?: boolean;
 }
 
@@ -35,9 +35,9 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
 
   const handlePointsChange = (e: ChangeEvent<HTMLInputElement>) => {
     const points = parseInt(e.target.value, 10);
-    if (!isNaN(points) && points >= 0) { 
+    if (!isNaN(points) && points >= 0) {
       onItemChange({ ...item, points });
-    } else if (e.target.value === "") { 
+    } else if (e.target.value === "") {
         onItemChange({ ...item, points: 0 });
     }
   };
@@ -60,7 +60,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
       onItemChange({ ...item, options: newOptions } as MultipleChoiceQuestion);
     }
   };
-  
+
   const handleAddOption = () => {
     if (item.type === 'multiple-choice') {
       const currentOptions = (item as MultipleChoiceQuestion).options;
@@ -69,7 +69,6 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
         newOptions[0].isCorrect = true;
       } else if (currentOptions.length > 0 && !currentOptions.some(opt => opt.isCorrect) && newOptions.length > 0) {
         // If no option was correct before and we add more, make the first one correct by default
-        // This logic might need refinement based on desired UX for adding options when none are correct
         if (newOptions.length > 0) newOptions[0].isCorrect = true;
       }
       onItemChange({ ...item, options: newOptions } as MultipleChoiceQuestion);
@@ -79,7 +78,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
   const handleRemoveOption = (optionIndex: number) => {
     if (item.type === 'multiple-choice') {
       const currentOptions = (item as MultipleChoiceQuestion).options;
-      if (currentOptions.length <= 1) return; 
+      if (currentOptions.length <= 1) return;
       const newOptions = currentOptions.filter((_, i) => i !== optionIndex);
       // If the removed option was the only correct one, make the new first option correct
       if (!newOptions.some(opt => opt.isCorrect) && newOptions.length > 0) {
@@ -97,35 +96,27 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
   };
 
   // --- Matching Type Specific Handlers ---
-  const handlePairPremiseChange = (pairIndex: number, premise: string) => {
+  const handleMatchingQuestionChange = (text: string) => {
     if (item.type === 'matching') {
-      const newPairs = [...(item as MatchingTypeQuestion).pairs];
-      newPairs[pairIndex].premise = premise;
-      onItemChange({ ...item, pairs: newPairs } as MatchingTypeQuestion);
+      const updatedPairs = [...(item as MatchingTypeQuestion).pairs];
+      if (updatedPairs.length === 0) { // Should not happen with current creation logic
+        updatedPairs.push({ id: generateId('pair'), premise: text, response: "" });
+      } else {
+        updatedPairs[0].premise = text;
+      }
+      onItemChange({ ...item, pairs: updatedPairs } as MatchingTypeQuestion);
     }
   };
 
-  const handlePairResponseChange = (pairIndex: number, response: string) => {
+  const handleMatchingAnswerChange = (text: string) => {
     if (item.type === 'matching') {
-      const newPairs = [...(item as MatchingTypeQuestion).pairs];
-      newPairs[pairIndex].response = response;
-      onItemChange({ ...item, pairs: newPairs } as MatchingTypeQuestion);
-    }
-  };
-
-  const handleAddPair = () => {
-    if (item.type === 'matching') {
-      const newPairs = [...(item as MatchingTypeQuestion).pairs, { id: generateId('pair'), premise: "", response: "" }];
-      onItemChange({ ...item, pairs: newPairs } as MatchingTypeQuestion);
-    }
-  };
-
-  const handleRemovePair = (pairIndex: number) => {
-    if (item.type === 'matching') {
-      const currentPairs = (item as MatchingTypeQuestion).pairs;
-      if (currentPairs.length <= 1) return; 
-      const newPairs = currentPairs.filter((_, i) => i !== pairIndex);
-      onItemChange({ ...item, pairs: newPairs } as MatchingTypeQuestion);
+      const updatedPairs = [...(item as MatchingTypeQuestion).pairs];
+       if (updatedPairs.length === 0) { // Should not happen
+        updatedPairs.push({ id: generateId('pair'), premise: "", response: text });
+      } else {
+        updatedPairs[0].response = text;
+      }
+      onItemChange({ ...item, pairs: updatedPairs } as MatchingTypeQuestion);
     }
   };
 
@@ -135,7 +126,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
       <CardHeader className="flex flex-row items-center justify-between py-2 px-3 sm:py-3 sm:px-4 gap-2">
         <CardTitle className="text-xs sm:text-sm md:text-base font-medium flex-shrink-0">Question {itemIndex + 1}</CardTitle>
         <div className="flex items-center gap-2 ml-auto">
-            <div className="space-y-0"> {/* Points input always in header, shown/hidden by md:hidden on its desktop counterpart */}
+            <div className="space-y-0">
                 <Label htmlFor={`points-${item.id}-mobile`} className="sr-only">Points</Label>
                 <Input
                 id={`points-${item.id}-mobile`}
@@ -154,33 +145,35 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
         </div>
       </CardHeader>
       <CardContent className="space-y-3 sm:space-y-4 px-3 pb-3 sm:px-4 sm:pb-4">
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 sm:gap-4 items-start">
-          <div className="space-y-1">
-            <Label htmlFor={`questionText-${item.id}`} className="text-xs sm:text-sm">Question Text / Instructions</Label>
-            <Textarea
-              id={`questionText-${item.id}`}
-              value={item.questionText}
-              onChange={handleQuestionTextChange}
-              placeholder={questionType === 'matching' ? "e.g., Match the terms with their definitions." : "e.g., What is the capital of France?"}
-              className="min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm"
-              disabled={disabled}
-            />
+        {questionType !== 'matching' && (
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 sm:gap-4 items-start">
+            <div className="space-y-1">
+              <Label htmlFor={`questionText-${item.id}`} className="text-xs sm:text-sm">Question Text / Instructions</Label>
+              <Textarea
+                id={`questionText-${item.id}`}
+                value={item.questionText}
+                onChange={handleQuestionTextChange}
+                placeholder={questionType === 'matching' ? "e.g., Match the terms with their definitions." : "e.g., What is the capital of France?"}
+                className="min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm"
+                disabled={disabled}
+              />
+            </div>
+            <div className="space-y-1 w-20 sm:w-24 hidden md:block">
+              <Label htmlFor={`points-${item.id}-desktop`} className="text-xs sm:text-sm">Points</Label>
+              <Input
+                id={`points-${item.id}-desktop`}
+                type="number"
+                value={item.points}
+                onChange={handlePointsChange}
+                min="0"
+                placeholder="Pts"
+                className="h-8 sm:h-9 text-xs sm:text-sm text-center"
+                disabled={disabled}
+              />
+            </div>
           </div>
-          <div className="space-y-1 w-20 sm:w-24 hidden md:block"> {/* Points input for desktop, next to textarea */}
-            <Label htmlFor={`points-${item.id}-desktop`} className="text-xs sm:text-sm">Points</Label>
-            <Input
-              id={`points-${item.id}-desktop`}
-              type="number"
-              value={item.points}
-              onChange={handlePointsChange}
-              min="0"
-              placeholder="Pts"
-              className="h-8 sm:h-9 text-xs sm:text-sm text-center"
-              disabled={disabled}
-            />
-          </div>
-        </div>
-        
+        )}
+
 
         {/* Multiple Choice Fields */}
         {questionType === 'multiple-choice' && item.type === 'multiple-choice' && (
@@ -241,43 +234,41 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
           </div>
         )}
 
-        {/* Matching Type Fields */}
+        {/* Matching Type Fields - Simplified to one pair per question item */}
         {questionType === 'matching' && item.type === 'matching' && (
-          <div className="space-y-1.5 sm:space-y-2">
-            <Label className="block text-xs sm:text-sm font-medium">Matching Pairs</Label>
-            {(item as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (
-              <div key={pair.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto] gap-1.5 sm:gap-2 items-center">
+          <div className="space-y-2 sm:space-y-3">
+             {/* General instructions for the question item (if any) are in item.questionText, handled by block's instructions usually for matching */}
+             {/* If item.questionText is meant to be specific to THIS pair, it could be displayed here.
+                 For now, assuming blockTitle in ExamQuestionGroupBlock covers instructions for matching sections.
+                 If not, the Textarea for questionText (currently hidden for 'matching') would need to be shown.
+             */}
+             <div className="space-y-1">
+                <Label htmlFor={`matching-question-${item.id}`} className="text-xs sm:text-sm">Question / Term</Label>
                 <Input
-                  type="text"
-                  value={pair.premise}
-                  onChange={(e) => handlePairPremiseChange(pairIndex, e.target.value)}
-                  placeholder={`Premise ${pairIndex + 1}`}
-                  className="h-8 sm:h-9 text-xs sm:text-sm"
-                  disabled={disabled}
+                    id={`matching-question-${item.id}`}
+                    type="text"
+                    value={(item as MatchingTypeQuestion).pairs[0]?.premise || ""}
+                    onChange={(e) => handleMatchingQuestionChange(e.target.value)}
+                    placeholder="e.g., Photosynthesis"
+                    className="h-8 sm:h-9 text-xs sm:text-sm"
+                    disabled={disabled}
                 />
-                <span className="text-center text-muted-foreground hidden md:inline text-xs sm:text-sm">=</span>
+             </div>
+             <div className="space-y-1">
+                <Label htmlFor={`matching-answer-${item.id}`} className="text-xs sm:text-sm">Answer / Definition</Label>
                 <Input
-                  type="text"
-                  value={pair.response}
-                  onChange={(e) => handlePairResponseChange(pairIndex, e.target.value)}
-                  placeholder={`Response ${pairIndex + 1}`}
-                  className="h-8 sm:h-9 text-xs sm:text-sm"
-                  disabled={disabled}
+                    id={`matching-answer-${item.id}`}
+                    type="text"
+                    value={(item as MatchingTypeQuestion).pairs[0]?.response || ""}
+                    onChange={(e) => handleMatchingAnswerChange(e.target.value)}
+                    placeholder="e.g., Process plants use to make food"
+                    className="h-8 sm:h-9 text-xs sm:text-sm"
+                    disabled={disabled}
                 />
-                 {(item as MatchingTypeQuestion).pairs.length > 1 && (
-                  <Button type="button" variant="ghost" size="icon" onClick={() => handleRemovePair(pairIndex)} aria-label={`Remove pair ${pairIndex + 1}`} disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8">
-                    <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-muted-foreground" />
-                  </Button>
-                )}
-              </div>
-            ))}
-            <Button type="button" variant="outline" onClick={handleAddPair} size="sm" className="text-xs h-7 sm:h-8 px-2 sm:px-3" disabled={disabled}>
-              <PlusCircle className="mr-1 sm:mr-1.5 h-3 w-3 sm:h-3.5 sm:w-3.5" /> Add Pair
-            </Button>
+             </div>
           </div>
         )}
       </CardContent>
     </Card>
   );
 }
-

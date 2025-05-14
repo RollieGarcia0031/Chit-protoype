@@ -10,12 +10,12 @@ export default function HomePage() {
       {/* Hero Section */}
       <div className="relative w-full max-w-4xl aspect-[4/5] sm:aspect-[16/10] md:aspect-[16/9] lg:aspect-[2/1] rounded-lg overflow-hidden shadow-xl">
         <Image
-          src="https://placehold.co/1280x500.png"
-          alt="Abstract background representing smart exam creation"
+          src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=1280&h=500&fit=crop"
+          alt="Modern desk setup with laptop and monitor"
           layout="fill"
           objectFit="cover"
           priority
-          data-ai-hint="modern classroom"
+          data-ai-hint="desk workspace"
         />
         <div className="absolute inset-0 flex flex-col items-center justify-center p-6 py-10 sm:p-8 sm:py-12 md:p-10 md:py-16 text-foreground dark:text-primary-foreground">
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl text-foreground dark:text-primary-foreground">

@@ -61,6 +61,7 @@ export function AppSidebar() {
               asChild
               isActive={pathname === '/'}
               tooltip={isExpanded ? undefined : "Home"}
+              className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
               <Link href="/" className="flex items-center">
                 <Home />
@@ -77,6 +78,7 @@ export function AppSidebar() {
                   asChild
                   isActive={pathname === '/create-exam'}
                   tooltip={isExpanded ? undefined : "Create Exam"}
+                  className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 >
                   <Link href="/create-exam" className="flex items-center">
                     <FilePlus2 />
@@ -89,6 +91,7 @@ export function AppSidebar() {
                   asChild
                   isActive={pathname === '/exams'}
                   tooltip={isExpanded ? undefined : "View Exams"}
+                  className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 >
                   <Link href="/exams" className="flex items-center">
                     <ListChecks />
@@ -101,6 +104,7 @@ export function AppSidebar() {
                   asChild
                   isActive={pathname === '/render-exam'}
                   tooltip={isExpanded ? undefined : "Render Exam"}
+                  className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 >
                   <Link href="/render-exam" className="flex items-center">
                     <ClipboardCheck />
@@ -165,9 +169,9 @@ export function AppSidebar() {
         ) : (
           <div className={`flex gap-2 ${isExpanded ? 'flex-col' : 'flex-col items-center'}`}>
             <Button
-              variant="default" // Changed to default variant
+              variant="default"
               asChild
-              className="w-full" // Default variant handles colors
+              className="w-full"
               title={isExpanded ? "" : "Login"}
             >
               <Link href="/login" className={`flex items-center ${isExpanded ? 'justify-start pl-3' : 'justify-center aspect-square p-0 w-10 h-10'}`}>
@@ -176,9 +180,9 @@ export function AppSidebar() {
               </Link>
             </Button>
             <Button
-              variant="default" // Changed to default variant
+              variant="default"
               asChild
-              className="w-full" // Default variant handles colors
+              className="w-full"
               title={isExpanded ? "" : "Sign Up"}
             >
               <Link href="/signup" className={`flex items-center ${isExpanded ? 'justify-start pl-3' : 'justify-center aspect-square p-0 w-10 h-10'}`}>

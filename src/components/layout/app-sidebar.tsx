@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { ChitLogo } from '@/components/icons/logo';
 import { Button } from '@/components/ui/button';
-import { Home, LogIn, UserPlus, LogOut, FilePlus2, ListChecks, ClipboardCheck } from 'lucide-react'; // Added ClipboardCheck
+import { Home, LogIn, UserPlus, LogOut, FilePlus2, ListChecks, ClipboardCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
   DropdownMenu,
@@ -165,23 +165,23 @@ export function AppSidebar() {
         ) : (
           <div className={`flex gap-2 ${isExpanded ? 'flex-col' : 'flex-col items-center'}`}>
             <Button
-              variant="ghost"
+              variant="default" // Changed to default variant
               asChild
-              className="w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="w-full" // Default variant handles colors
               title={isExpanded ? "" : "Login"}
             >
-              <Link href="/login" className={`flex items-center ${isExpanded ? 'justify-center' : 'justify-center aspect-square p-0 w-10 h-10'}`}>
+              <Link href="/login" className={`flex items-center ${isExpanded ? 'justify-start pl-3' : 'justify-center aspect-square p-0 w-10 h-10'}`}>
                 <LogIn />
                 {isExpanded && <span className="ml-2">Login</span>}
               </Link>
             </Button>
             <Button
-              variant="ghost"
+              variant="default" // Changed to default variant
               asChild
-              className="w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="w-full" // Default variant handles colors
               title={isExpanded ? "" : "Sign Up"}
             >
-              <Link href="/signup" className={`flex items-center ${isExpanded ? 'justify-center' : 'justify-center aspect-square p-0 w-10 h-10'}`}>
+              <Link href="/signup" className={`flex items-center ${isExpanded ? 'justify-start pl-3' : 'justify-center aspect-square p-0 w-10 h-10'}`}>
                 <UserPlus />
                 {isExpanded && <span className="ml-2">Sign Up</span>}
               </Link>

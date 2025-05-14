@@ -8,7 +8,7 @@ export default function HomePage() {
   return (
     <div className="flex flex-col items-center justify-center space-y-8 sm:space-y-12 text-center">
       {/* Hero Section */}
-      <div className="relative w-full max-w-4xl aspect-[16/9] sm:aspect-[2/1] md:aspect-[16/7] rounded-lg overflow-hidden shadow-xl">
+      <div className="relative w-full max-w-4xl aspect-[4/5] sm:aspect-[16/10] md:aspect-[16/9] lg:aspect-[2/1] rounded-lg overflow-hidden shadow-xl">
         <Image
           src="https://placehold.co/1280x500.png"
           alt="Abstract background representing smart exam creation"
@@ -107,5 +107,3 @@ export default function HomePage() {
     </div>
   );
 }
-
-    

@@ -35,7 +35,7 @@ import { saveAs } from 'file-saver';
 const getAlphabetLetter = (index: number): string => String.fromCharCode(65 + index);
 
 const toRoman = (num: number): string => {
-  if (num < 1 || num > 3999) return String(num); 
+  if (num < 1 || num > 3999) return String(num);
   const romanNumerals: Array<[number, string]> = [
     [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
     [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
@@ -58,13 +58,13 @@ const getQuestionTypeLabel = (type: QuestionType): string => {
 };
 
 
-function ExamPreviewPlaceholder({ 
-    exam, 
+function ExamPreviewPlaceholder({
+    exam,
     onBack,
     onDownloadDocx,
-    isDownloadingDocxFile 
-}: { 
-    exam: FullExamData; 
+    isDownloadingDocxFile
+}: {
+    exam: FullExamData;
     onBack: () => void;
     onDownloadDocx: () => Promise<void>;
     isDownloadingDocxFile: boolean;
@@ -92,53 +92,68 @@ function ExamPreviewPlaceholder({
         </div>
       </CardHeader>
       <CardContent className="h-[calc(100vh-300px)] min-h-[400px] sm:min-h-[500px] p-3 sm:p-6 border rounded-md bg-muted/30 overflow-auto">
-        <div className="prose prose-sm max-w-none"> 
-            <h1 className="text-center text-xl sm:text-2xl font-bold mb-2 text-foreground">{exam.title}</h1>
-            
-            <div className="flex justify-between text-xs sm:text-sm mb-4 text-foreground">
+        <div className="prose prose-sm max-w-none text-black">
+            <h1 className="text-center text-xl sm:text-2xl font-bold mb-2 text-black">{exam.title}</h1>
+
+            <div className="flex justify-between text-xs sm:text-sm mb-4 text-black">
                 <span>Name: _________________________</span>
                 <span>Score: ____________</span>
             </div>
 
-            {exam.description && <p className="text-center text-sm sm:text-base text-foreground italic mb-4">{exam.description}</p>}
-            
+            {exam.description && <p className="text-center text-sm sm:text-base text-black italic mb-4">{exam.description}</p>}
+
             <hr className="my-3 sm:my-4"/>
 
             {exam.examBlocks.map((block, blockIndex) => (
                 <div key={block.id} className="mb-4 sm:mb-6">
-                    <h2 className="text-base sm:text-lg font-semibold mb-1 text-foreground"> 
+                    <h2 className="text-base sm:text-lg font-semibold mb-1 text-black">
                         {toRoman(blockIndex + 1)}. {getQuestionTypeLabel(block.blockType)}
                     </h2>
-                    {block.blockTitle && <p className="text-sm sm:text-base text-foreground mb-2 italic">{block.blockTitle}</p>} 
-                    
+                    {block.blockTitle && <p className="text-sm sm:text-base text-black mb-2 italic">{block.blockTitle}</p>}
+
                     {block.questions.map((question, qIndex) => {
                         const globalQuestionNumber = exam.examBlocks.slice(0, blockIndex).reduce((acc, b) => acc + b.questions.length, 0) + qIndex + 1;
                         return (
                             <div key={question.id} className="mb-2 sm:mb-3 pl-2 sm:pl-4">
-                                <p className="font-medium text-sm sm:text-base text-foreground"> 
+                                <p className="font-medium text-sm sm:text-base text-black">
                                     {question.type === 'true-false' ? '____ ' : ''}
-                                    {globalQuestionNumber}. {question.questionText}
+                                    {globalQuestionNumber}.{' '}
+                                    {question.type === 'matching'
+                                        ? (question as MatchingTypeQuestion).pairs[0]?.premise
+                                        : question.questionText}
+                                    {question.type === 'matching' && (
+                                        <span className="inline-block w-12 sm:w-16 border-b border-black/50 ml-2"></span>
+                                    )}
                                 </p>
                                 {question.type === 'multiple-choice' && (
                                     <ul className="list-none pl-4 sm:pl-6 mt-1 space-y-0.5">
                                         {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
-                                            <li key={opt.id} className="text-sm sm:text-base text-foreground">{getAlphabetLetter(optIndex)}. {opt.text}</li> 
+                                            <li key={opt.id} className="text-sm sm:text-base text-black">{getAlphabetLetter(optIndex)}. {opt.text}</li>
                                         ))}
                                     </ul>
-                                )}
-                                {question.type === 'matching' && (
-                                    <div className="pl-4 sm:pl-6 mt-1 space-y-1">
-                                        {(question as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (
-                                            <p key={pair.id} className="text-sm sm:text-base text-foreground"> 
-                                                {pairIndex + 1}. {pair.premise} <span className="inline-block w-16 sm:w-24 border-b border-foreground/50 ml-2"></span>
-                                            </p>
-                                        ))}
-                                         <p className="text-[0.625rem] sm:text-xs text-foreground mt-1"> (Responses for matching would be listed separately in a real exam paper) </p> 
-                                    </div>
                                 )}
                             </div>
                         );
                     })}
+                    {block.blockType === 'matching' && (
+                        <div className="mt-3 sm:mt-4 pl-2 sm:pl-4">
+                            <h3 className="text-sm sm:text-base font-semibold mb-2 text-black">Choices:</h3>
+                            <ul className="list-none pl-4 sm:pl-6 space-y-0.5 columns-1 sm:columns-2 md:columns-3 gap-x-4">
+                                {block.questions
+                                    .filter(qFile => qFile.type === 'matching')
+                                    .map((qFile, choiceIndex) => {
+                                        const matchQFile = qFile as MatchingTypeQuestion;
+                                        const letter = matchQFile.pairs[0]?.responseLetter || getAlphabetLetter(choiceIndex);
+                                        const responseText = matchQFile.pairs[0]?.response;
+                                        return (
+                                            <li key={`choice-${qFile.id}`} className="text-sm sm:text-base text-black break-inside-avoid-column">
+                                                {letter}. {responseText}
+                                            </li>
+                                        );
+                                })}
+                            </ul>
+                        </div>
+                    )}
                 </div>
             ))}
         </div>
@@ -157,9 +172,9 @@ export default function RenderExamPage() {
   const [exams, setExams] = useState<ExamSummaryData[]>([]);
   const [isLoadingExams, setIsLoadingExams] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  const [isLoadingPreviewData, setIsLoadingPreviewData] = useState<string | null>(null); 
-  const [isDownloadingDocxFile, setIsDownloadingDocxFile] = useState(false); 
+
+  const [isLoadingPreviewData, setIsLoadingPreviewData] = useState<string | null>(null);
+  const [isDownloadingDocxFile, setIsDownloadingDocxFile] = useState(false);
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [selectedExamForDialog, setSelectedExamForDialog] = useState<ExamSummaryData | null>(null);
 
@@ -181,14 +196,14 @@ export default function RenderExamPage() {
       const fetchedExams: ExamSummaryData[] = [];
       querySnapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        fetchedExams.push({ 
-            id: docSnap.id, 
+        fetchedExams.push({
+            id: docSnap.id,
             title: data.title || "Untitled Exam",
             description: data.description,
             createdAt: data.createdAt || Timestamp.now(),
             updatedAt: data.updatedAt || Timestamp.now(),
             totalQuestions: data.totalQuestions || 0,
-            totalPoints: data.totalPoints || 0,
+            // totalPoints: data.totalPoints || 0, // Removed for preview
             status: data.status || "Draft",
         } as ExamSummaryData);
       });
@@ -220,7 +235,7 @@ export default function RenderExamPage() {
     setSelectedExamForDialog(exam);
     setIsConfirmDialogOpen(true);
   };
-  
+
   const handlePreparePreview = async () => {
     if (!user || !selectedExamForDialog || !selectedExamForDialog.id) {
         toast({ title: "Error", description: "No exam selected or user not authenticated.", variant: "destructive" });
@@ -229,7 +244,7 @@ export default function RenderExamPage() {
         return;
     }
     setIsLoadingPreviewData(selectedExamForDialog.id);
-    
+
     try {
         const examDocRef = doc(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id);
         const examSnap = await getDoc(examDocRef);
@@ -238,7 +253,7 @@ export default function RenderExamPage() {
           toast({ title: "Error", description: "Exam not found.", variant: "destructive" });
           throw new Error("Exam not found");
         }
-        
+
         const firestoreExamData = examSnap.data();
         if (firestoreExamData.userId !== user.uid) {
             toast({ title: "Error", description: "Permission denied.", variant: "destructive" });
@@ -246,7 +261,7 @@ export default function RenderExamPage() {
         }
 
         const examDataFromSummary = selectedExamForDialog;
-        const examBaseData = firestoreExamData as Omit<FullExamData, 'id' | 'examBlocks'>;
+        const examBaseData = firestoreExamData as Omit<FullExamData, 'id' | 'examBlocks' | 'totalPoints'>;
 
         const loadedBlocks: ExamBlock[] = [];
         const blocksCollectionRef = collection(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id, "questionBlocks");
@@ -267,11 +282,11 @@ export default function RenderExamPage() {
             if (typeof qData !== 'object' || qData === null) return;
 
             let question: ExamQuestion | null = null;
-            const qPoints = Number(qData.points);
+            const qPoints = Number(qData.points); // Points are not shown in preview, but kept in data model
             const baseQuestionProps = {
                 id: String(questionDocSnap.id),
                 questionText: String(qData.questionText || ""),
-                points: Number.isFinite(qPoints) ? qPoints : 0, 
+                points: Number.isFinite(qPoints) ? qPoints : 0,
             };
 
             switch (qData.type as QuestionType) {
@@ -279,10 +294,10 @@ export default function RenderExamPage() {
                 question = {
                   ...baseQuestionProps,
                   type: 'multiple-choice',
-                  options: (qData.options || []).map((opt: any) => ({ 
+                  options: (qData.options || []).map((opt: any) => ({
                       id: String(opt?.id || `opt-${Math.random()}`),
                       text: String(opt?.text || ""),
-                      isCorrect: Boolean(opt?.isCorrect || false)
+                      isCorrect: Boolean(opt?.isCorrect || false) // Kept for data model, not shown in preview
                     })),
                 } as MultipleChoiceQuestion;
                 break;
@@ -290,47 +305,48 @@ export default function RenderExamPage() {
                 question = {
                   ...baseQuestionProps,
                   type: 'true-false',
-                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer),
+                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer), // Kept for data model
                 } as TrueFalseQuestion;
                 break;
               case 'matching':
                 question = {
                   ...baseQuestionProps,
                   type: 'matching',
-                  pairs: (qData.pairs || []).map((p: any) => ({ 
+                  pairs: (qData.pairs || []).map((p: any) => ({
                       id: String(p?.id || `pair-${Math.random()}`),
                       premise: String(p?.premise || ""),
-                      response: String(p?.response || ""), 
+                      response: String(p?.response || ""),
+                      responseLetter: p?.responseLetter || undefined, // Added responseLetter
                     })),
                 } as MatchingTypeQuestion;
                 break;
-              default: 
-                question = { ...baseQuestionProps, type: 'multiple-choice', options: []}; 
+              default:
+                question = { ...baseQuestionProps, type: 'multiple-choice', options: []};
             }
             if(question) loadedQuestions.push(question);
           });
           loadedBlocks.push({
-            id: blockDocSnap.id, 
-            blockType: blockData.blockType || 'multiple-choice', 
+            id: blockDocSnap.id,
+            blockType: blockData.blockType || 'multiple-choice',
             blockTitle: String(blockData.blockTitle || ""),
             questions: loadedQuestions,
           });
         }
-        
+
         const examToPreview: FullExamData = {
-            id: selectedExamForDialog.id, 
-            title: String(examBaseData.title || examDataFromSummary.title || "Untitled Exam"), 
+            id: selectedExamForDialog.id,
+            title: String(examBaseData.title || examDataFromSummary.title || "Untitled Exam"),
             description: String(examBaseData.description || examDataFromSummary.description || ""),
             createdAt: examBaseData.createdAt || examDataFromSummary.createdAt || Timestamp.now(),
             updatedAt: examBaseData.updatedAt || examDataFromSummary.updatedAt || Timestamp.now(),
             totalQuestions: Number(examBaseData.totalQuestions || examDataFromSummary.totalQuestions || 0),
-            totalPoints: Number(examBaseData.totalPoints || examDataFromSummary.totalPoints || 0), 
-            status: (examBaseData.status || examDataFromSummary.status || "Draft") as FullExamData['status'], 
+            totalPoints: 0, // Not displayed in preview
+            status: (examBaseData.status || examDataFromSummary.status || "Draft") as FullExamData['status'],
             examBlocks: loadedBlocks,
         };
-        
-        setExamForPreview(examToPreview); 
-        setShowPreview(true); 
+
+        setExamForPreview(examToPreview);
+        setShowPreview(true);
         toast({ title: "Preview Ready", description: `Preview for "${String(examToPreview.title)}" is now available.` });
 
     } catch (error) {
@@ -356,114 +372,137 @@ export default function RenderExamPage() {
         let questionCounter = 0;
         const children: Paragraph[] = [
             new Paragraph({
-                children: [new TextRun({ text: String(examForPreview.title), bold: true, size: 32 })], 
+                children: [new TextRun({ text: String(examForPreview.title), bold: true, size: 32, color: "000000", font: "Calibri" })],
                 heading: HeadingLevel.HEADING_1,
                 alignment: AlignmentType.CENTER,
                 spacing: { after: 200 }
             }),
-            new Paragraph({ 
+            new Paragraph({
                 children: [
-                    new TextRun({text: "Name: _________________________", size: 24}), 
+                    new TextRun({text: "Name: _________________________", size: 24, color: "000000", font: "Calibri"}),
                     new Tab(),
-                    new TextRun({text: "Score: ____________", size: 24}), 
+                    new TextRun({text: "Score: ____________", size: 24, color: "000000", font: "Calibri"}),
                 ],
                 tabStops: [
-                    { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 1.5 }, 
+                    { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 1.5 },
                 ],
                 spacing: { after: 200 }
             }),
         ];
 
         if (examForPreview.description) {
-            children.push(new Paragraph({ 
-                children: [new TextRun({ text: String(examForPreview.description), italics: true, size: 24 })], 
-                alignment: AlignmentType.CENTER, 
+            children.push(new Paragraph({
+                children: [new TextRun({ text: String(examForPreview.description), italics: true, size: 24, color: "000000", font: "Calibri" })],
+                alignment: AlignmentType.CENTER,
                 spacing: { after: 300 }
             }));
         }
-        
+
         (examForPreview.examBlocks).forEach((block, blockIndex) => {
             children.push(new Paragraph({
-                 children: [new TextRun({ text: `${toRoman(blockIndex + 1)}. ${getQuestionTypeLabel(block.blockType)}`, bold: true, size: 28 })], 
+                 children: [new TextRun({ text: `${toRoman(blockIndex + 1)}. ${getQuestionTypeLabel(block.blockType)}`, bold: true, size: 28, color: "000000", font: "Calibri" })],
                 heading: HeadingLevel.HEADING_2,
                 spacing: { before: 200, after: block.blockTitle ? 50 : 100 }
             }));
 
             if (block.blockTitle) {
-                 children.push(new Paragraph({ 
-                    children: [new TextRun({ text: String(block.blockTitle), italics: true, size: 24 })], 
-                    spacing: { after: 100 } 
+                 children.push(new Paragraph({
+                    children: [new TextRun({ text: String(block.blockTitle), italics: true, size: 24, color: "000000", font: "Calibri" })],
+                    spacing: { after: 100 }
                 }));
             }
 
-            (block.questions).forEach((question) => {
-                questionCounter++;
-                const questionPrefix = question.type === 'true-false' ? '____ ' : '';
+            if (block.blockType === 'matching') {
+                (block.questions).forEach((question) => {
+                    questionCounter++;
+                    const matchQ = question as MatchingTypeQuestion;
+                    children.push(new Paragraph({
+                        children: [
+                            new TextRun({ text: `${questionCounter}. ${String(matchQ.pairs[0]?.premise || '')}\t`, size: 24, color: "000000", font: "Calibri" }),
+                            new TextRun({ text: "_________", size: 24, color: "000000", font: "Calibri" })
+                        ],
+                        indent: { left: 720 },
+                        spacing: { after: 80 },
+                        tabStops: [{ type: TabStopType.LEFT, position: 5000 }]
+                    }));
+                });
+
+                children.push(new Paragraph({ text: "", spacing: { before: 150 } }));
                 children.push(new Paragraph({
-                    children: [
-                        new TextRun({text: `${questionPrefix}${questionCounter}. ${String(question.questionText)} `, size: 24}), 
-                    ],
-                    indent: { left: 720 }, 
-                    spacing: { after: 80 }
+                    children: [new TextRun({ text: "Choices", bold: true, size: 24, color: "000000", font: "Calibri" })],
+                    spacing: { after: 80 },
+                    indent: { left: 720 }
                 }));
 
-                if (question.type === 'multiple-choice') {
-                    ((question as MultipleChoiceQuestion).options).forEach((opt, optIndex) => {
-                        children.push(new Paragraph({
-                            children: [new TextRun({text: `${getAlphabetLetter(optIndex)}. ${String(opt.text)}`, size: 24})], 
-                            indent: { left: 1080 }, 
-                        }));
-                    });
-                } else if (question.type === 'matching') {
-                    const premises: Paragraph[] = [];
-                    
-                    ((question as MatchingTypeQuestion).pairs).forEach((pair, pairIndex) => {
-                         premises.push(new Paragraph({
-                            children: [new TextRun({text: `${getAlphabetLetter(pairIndex)}. ${String(pair.premise)}\t\t____________________`, size: 24})], 
-                            indent: { left: 1080 }, 
-                            tabStops: [
-                                { type: TabStopType.LEFT, position: 3600 }, 
-                            ],
-                        }));
-                    });
-                    children.push(...premises);
-                }
-                children.push(new Paragraph({ text: ""})); 
-            });
+                const responsesForBlock = block.questions
+                    .filter(q => q.type === 'matching')
+                    .map((q, index) => ({
+                        text: String((q as MatchingTypeQuestion).pairs[0]?.response || ''),
+                        letter: (q as MatchingTypeQuestion).pairs[0]?.responseLetter || getAlphabetLetter(index)
+                    }))
+                    .sort((a, b) => a.letter.localeCompare(b.letter));
+
+                responsesForBlock.forEach(responseItem => {
+                    children.push(new Paragraph({
+                        children: [new TextRun({ text: `${responseItem.letter}. ${responseItem.text}`, size: 24, color: "000000", font: "Calibri" })],
+                        indent: { left: 1080 }
+                    }));
+                });
+                children.push(new Paragraph({ text: "", spacing: {after: 100}}));
+
+            } else { // For non-matching blocks
+                (block.questions).forEach((question) => {
+                    questionCounter++;
+                    const questionPrefix = question.type === 'true-false' ? '____ ' : '';
+                    children.push(new Paragraph({
+                        children: [
+                            new TextRun({text: `${questionPrefix}${questionCounter}. ${String(question.questionText)} `, size: 24, color: "000000", font: "Calibri"}),
+                        ],
+                        indent: { left: 720 },
+                        spacing: { after: 80 }
+                    }));
+
+                    if (question.type === 'multiple-choice') {
+                        ((question as MultipleChoiceQuestion).options).forEach((opt, optIndex) => {
+                            children.push(new Paragraph({
+                                children: [new TextRun({text: `${getAlphabetLetter(optIndex)}. ${String(opt.text)}`, size: 24, color: "000000", font: "Calibri"})],
+                                indent: { left: 1080 },
+                            }));
+                        });
+                    }
+                    children.push(new Paragraph({ text: ""}));
+                });
+            }
         });
-        
+
         const wordDocument = new DocxDocument({
             sections: [{ children }],
             styles: {
                 paragraphStyles: [
+                    {
+                        id: "Normal", // Ensure Normal style is explicitly defined if being based on
+                        name: "Normal",
+                        run: {
+                            font: "Calibri",
+                            size: 24, // 12pt
+                            color: "000000",
+                        },
+                    },
                     {
                         id: "compact",
                         name: "Compact",
                         basedOn: "Normal",
                         quickFormat: true,
                         paragraph: {
-                            spacing: { line: 240 } 
+                            spacing: { line: 240 }
                         },
-                         run: { 
-                            font: "Calibri", 
-                            size: 24, 
-                            color: "000000", 
-                        },
-                    }
-                ],
-                characterStyles: [ 
-                    {
-                        id: 'QuestionNumberChar',
-                        name: 'Question Number Char',
-                        basedOn: 'DefaultParagraphFont',
-                        run: {
+                         run: {
                             font: "Calibri",
                             size: 24,
                             color: "000000",
-                            bold: false,
-                        }
+                        },
                     }
-                ]
+                ],
             }
         });
 
@@ -542,9 +581,9 @@ export default function RenderExamPage() {
 
   if (showPreview && examForPreview) {
     return (
-        <ExamPreviewPlaceholder 
-            exam={examForPreview} 
-            onBack={handleBackToList} 
+        <ExamPreviewPlaceholder
+            exam={examForPreview}
+            onBack={handleBackToList}
             onDownloadDocx={generateAndDownloadActualDocx}
             isDownloadingDocxFile={isDownloadingDocxFile}
         />
@@ -557,7 +596,7 @@ export default function RenderExamPage() {
         <CardHeader>
           <CardTitle className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight flex items-center">
             <FileType2 className="mr-2 sm:mr-3 h-6 w-6 sm:h-8 sm:w-8 text-primary" />
-            Render Exam to DOCX
+            Generate DOCX
           </CardTitle>
           <CardDescription className="text-xs sm:text-sm">
             Select an exam from the list below to generate a DOCX file and preview its content.
@@ -663,19 +702,19 @@ export default function RenderExamPage() {
                             <HelpCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
                             <strong>Questions:</strong> <span className="ml-1">{selectedExamForDialog.totalQuestions}</span>
                         </div>
-                        <div className="flex items-center">
+                        {/* <div className="flex items-center">
                             <Star className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
                             <strong>Total Points:</strong> <span className="ml-1">{selectedExamForDialog.totalPoints}</span>
-                        </div>
+                        </div> */}
                     </div>
                      <div className="flex items-center">
-                        <Info className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" /> 
+                        <Info className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
                         <strong>Status:</strong> <span className="ml-1">{selectedExamForDialog.status}</span>
                     </div>
                 </div>
                 <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
                     <AlertDialogCancel disabled={isLoadingPreviewData === selectedExamForDialog.id} onClick={() => setSelectedExamForDialog(null)} className="text-xs sm:text-sm">Cancel</AlertDialogCancel>
-                    <AlertDialogAction 
+                    <AlertDialogAction
                         onClick={handlePreparePreview}
                         disabled={isLoadingPreviewData === selectedExamForDialog.id || !selectedExamForDialog.id}
                         className="text-xs sm:text-sm"
@@ -690,3 +729,4 @@ export default function RenderExamPage() {
     </div>
   );
 }
+

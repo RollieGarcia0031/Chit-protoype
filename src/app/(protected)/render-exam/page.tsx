@@ -68,7 +68,7 @@ function ExamPreviewPlaceholder({
     onDownloadDocx: () => Promise<void>;
     isDownloadingDocxFile: boolean;
 }) {
-  let globalPreviewQuestionCounter = 0;
+  let currentDisplayNumber = 1;
   return (
     <Card className="shadow-lg">
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
@@ -112,12 +112,16 @@ function ExamPreviewPlaceholder({
                     {block.blockTitle && <p className="text-sm sm:text-base text-black mb-2 italic" style={{ color: 'black' }}>{block.blockTitle}</p>}
 
                     {block.blockType !== 'matching' && block.questions.map((question) => {
-                        globalPreviewQuestionCounter++;
+                        const startNum = currentDisplayNumber;
+                        const endNum = currentDisplayNumber + question.points - 1;
+                        const displayQuestionLabel = question.points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
+                        currentDisplayNumber += question.points;
+
                         return (
                             <div key={question.id} className="mb-2 sm:mb-3 pl-2 sm:pl-4">
                                 <p className="font-medium text-sm sm:text-base text-black" style={{ color: 'black' }}>
                                     {question.type === 'true-false' ? '____ ' : ''}
-                                    {globalPreviewQuestionCounter}.{' '}
+                                    {displayQuestionLabel}.{' '}
                                     {question.questionText}
                                 </p>
                                 {question.type === 'multiple-choice' && (
@@ -134,19 +138,29 @@ function ExamPreviewPlaceholder({
                        <table className="w-full text-black" style={{ color: 'black', borderCollapse: 'collapse' }}>
                            <tbody>
                                {(() => {
-                                   const premises = block.questions.map(q => (q as MatchingTypeQuestion).pairs[0]?.premise || "");
+                                   const formattedPremises = block.questions.map(q => {
+                                       const startNum = currentDisplayNumber;
+                                       const points = q.points;
+                                       const endNum = currentDisplayNumber + points - 1;
+                                       const displayLabel = points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
+                                       currentDisplayNumber += points;
+                                       return {
+                                           text: (q as MatchingTypeQuestion).pairs[0]?.premise || "",
+                                           displayLabel: displayLabel
+                                       };
+                                   });
+
                                    const responses = block.questions
-                                     .map(q => ({
+                                     .map((q, index) => ({
                                        text: (q as MatchingTypeQuestion).pairs[0]?.response || "",
-                                       letter: (q as MatchingTypeQuestion).pairs[0]?.responseLetter || getAlphabetLetter(block.questions.indexOf(q))
+                                       letter: (q as MatchingTypeQuestion).pairs[0]?.responseLetter || getAlphabetLetter(index)
                                      }))
                                      .sort((a, b) => a.letter.localeCompare(b.letter));
 
-                                   const numRows = Math.max(premises.length, responses.length);
+                                   const numRows = Math.max(formattedPremises.length, responses.length);
                                    const rows = [];
                                    for (let i = 0; i < numRows; i++) {
-                                       globalPreviewQuestionCounter++;
-                                       const premiseText = premises[i] ? `${globalPreviewQuestionCounter}. ${premises[i]}` : "";
+                                       const premiseText = formattedPremises[i] ? `${formattedPremises[i].displayLabel}. ${formattedPremises[i].text}` : "";
                                        const responseText = responses[i] ? `${responses[i].letter}. ${responses[i].text}` : "";
                                        rows.push(
                                            <tr key={`match-row-${block.id}-${i}`}>
@@ -154,12 +168,6 @@ function ExamPreviewPlaceholder({
                                                <td className="py-1 pl-2 align-top" style={{ width: '50%', verticalAlign: 'top', paddingLeft: '0.5rem', paddingBottom: '0.25rem' }}>{responseText}</td>
                                            </tr>
                                        );
-                                   }
-                                   // Decrement counter if we over-incremented due to mismatch in premise/response lengths
-                                   if (premises.length !== responses.length && numRows > 0) {
-                                     globalPreviewQuestionCounter -= (numRows - Math.min(premises.length, responses.length));
-                                   } else if (numRows === 0) { // If no questions, ensure counter doesn't get decremented below actual
-                                     globalPreviewQuestionCounter = exam.examBlocks.slice(0, blockIndex).reduce((acc, b) => acc + b.questions.length, 0);
                                    }
                                    return rows;
                                })()}
@@ -215,8 +223,8 @@ export default function RenderExamPage() {
             createdAt: data.createdAt || Timestamp.now(),
             updatedAt: data.updatedAt || Timestamp.now(),
             totalQuestions: data.totalQuestions || 0,
-            // totalPoints: data.totalPoints || 0, // Removed
-            status: data.status || "Draft", // Removed
+            totalPoints: data.totalPoints || 0, 
+            status: data.status || "Draft", 
         } as ExamSummaryData);
       });
       setExams(fetchedExams);
@@ -273,7 +281,7 @@ export default function RenderExamPage() {
         }
 
         const examDataFromSummary = selectedExamForDialog;
-        const examBaseData = firestoreExamData as Omit<FullExamData, 'id' | 'examBlocks' | 'totalPoints'>;
+        const examBaseData = firestoreExamData as Omit<FullExamData, 'id' | 'examBlocks'>;
 
         const loadedBlocks: ExamBlock[] = [];
         const blocksCollectionRef = collection(db, EXAMS_COLLECTION_NAME, selectedExamForDialog.id, "questionBlocks");
@@ -298,7 +306,7 @@ export default function RenderExamPage() {
             const baseQuestionProps = {
                 id: String(questionDocSnap.id),
                 questionText: String(qData.questionText || ""),
-                points: Number.isFinite(qPoints) ? qPoints : 0, // Not shown in preview but part of data
+                points: Number.isFinite(qPoints) ? qPoints : 1, 
             };
 
             switch (qData.type as QuestionType) {
@@ -309,7 +317,7 @@ export default function RenderExamPage() {
                   options: (qData.options || []).map((opt: any) => ({
                       id: String(opt?.id || `opt-${Math.random()}`),
                       text: String(opt?.text || ""),
-                      isCorrect: Boolean(opt?.isCorrect || false) // Not shown in preview
+                      isCorrect: Boolean(opt?.isCorrect || false) 
                     })),
                 } as MultipleChoiceQuestion;
                 break;
@@ -317,7 +325,7 @@ export default function RenderExamPage() {
                 question = {
                   ...baseQuestionProps,
                   type: 'true-false',
-                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer), // Not shown
+                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer), 
                 } as TrueFalseQuestion;
                 break;
               case 'matching':
@@ -333,7 +341,7 @@ export default function RenderExamPage() {
                 } as MatchingTypeQuestion;
                 break;
               default:
-                question = { ...baseQuestionProps, type: 'multiple-choice', options: []}; 
+                question = { ...baseQuestionProps, type: 'multiple-choice', points: baseQuestionProps.points, options: []}; 
             }
             if(question) loadedQuestions.push(question);
           });
@@ -352,8 +360,8 @@ export default function RenderExamPage() {
             createdAt: examBaseData.createdAt || examDataFromSummary.createdAt || Timestamp.now(),
             updatedAt: examBaseData.updatedAt || examDataFromSummary.updatedAt || Timestamp.now(),
             totalQuestions: Number(examBaseData.totalQuestions || examDataFromSummary.totalQuestions || 0),
-            totalPoints: 0, // Not used in preview/docx directly
-            status: (examBaseData.status || examDataFromSummary.status || "Draft") as FullExamData['status'], // Not used in preview/docx
+            totalPoints: Number(examBaseData.totalPoints || examDataFromSummary.totalPoints || 0),
+            status: (examBaseData.status || examDataFromSummary.status || "Draft") as FullExamData['status'], 
             examBlocks: loadedBlocks,
         };
 
@@ -381,7 +389,7 @@ export default function RenderExamPage() {
     }
     setIsDownloadingDocxFile(true);
     try {
-        let globalQuestionCounter = 0;
+        let currentDocxDisplayNumber = 1;
         const children: (Paragraph | Table)[] = [
             new Paragraph({
                 children: [new TextRun({ text: String(examForPreview.title), bold: true, size: 32, color: "000000", font: "Calibri" })],
@@ -422,18 +430,21 @@ export default function RenderExamPage() {
             }
 
             if (block.blockType === 'matching') {
-                const premisesForTable: Array<{ text: string; num: number }> = [];
+                const premisesForTable: Array<{ text: string; displayLabel: string }> = [];
                 const responsesForTable: Array<{ text: string; letter: string }> = [];
 
-                let currentGlobalQNumForBlock = globalQuestionCounter;
-
                 (block.questions).forEach((question, qIdx) => {
-                    currentGlobalQNumForBlock++;
                     const matchQ = question as MatchingTypeQuestion;
                     if (matchQ.pairs && matchQ.pairs.length > 0) {
+                        const points = question.points;
+                        const startNum = currentDocxDisplayNumber;
+                        const endNum = currentDocxDisplayNumber + points - 1;
+                        const premiseDisplayLabel = points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
+                        currentDocxDisplayNumber += points;
+
                         premisesForTable.push({
                             text: String(matchQ.pairs[0]?.premise || ''),
-                            num: currentGlobalQNumForBlock,
+                            displayLabel: premiseDisplayLabel,
                         });
                         responsesForTable.push({
                             text: String(matchQ.pairs[0]?.response || ''),
@@ -441,7 +452,6 @@ export default function RenderExamPage() {
                         });
                     }
                 });
-                globalQuestionCounter = currentGlobalQNumForBlock; 
 
                 responsesForTable.sort((a, b) => a.letter.localeCompare(b.letter));
 
@@ -450,7 +460,7 @@ export default function RenderExamPage() {
 
                 for (let i = 0; i < numRows; i++) {
                     const premiseText = premisesForTable[i]
-                        ? `${premisesForTable[i].num}. ${premisesForTable[i].text}`
+                        ? `${premisesForTable[i].displayLabel}. ${premisesForTable[i].text}`
                         : "";
                     const responseText = responsesForTable[i]
                         ? `${responsesForTable[i].letter}. ${responsesForTable[i].text}`
@@ -507,16 +517,22 @@ export default function RenderExamPage() {
                         })
                     );
                 }
+                 // Minimal spacing after the table for matching type
                 children.push(new Paragraph({ text: "", spacing: {after: 50}}));
 
 
             } else { 
                 (block.questions).forEach((question) => {
-                    globalQuestionCounter++;
+                    const points = question.points;
+                    const startNum = currentDocxDisplayNumber;
+                    const endNum = currentDocxDisplayNumber + points - 1;
+                    const displayQuestionLabel = points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
+                    currentDocxDisplayNumber += points;
+
                     const questionPrefix = question.type === 'true-false' ? '____ ' : '';
                     children.push(new Paragraph({
                         children: [
-                            new TextRun({text: `${questionPrefix}${globalQuestionCounter}. ${String(question.questionText)} `, size: 24, color: "000000", font: "Calibri"}),
+                            new TextRun({text: `${questionPrefix}${displayQuestionLabel}. ${String(question.questionText)} `, size: 24, color: "000000", font: "Calibri"}),
                         ],
                         indent: { left: 720 },
                         spacing: { after: 80 }
@@ -529,8 +545,10 @@ export default function RenderExamPage() {
                                 indent: { left: 1080 }, 
                             }));
                         });
+                         children.push(new Paragraph({ text: "", spacing: {after: 80}})); // Spacing after options of a MC question
+                    } else {
+                         children.push(new Paragraph({ text: "", spacing: {after: 80}})); // Spacing after T/F or other non-MC questions
                     }
-                     children.push(new Paragraph({ text: "", spacing: {after: 80}}));
                 });
             }
         });
@@ -759,6 +777,10 @@ export default function RenderExamPage() {
                             <HelpCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
                             <strong>Questions:</strong> <span className="ml-1">{selectedExamForDialog.totalQuestions}</span>
                         </div>
+                         <div className="flex items-center">
+                            <Star className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
+                            <strong>Points:</strong> <span className="ml-1">{selectedExamForDialog.totalPoints}</span>
+                        </div>
                     </div>
                      <div className="flex items-center">
                         <Info className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
@@ -782,6 +804,3 @@ export default function RenderExamPage() {
     </div>
   );
 }
-
-
-    

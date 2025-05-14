@@ -1,14 +1,13 @@
-
 // src/app/(protected)/render-exam/page.tsx
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table as ShadcnTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star, FileType2, ArrowLeft, Info } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, getDocs, Timestamp, orderBy, doc, getDoc } from "firebase/firestore";
@@ -28,7 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { format } from 'date-fns';
-import { Packer, Document as DocxDocument, Paragraph, TextRun, HeadingLevel, AlignmentType, TabStopPosition, TabStopType, Tab } from 'docx';
+import { Packer, Document as DocxDocument, Paragraph, TextRun, HeadingLevel, AlignmentType, TabStopPosition, TabStopType, Tab, Table, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, VerticalAlign, BorderStyle } from 'docx';
 import { saveAs } from 'file-saver';
 
 
@@ -111,19 +110,14 @@ function ExamPreviewPlaceholder({
                     </h2>
                     {block.blockTitle && <p className="text-sm sm:text-base text-black mb-2 italic">{block.blockTitle}</p>}
 
-                    {block.questions.map((question, qIndex) => {
+                    {block.blockType !== 'matching' && block.questions.map((question, qIndex) => {
                         const globalQuestionNumber = exam.examBlocks.slice(0, blockIndex).reduce((acc, b) => acc + b.questions.length, 0) + qIndex + 1;
                         return (
                             <div key={question.id} className="mb-2 sm:mb-3 pl-2 sm:pl-4">
                                 <p className="font-medium text-sm sm:text-base text-black">
                                     {question.type === 'true-false' ? '____ ' : ''}
                                     {globalQuestionNumber}.{' '}
-                                    {question.type === 'matching'
-                                        ? (question as MatchingTypeQuestion).pairs[0]?.premise
-                                        : question.questionText}
-                                    {question.type === 'matching' && (
-                                        <span className="inline-block w-12 sm:w-16 border-b border-black/50 ml-2"></span>
-                                    )}
+                                    {question.questionText}
                                 </p>
                                 {question.type === 'multiple-choice' && (
                                     <ul className="list-none pl-4 sm:pl-6 mt-1 space-y-0.5">
@@ -136,6 +130,19 @@ function ExamPreviewPlaceholder({
                         );
                     })}
                     {block.blockType === 'matching' && (
+                       <>
+                        {block.questions.map((question, qIndex) => {
+                             const globalQuestionNumber = exam.examBlocks.slice(0, blockIndex).reduce((acc, b) => acc + b.questions.length, 0) + qIndex + 1;
+                             return (
+                                 <div key={question.id} className="mb-2 sm:mb-3 pl-2 sm:pl-4">
+                                     <p className="font-medium text-sm sm:text-base text-black">
+                                         {globalQuestionNumber}.{' '}
+                                         {(question as MatchingTypeQuestion).pairs[0]?.premise}
+                                         <span className="inline-block w-12 sm:w-16 border-b border-black/50 ml-2"></span>
+                                     </p>
+                                 </div>
+                             );
+                        })}
                         <div className="mt-3 sm:mt-4 pl-2 sm:pl-4">
                             <h3 className="text-sm sm:text-base font-semibold mb-2 text-black">Choices:</h3>
                             <ul className="list-none pl-4 sm:pl-6 space-y-0.5 columns-1 sm:columns-2 md:columns-3 gap-x-4">
@@ -153,6 +160,7 @@ function ExamPreviewPlaceholder({
                                 })}
                             </ul>
                         </div>
+                       </>
                     )}
                 </div>
             ))}
@@ -203,7 +211,6 @@ export default function RenderExamPage() {
             createdAt: data.createdAt || Timestamp.now(),
             updatedAt: data.updatedAt || Timestamp.now(),
             totalQuestions: data.totalQuestions || 0,
-            // totalPoints: data.totalPoints || 0, // Removed for preview
             status: data.status || "Draft",
         } as ExamSummaryData);
       });
@@ -282,7 +289,7 @@ export default function RenderExamPage() {
             if (typeof qData !== 'object' || qData === null) return;
 
             let question: ExamQuestion | null = null;
-            const qPoints = Number(qData.points); // Points are not shown in preview, but kept in data model
+            const qPoints = Number(qData.points);
             const baseQuestionProps = {
                 id: String(questionDocSnap.id),
                 questionText: String(qData.questionText || ""),
@@ -297,7 +304,7 @@ export default function RenderExamPage() {
                   options: (qData.options || []).map((opt: any) => ({
                       id: String(opt?.id || `opt-${Math.random()}`),
                       text: String(opt?.text || ""),
-                      isCorrect: Boolean(opt?.isCorrect || false) // Kept for data model, not shown in preview
+                      isCorrect: Boolean(opt?.isCorrect || false)
                     })),
                 } as MultipleChoiceQuestion;
                 break;
@@ -305,7 +312,7 @@ export default function RenderExamPage() {
                 question = {
                   ...baseQuestionProps,
                   type: 'true-false',
-                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer), // Kept for data model
+                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer),
                 } as TrueFalseQuestion;
                 break;
               case 'matching':
@@ -316,7 +323,7 @@ export default function RenderExamPage() {
                       id: String(p?.id || `pair-${Math.random()}`),
                       premise: String(p?.premise || ""),
                       response: String(p?.response || ""),
-                      responseLetter: p?.responseLetter || undefined, // Added responseLetter
+                      responseLetter: p?.responseLetter || undefined,
                     })),
                 } as MatchingTypeQuestion;
                 break;
@@ -340,7 +347,7 @@ export default function RenderExamPage() {
             createdAt: examBaseData.createdAt || examDataFromSummary.createdAt || Timestamp.now(),
             updatedAt: examBaseData.updatedAt || examDataFromSummary.updatedAt || Timestamp.now(),
             totalQuestions: Number(examBaseData.totalQuestions || examDataFromSummary.totalQuestions || 0),
-            totalPoints: 0, // Not displayed in preview
+            totalPoints: 0,
             status: (examBaseData.status || examDataFromSummary.status || "Draft") as FullExamData['status'],
             examBlocks: loadedBlocks,
         };
@@ -369,8 +376,8 @@ export default function RenderExamPage() {
     }
     setIsDownloadingDocxFile(true);
     try {
-        let questionCounter = 0;
-        const children: Paragraph[] = [
+        let globalQuestionCounter = 0;
+        const children: (Paragraph | Table)[] = [
             new Paragraph({
                 children: [new TextRun({ text: String(examForPreview.title), bold: true, size: 32, color: "000000", font: "Calibri" })],
                 heading: HeadingLevel.HEADING_1,
@@ -383,9 +390,7 @@ export default function RenderExamPage() {
                     new Tab(),
                     new TextRun({text: "Score: ____________", size: 24, color: "000000", font: "Calibri"}),
                 ],
-                tabStops: [
-                    { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 1.5 },
-                ],
+                tabStops: [ { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 1.5 }, ],
                 spacing: { after: 200 }
             }),
         ];
@@ -413,50 +418,104 @@ export default function RenderExamPage() {
             }
 
             if (block.blockType === 'matching') {
-                (block.questions).forEach((question) => {
-                    questionCounter++;
+                const premisesForTable: Array<{ text: string; num: number }> = [];
+                const responsesForTable: Array<{ text: string; letter: string }> = [];
+
+                let currentGlobalQNumForBlock = 0;
+                for(let k=0; k<blockIndex; k++) {
+                    currentGlobalQNumForBlock += examForPreview.examBlocks[k].questions.length;
+                }
+                
+                (block.questions).forEach((question, qIdx) => {
+                    currentGlobalQNumForBlock++;
                     const matchQ = question as MatchingTypeQuestion;
-                    children.push(new Paragraph({
-                        children: [
-                            new TextRun({ text: `${questionCounter}. ${String(matchQ.pairs[0]?.premise || '')}\t`, size: 24, color: "000000", font: "Calibri" }),
-                            new TextRun({ text: "_________", size: 24, color: "000000", font: "Calibri" })
-                        ],
-                        indent: { left: 720 },
-                        spacing: { after: 80 },
-                        tabStops: [{ type: TabStopType.LEFT, position: 5000 }]
-                    }));
+                    if (matchQ.pairs && matchQ.pairs.length > 0) {
+                        premisesForTable.push({
+                            text: String(matchQ.pairs[0]?.premise || ''),
+                            num: currentGlobalQNumForBlock,
+                        });
+                        responsesForTable.push({
+                            text: String(matchQ.pairs[0]?.response || ''),
+                            letter: matchQ.pairs[0]?.responseLetter || getAlphabetLetter(qIdx),
+                        });
+                    }
                 });
+                globalQuestionCounter = currentGlobalQNumForBlock; // Update global counter
 
-                children.push(new Paragraph({ text: "", spacing: { before: 150 } }));
-                children.push(new Paragraph({
-                    children: [new TextRun({ text: "Choices", bold: true, size: 24, color: "000000", font: "Calibri" })],
-                    spacing: { after: 80 },
-                    indent: { left: 720 }
-                }));
+                responsesForTable.sort((a, b) => a.letter.localeCompare(b.letter));
 
-                const responsesForBlock = block.questions
-                    .filter(q => q.type === 'matching')
-                    .map((q, index) => ({
-                        text: String((q as MatchingTypeQuestion).pairs[0]?.response || ''),
-                        letter: (q as MatchingTypeQuestion).pairs[0]?.responseLetter || getAlphabetLetter(index)
-                    }))
-                    .sort((a, b) => a.letter.localeCompare(b.letter));
+                const tableRows: DocxTableRow[] = [];
+                const numRows = Math.max(premisesForTable.length, responsesForTable.length);
 
-                responsesForBlock.forEach(responseItem => {
-                    children.push(new Paragraph({
-                        children: [new TextRun({ text: `${responseItem.letter}. ${responseItem.text}`, size: 24, color: "000000", font: "Calibri" })],
-                        indent: { left: 1080 }
-                    }));
-                });
+                for (let i = 0; i < numRows; i++) {
+                    const premiseText = premisesForTable[i]
+                        ? `${premisesForTable[i].num}. ${premisesForTable[i].text}\t_________`
+                        : "";
+                    const responseText = responsesForTable[i]
+                        ? `${responsesForTable[i].letter}. ${responsesForTable[i].text}`
+                        : "";
+
+                    tableRows.push(
+                        new DocxTableRow({
+                            children: [
+                                new DocxTableCell({
+                                    children: [new Paragraph({
+                                        children: [new TextRun({ text: premiseText, size: 24, color: "000000", font: "Calibri" })],
+                                        tabStops: [{type: TabStopType.RIGHT, position: 4000}], // Added tab stop for underline
+                                    })],
+                                    width: { size: 4500, type: WidthType.DXA },
+                                    borders: { // No borders for cell
+                                        top: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                        bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                        left: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                        right: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                    },
+                                    verticalAlign: VerticalAlign.TOP,
+                                }),
+                                new DocxTableCell({
+                                    children: [new Paragraph({
+                                        children: [new TextRun({ text: responseText, size: 24, color: "000000", font: "Calibri" })],
+                                    })],
+                                    width: { size: 4500, type: WidthType.DXA },
+                                    borders: {
+                                        top: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                        bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                        left: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                        right: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                    },
+                                    verticalAlign: VerticalAlign.TOP,
+                                }),
+                            ],
+                        })
+                    );
+                }
+
+                if (tableRows.length > 0) {
+                    children.push(
+                        new Table({
+                            rows: tableRows,
+                            width: { size: 9000, type: WidthType.DXA },
+                            columnWidths: [4500, 4500],
+                            borders: { // No borders for table itself
+                                top: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                left: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                right: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                insideHorizontal: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                                insideVertical: { style: BorderStyle.NONE, size: 0, color: "auto" },
+                            },
+                        })
+                    );
+                }
                 children.push(new Paragraph({ text: "", spacing: {after: 100}}));
 
             } else { // For non-matching blocks
                 (block.questions).forEach((question) => {
-                    questionCounter++;
+                    globalQuestionCounter++;
                     const questionPrefix = question.type === 'true-false' ? '____ ' : '';
                     children.push(new Paragraph({
                         children: [
-                            new TextRun({text: `${questionPrefix}${questionCounter}. ${String(question.questionText)} `, size: 24, color: "000000", font: "Calibri"}),
+                            new TextRun({text: `${questionPrefix}${globalQuestionCounter}. ${String(question.questionText)} `, size: 24, color: "000000", font: "Calibri"}),
                         ],
                         indent: { left: 720 },
                         spacing: { after: 80 }
@@ -466,11 +525,11 @@ export default function RenderExamPage() {
                         ((question as MultipleChoiceQuestion).options).forEach((opt, optIndex) => {
                             children.push(new Paragraph({
                                 children: [new TextRun({text: `${getAlphabetLetter(optIndex)}. ${String(opt.text)}`, size: 24, color: "000000", font: "Calibri"})],
-                                indent: { left: 1080 },
+                                indent: { left: 1080 }, // Increased indent for options
                             }));
                         });
                     }
-                    children.push(new Paragraph({ text: ""}));
+                     children.push(new Paragraph({ text: "", spacing: {after: 80}})); // Add spacing after each question
                 });
             }
         });
@@ -480,27 +539,24 @@ export default function RenderExamPage() {
             styles: {
                 paragraphStyles: [
                     {
-                        id: "Normal", // Ensure Normal style is explicitly defined if being based on
+                        id: "Normal",
                         name: "Normal",
-                        run: {
-                            font: "Calibri",
-                            size: 24, // 12pt
-                            color: "000000",
-                        },
+                        run: { font: "Calibri", size: 24, color: "000000" },
+                        paragraph: { spacing: { after: 0, line: 240 } }, // Minimal spacing for normal text
                     },
-                    {
-                        id: "compact",
-                        name: "Compact",
+                    { // Style for question text
+                        id: "QuestionText",
+                        name: "Question Text",
                         basedOn: "Normal",
-                        quickFormat: true,
-                        paragraph: {
-                            spacing: { line: 240 }
-                        },
-                         run: {
-                            font: "Calibri",
-                            size: 24,
-                            color: "000000",
-                        },
+                        run: { font: "Calibri", size: 24, color: "000000" },
+                        paragraph: { spacing: { after: 80 } } // Spacing after question text
+                    },
+                     { // Style for options in MCQs
+                        id: "OptionText",
+                        name: "Option Text",
+                        basedOn: "Normal",
+                        run: { font: "Calibri", size: 24, color: "000000" },
+                        paragraph: { indent: { left: 1080 }, spacing: { after: 40 } } // Indent and spacing for options
                     }
                 ],
             }
@@ -540,7 +596,7 @@ export default function RenderExamPage() {
             <Skeleton className="h-4 w-64 sm:w-80" />
           </CardHeader>
           <CardContent>
-            <Table>
+            <ShadcnTable>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[40%]"><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
@@ -561,7 +617,7 @@ export default function RenderExamPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+            </ShadcnTable>
           </CardContent>
         </Card>
       </div>
@@ -604,7 +660,7 @@ export default function RenderExamPage() {
         </CardHeader>
         <CardContent>
           {exams.length > 0 ? (
-            <Table>
+            <ShadcnTable>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[35%] px-2 sm:px-4 text-xs sm:text-sm">Title</TableHead>
@@ -645,7 +701,7 @@ export default function RenderExamPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+            </ShadcnTable>
           ) : (
             <div className="text-center py-10">
               <FileText className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mb-3" />
@@ -702,10 +758,6 @@ export default function RenderExamPage() {
                             <HelpCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
                             <strong>Questions:</strong> <span className="ml-1">{selectedExamForDialog.totalQuestions}</span>
                         </div>
-                        {/* <div className="flex items-center">
-                            <Star className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
-                            <strong>Total Points:</strong> <span className="ml-1">{selectedExamForDialog.totalPoints}</span>
-                        </div> */}
                     </div>
                      <div className="flex items-center">
                         <Info className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
@@ -729,4 +781,3 @@ export default function RenderExamPage() {
     </div>
   );
 }
-

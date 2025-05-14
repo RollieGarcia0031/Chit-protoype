@@ -12,9 +12,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { useState, type FormEvent, useEffect, useCallback, useMemo } from "react";
-import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
+import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair } from "@/types/exam-types";
 import { generateId, debounce } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
+import { TotalPointsDisplay } from "@/components/exam/TotalPointsDisplay";
 import { PlusCircle, Loader2, Sparkles, AlertTriangle, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
@@ -56,7 +57,7 @@ const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'
       return {
         ...baseQuestionProps,
         type: 'matching',
-        pairs: [{ id: generateId('pair'), premise: "", response: "" }],
+        pairs: [{ id: generateId('pair'), premise: "", response: "", responseLetter: "" }],
       };
     default:
       console.warn(`createDefaultQuestion received an unknown type: ${type}. Defaulting to multiple-choice.`);
@@ -93,13 +94,18 @@ export default function CreateExamPage() {
   const [aiError, setAiError] = useState<string | null>(null);
 
 
+  const totalPoints = useMemo(() => {
+    return examBlocks.reduce((acc, block) => {
+      return acc + block.questions.reduce((qAcc, q) => qAcc + q.points, 0);
+    }, 0);
+  }, [examBlocks]);
+
   const performAIAnalysis = useCallback(async () => {
     if (!aiSuggestionsEnabled || !user || isSaving || isLoadingExamData) {
       setAiFeedbackList([]); // Clear feedback if conditions not met
       return;
     }
 
-    // Check for exam content completeness before calling AI
     let isContentSufficientForAnalysis = true;
     let missingInfoMessage = "";
 
@@ -154,6 +160,11 @@ export default function CreateExamPage() {
                         missingInfoMessage = "Fill in all premise and response texts for matching pairs.";
                         break;
                     }
+                     if (matq.pairs.some(p => !p.responseLetter)) {
+                        isContentSufficientForAnalysis = false;
+                        missingInfoMessage = "Assign a letter ID to all answers in matching questions.";
+                        break;
+                    }
                 }
             }
             if (!isContentSufficientForAnalysis) break;
@@ -165,7 +176,7 @@ export default function CreateExamPage() {
             suggestionText: missingInfoMessage || "AI analysis requires more complete exam content (e.g., all questions filled, answers selected, options defined).", 
             severity: "info" 
         }]);
-        setIsAnalyzingWithAI(false); // Ensure this is reset
+        setIsAnalyzingWithAI(false); 
         setAiError(null);
         return;
     }
@@ -224,9 +235,8 @@ export default function CreateExamPage() {
 
     if (examIdFromUrl) {
       setEditingExamId(examIdFromUrl);
-      setIsLoadingExamData(true); // Start loading if examId is present
+      setIsLoadingExamData(true); 
     } else {
-      // Create mode or no examId in URL
       if (typeof window !== 'undefined' && !isInitialLoadComplete) {
         const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (savedData) {
@@ -248,9 +258,10 @@ export default function CreateExamPage() {
                     })) || [],
                   }),
                   ...(q.type === 'matching' && {
-                    pairs: (q as MatchingTypeQuestion).pairs?.map((p: any) => ({
+                    pairs: (q as MatchingTypeQuestion).pairs?.map((p: MatchingPair) => ({
                       ...p,
                       id: p.id || generateId('pair'),
+                      responseLetter: p.responseLetter || "",
                     })) || [],
                   }),
                 })),
@@ -263,7 +274,7 @@ export default function CreateExamPage() {
           }
         }
       }
-      setIsLoadingExamData(false); // Not loading from DB in create mode initially
+      setIsLoadingExamData(false); 
     }
      if (!isInitialLoadComplete) {
         setIsInitialLoadComplete(true);
@@ -340,7 +351,7 @@ export default function CreateExamPage() {
                   questionText: qData.questionText,
                   points: qData.points,
                   type: 'matching',
-                  pairs: (qData.pairs || []).map((p: any) => ({ ...p, id: p.id || generateId('pair')})),
+                  pairs: (qData.pairs || []).map((p: any) => ({ ...p, id: p.id || generateId('pair'), responseLetter: p.responseLetter || "" })),
                 } as MatchingTypeQuestion;
                 break;
               default:
@@ -458,7 +469,7 @@ export default function CreateExamPage() {
         newQuestion = { ...baseNewQuestionProps, type: 'true-false', correctAnswer: null };
         break;
       case 'matching':
-        newQuestion = { ...baseNewQuestionProps, type: 'matching', pairs: [{ id: generateId('pair'), premise: "", response: "" }] };
+        newQuestion = { ...baseNewQuestionProps, type: 'matching', pairs: [{ id: generateId('pair'), premise: "", response: "", responseLetter: "" }] };
         break;
       default: 
         newQuestion = { ...baseNewQuestionProps, type: 'multiple-choice', options: newOptionsForMC };
@@ -511,11 +522,11 @@ export default function CreateExamPage() {
     }
     setIsSaving(true);
 
-    let totalQuestions = 0;
-    let totalPoints = 0;
+    let calculatedTotalQuestions = 0;
+    let calculatedTotalPoints = 0; // Renamed to avoid conflict with the state variable totalPoints
     examBlocks.forEach(block => {
-      totalQuestions += block.questions.length;
-      block.questions.forEach(question => { totalPoints += question.points; });
+      calculatedTotalQuestions += block.questions.length;
+      block.questions.forEach(question => { calculatedTotalPoints += question.points; });
     });
 
     const batch = writeBatch(db);
@@ -529,8 +540,8 @@ export default function CreateExamPage() {
                 title: examTitle,
                 description: examDescription,
                 updatedAt: serverTimestamp(),
-                totalQuestions,
-                totalPoints,
+                totalQuestions: calculatedTotalQuestions,
+                totalPoints: calculatedTotalPoints,
             });
 
             const existingBlocksRef = collection(db, EXAMS_COLLECTION_NAME, editingExamId, "questionBlocks");
@@ -550,8 +561,8 @@ export default function CreateExamPage() {
                 userId: user.uid,
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
-                totalQuestions,
-                totalPoints,
+                totalQuestions: calculatedTotalQuestions,
+                totalPoints: calculatedTotalPoints,
                 status: "Draft",
             });
         }
@@ -578,7 +589,7 @@ export default function CreateExamPage() {
                 };
                 if (question.type === 'multiple-choice') questionData.options = (question as MultipleChoiceQuestion).options.map(opt => ({ ...opt, id: opt.id || generateId('option-save') }));
                 else if (question.type === 'true-false') questionData.correctAnswer = (question as TrueFalseQuestion).correctAnswer;
-                else if (question.type === 'matching') questionData.pairs = (question as MatchingTypeQuestion).pairs.map(pair => ({ ...pair, id: pair.id || generateId('pair-save')}));
+                else if (question.type === 'matching') questionData.pairs = (question as MatchingTypeQuestion).pairs.map(pair => ({ ...pair, id: pair.id || generateId('pair-save'), responseLetter: pair.responseLetter || "" }));
                 batch.set(questionDocRef, questionData);
             });
         });
@@ -641,6 +652,7 @@ export default function CreateExamPage() {
 
   return (
     <div className="space-y-6">
+      <TotalPointsDisplay totalPoints={totalPoints} />
       {aiSuggestionsEnabled && (
         <Button
           variant="outline"
@@ -662,9 +674,10 @@ export default function CreateExamPage() {
                                      f.suggestionText !== "Select True or False for all true/false questions." &&
                                      f.suggestionText !== "Matching questions need at least one pair." &&
                                      f.suggestionText !== "Fill in all premise and response texts for matching pairs." &&
-                                     f.suggestionText !== "AI analysis failed to produce output. Please try again." && // Exclude error message
-                                     f.suggestionText !== "Exam content is empty. Please add a title or some questions to analyze." && // Exclude from genkit flow
-                                     f.suggestionText !== "All question blocks are empty. Add questions to get feedback." // Exclude from genkit flow
+                                     f.suggestionText !== "Assign a letter ID to all answers in matching questions." &&
+                                     f.suggestionText !== "AI analysis failed to produce output. Please try again." && 
+                                     f.suggestionText !== "Exam content is empty. Please add a title or some questions to analyze." && 
+                                     f.suggestionText !== "All question blocks are empty. Add questions to get feedback." 
                                     ) 
             ) && (
             <Badge 
@@ -681,6 +694,7 @@ export default function CreateExamPage() {
                                             f.suggestionText !== "Select True or False for all true/false questions." &&
                                             f.suggestionText !== "Matching questions need at least one pair." &&
                                             f.suggestionText !== "Fill in all premise and response texts for matching pairs." &&
+                                            f.suggestionText !== "Assign a letter ID to all answers in matching questions." &&
                                             f.suggestionText !== "AI analysis failed to produce output. Please try again." &&
                                             f.suggestionText !== "Exam content is empty. Please add a title or some questions to analyze." &&
                                             f.suggestionText !== "All question blocks are empty. Add questions to get feedback."
@@ -783,6 +797,7 @@ export default function CreateExamPage() {
                   onChange={(e) => setExamTitle(e.target.value)}
                   required
                   disabled={isSaving || isLoadingExamData}
+                  className="text-sm sm:text-base"
                 />
               </div>
               <div className="space-y-1 sm:space-y-2">
@@ -790,7 +805,7 @@ export default function CreateExamPage() {
                 <Textarea
                   id="examDescription"
                   placeholder="A brief description of the exam content or instructions."
-                  className="min-h-[80px] sm:min-h-[100px]"
+                  className="min-h-[80px] sm:min-h-[100px] text-sm sm:text-base"
                   value={examDescription}
                   onChange={(e) => setExamDescription(e.target.value)}
                   disabled={isSaving || isLoadingExamData}

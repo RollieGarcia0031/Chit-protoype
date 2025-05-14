@@ -1,4 +1,3 @@
-
 // src/components/exam/ExamItemBlock.tsx
 'use client';
 
@@ -11,8 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Trash2, PlusCircle } from "lucide-react";
-import type { ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
+import type { ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair } from "@/types/exam-types";
 import { generateId } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ExamItemBlockProps {
   item: ExamQuestion;
@@ -21,14 +21,15 @@ interface ExamItemBlockProps {
   onItemRemove: () => void;
   itemIndex: number;
   disabled?: boolean;
+  totalQuestionsInBlock?: number; // New prop for matching type
 }
 
-// Helper function to get alphabet letter for options
+// Helper function to get alphabet letter
 const getAlphabetLetter = (index: number): string => {
   return String.fromCharCode(65 + index); // 65 is ASCII for 'A'
 };
 
-export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, itemIndex, disabled = false }: ExamItemBlockProps) {
+export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, itemIndex, disabled = false, totalQuestionsInBlock }: ExamItemBlockProps) {
   const handleQuestionTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     onItemChange({ ...item, questionText: e.target.value });
   };
@@ -65,10 +66,9 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
     if (item.type === 'multiple-choice') {
       const currentOptions = (item as MultipleChoiceQuestion).options;
       const newOptions = [...currentOptions, { id: generateId('option'), text: "", isCorrect: false }];
-      if (newOptions.length === 1) { // If this is the first option being added
+      if (newOptions.length === 1) {
         newOptions[0].isCorrect = true;
       } else if (currentOptions.length > 0 && !currentOptions.some(opt => opt.isCorrect) && newOptions.length > 0) {
-        // If no option was correct before and we add more, make the first one correct by default
         if (newOptions.length > 0) newOptions[0].isCorrect = true;
       }
       onItemChange({ ...item, options: newOptions } as MultipleChoiceQuestion);
@@ -80,7 +80,6 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
       const currentOptions = (item as MultipleChoiceQuestion).options;
       if (currentOptions.length <= 1) return;
       const newOptions = currentOptions.filter((_, i) => i !== optionIndex);
-      // If the removed option was the only correct one, make the new first option correct
       if (!newOptions.some(opt => opt.isCorrect) && newOptions.length > 0) {
         newOptions[0].isCorrect = true;
       }
@@ -96,26 +95,29 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
   };
 
   // --- Matching Type Specific Handlers ---
-  const handleMatchingQuestionChange = (text: string) => {
+  const handleMatchingPremiseChange = (text: string) => { // Renamed for clarity
     if (item.type === 'matching') {
-      const updatedPairs = [...(item as MatchingTypeQuestion).pairs];
-      if (updatedPairs.length === 0) { // Should not happen with current creation logic
-        updatedPairs.push({ id: generateId('pair'), premise: text, response: "" });
-      } else {
-        updatedPairs[0].premise = text;
-      }
+      const currentPairs = (item as MatchingTypeQuestion).pairs;
+      const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "" }];
+      updatedPairs[0].premise = text;
       onItemChange({ ...item, pairs: updatedPairs } as MatchingTypeQuestion);
     }
   };
 
-  const handleMatchingAnswerChange = (text: string) => {
+  const handleMatchingResponseChange = (text: string) => { // Renamed for clarity
     if (item.type === 'matching') {
-      const updatedPairs = [...(item as MatchingTypeQuestion).pairs];
-       if (updatedPairs.length === 0) { // Should not happen
-        updatedPairs.push({ id: generateId('pair'), premise: "", response: text });
-      } else {
-        updatedPairs[0].response = text;
-      }
+      const currentPairs = (item as MatchingTypeQuestion).pairs;
+      const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "" }];
+      updatedPairs[0].response = text;
+      onItemChange({ ...item, pairs: updatedPairs } as MatchingTypeQuestion);
+    }
+  };
+
+  const handleMatchingResponseLetterChange = (letter: string) => {
+    if (item.type === 'matching') {
+      const currentPairs = (item as MatchingTypeQuestion).pairs;
+      const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "" }];
+      updatedPairs[0].responseLetter = letter;
       onItemChange({ ...item, pairs: updatedPairs } as MatchingTypeQuestion);
     }
   };
@@ -126,7 +128,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
       <CardHeader className="flex flex-row items-center justify-between py-2 px-3 sm:py-3 sm:px-4 gap-2">
         <CardTitle className="text-xs sm:text-sm md:text-base font-medium flex-shrink-0">Question {itemIndex + 1}</CardTitle>
         <div className="flex items-center gap-2 ml-auto">
-            <div className="space-y-0">
+            <div className="space-y-0 md:hidden"> {/* Show only on mobile/small screens */}
                 <Label htmlFor={`points-${item.id}-mobile`} className="sr-only">Points</Label>
                 <Input
                 id={`points-${item.id}-mobile`}
@@ -145,7 +147,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
         </div>
       </CardHeader>
       <CardContent className="space-y-3 sm:space-y-4 px-3 pb-3 sm:px-4 sm:pb-4">
-        {questionType !== 'matching' && (
+        {questionType !== 'matching' && ( // Standard layout for MC and T/F
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 sm:gap-4 items-start">
             <div className="space-y-1">
               <Label htmlFor={`questionText-${item.id}`} className="text-xs sm:text-sm">Question Text / Instructions</Label>
@@ -153,12 +155,12 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                 id={`questionText-${item.id}`}
                 value={item.questionText}
                 onChange={handleQuestionTextChange}
-                placeholder={questionType === 'matching' ? "e.g., Match the terms with their definitions." : "e.g., What is the capital of France?"}
+                placeholder={ "e.g., What is the capital of France?"}
                 className="min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm"
                 disabled={disabled}
               />
             </div>
-            <div className="space-y-1 w-20 sm:w-24 hidden md:block">
+            <div className="space-y-1 w-20 sm:w-24 hidden md:block"> {/* Points for desktop */}
               <Label htmlFor={`points-${item.id}-desktop`} className="text-xs sm:text-sm">Points</Label>
               <Input
                 id={`points-${item.id}-desktop`}
@@ -174,8 +176,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
           </div>
         )}
 
-
-        {/* Multiple Choice Fields */}
+        {/* Specific fields based on questionType */}
         {questionType === 'multiple-choice' && item.type === 'multiple-choice' && (
           <div className="space-y-1.5 sm:space-y-2">
             <Label className="block text-xs sm:text-sm font-medium">Options (Mark the correct one)</Label>
@@ -212,7 +213,6 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
           </div>
         )}
 
-        {/* True/False Fields */}
         {questionType === 'true-false' && item.type === 'true-false' && (
           <div>
             <Label className="block text-xs sm:text-sm font-medium mb-1 sm:mb-1.5">Correct Answer</Label>
@@ -234,37 +234,69 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
           </div>
         )}
 
-        {/* Matching Type Fields - Simplified to one pair per question item */}
         {questionType === 'matching' && item.type === 'matching' && (
           <div className="space-y-2 sm:space-y-3">
-             {/* General instructions for the question item (if any) are in item.questionText, handled by block's instructions usually for matching */}
-             {/* If item.questionText is meant to be specific to THIS pair, it could be displayed here.
-                 For now, assuming blockTitle in ExamQuestionGroupBlock covers instructions for matching sections.
-                 If not, the Textarea for questionText (currently hidden for 'matching') would need to be shown.
-             */}
+             {/* General instructions (item.questionText) for matching are handled by blockTitle or can be displayed here if needed */}
+             {/* This layout assumes block.blockTitle provides overall instructions for matching. */}
+             {/* If item.questionText is used for per-pair instructions, it's currently not displayed. */}
+             {/* Points input for desktop, hidden for mobile as it's in header */}
+            <div className="space-y-1 w-20 sm:w-24 hidden md:block self-start">
+              <Label htmlFor={`points-${item.id}-desktop-matching`} className="text-xs sm:text-sm">Points</Label>
+              <Input
+                id={`points-${item.id}-desktop-matching`}
+                type="number"
+                value={item.points}
+                onChange={handlePointsChange}
+                min="0"
+                placeholder="Pts"
+                className="h-8 sm:h-9 text-xs sm:text-sm text-center"
+                disabled={disabled}
+              />
+            </div>
+
              <div className="space-y-1">
-                <Label htmlFor={`matching-question-${item.id}`} className="text-xs sm:text-sm">Question / Term</Label>
+                <Label htmlFor={`matching-premise-${item.id}`} className="text-xs sm:text-sm">Question / Term</Label>
                 <Input
-                    id={`matching-question-${item.id}`}
+                    id={`matching-premise-${item.id}`}
                     type="text"
                     value={(item as MatchingTypeQuestion).pairs[0]?.premise || ""}
-                    onChange={(e) => handleMatchingQuestionChange(e.target.value)}
+                    onChange={(e) => handleMatchingPremiseChange(e.target.value)}
                     placeholder="e.g., Photosynthesis"
                     className="h-8 sm:h-9 text-xs sm:text-sm"
                     disabled={disabled}
                 />
              </div>
              <div className="space-y-1">
-                <Label htmlFor={`matching-answer-${item.id}`} className="text-xs sm:text-sm">Answer / Definition</Label>
-                <Input
-                    id={`matching-answer-${item.id}`}
-                    type="text"
-                    value={(item as MatchingTypeQuestion).pairs[0]?.response || ""}
-                    onChange={(e) => handleMatchingAnswerChange(e.target.value)}
-                    placeholder="e.g., Process plants use to make food"
-                    className="h-8 sm:h-9 text-xs sm:text-sm"
-                    disabled={disabled}
-                />
+                <Label htmlFor={`matching-response-${item.id}`} className="text-xs sm:text-sm">Answer / Definition</Label>
+                <div className="flex items-center gap-2">
+                    <Input
+                        id={`matching-response-${item.id}`}
+                        type="text"
+                        value={(item as MatchingTypeQuestion).pairs[0]?.response || ""}
+                        onChange={(e) => handleMatchingResponseChange(e.target.value)}
+                        placeholder="e.g., Process plants use to make food"
+                        className="flex-grow h-8 sm:h-9 text-xs sm:text-sm"
+                        disabled={disabled}
+                    />
+                    {totalQuestionsInBlock && totalQuestionsInBlock > 0 && (
+                    <Select
+                        value={(item as MatchingTypeQuestion).pairs[0]?.responseLetter || ""}
+                        onValueChange={handleMatchingResponseLetterChange}
+                        disabled={disabled}
+                    >
+                        <SelectTrigger className="w-[70px] sm:w-[80px] h-8 sm:h-9 text-xs sm:text-sm flex-shrink-0">
+                        <SelectValue placeholder="ID" />
+                        </SelectTrigger>
+                        <SelectContent>
+                        {Array.from({ length: totalQuestionsInBlock }, (_, i) => getAlphabetLetter(i)).map(letter => (
+                            <SelectItem key={letter} value={letter} className="text-xs sm:text-sm">
+                            {letter}
+                            </SelectItem>
+                        ))}
+                        </SelectContent>
+                    </Select>
+                    )}
+                </div>
              </div>
           </div>
         )}

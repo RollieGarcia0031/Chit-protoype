@@ -1,4 +1,3 @@
-
 // src/components/exam/ExamQuestionGroupBlock.tsx
 'use client';
 
@@ -91,6 +90,7 @@ export function ExamQuestionGroupBlock({
               onItemRemove={() => onRemoveQuestionFromBlock(blockIndex, questionIndex)}
               itemIndex={questionIndex}
               disabled={disabled}
+              totalQuestionsInBlock={block.blockType === 'matching' ? block.questions.length : undefined}
             />
           ))}
         </div>

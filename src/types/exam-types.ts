@@ -27,11 +27,12 @@ export interface MatchingPair {
   id: string;
   premise: string;
   response: string;
+  responseLetter?: string; // New: Letter assigned to this response
 }
 
 export interface MatchingTypeQuestion extends BaseQuestion {
   type: 'matching'; // questionText can be an overall instruction for the matching block
-  pairs: MatchingPair[];
+  pairs: MatchingPair[]; // In the UI, typically one pair per "question item" for matching
 }
 
 export type ExamQuestion = MultipleChoiceQuestion | TrueFalseQuestion | MatchingTypeQuestion;

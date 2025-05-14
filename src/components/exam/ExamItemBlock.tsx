@@ -132,11 +132,26 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
 
   return (
     <Card className="border-border shadow-sm bg-card/50">
-      <CardHeader className="flex flex-row items-center justify-between py-2 px-3 sm:py-3 sm:px-4">
-        <CardTitle className="text-sm sm:text-base font-medium">Question {itemIndex + 1}</CardTitle>
-        <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block" disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8">
-          <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground hover:text-destructive" />
-        </Button>
+      <CardHeader className="flex flex-row items-center justify-between py-2 px-3 sm:py-3 sm:px-4 gap-2">
+        <CardTitle className="text-xs sm:text-sm md:text-base font-medium flex-shrink-0">Question {itemIndex + 1}</CardTitle>
+        <div className="flex items-center gap-2 ml-auto">
+            <div className="space-y-0 md:hidden"> {/* Points input for mobile, in header */}
+                <Label htmlFor={`points-${item.id}-mobile`} className="sr-only">Points</Label>
+                <Input
+                id={`points-${item.id}-mobile`}
+                type="number"
+                value={item.points}
+                onChange={handlePointsChange}
+                min="0"
+                placeholder="Pts"
+                className="h-8 w-16 text-2xs sm:text-xs text-center"
+                disabled={disabled}
+                />
+            </div>
+            <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block" disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
+                <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground hover:text-destructive" />
+            </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3 sm:space-y-4 px-3 pb-3 sm:px-4 sm:pb-4">
         <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 sm:gap-4 items-start">
@@ -151,10 +166,10 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
               disabled={disabled}
             />
           </div>
-          <div className="space-y-1 w-20 sm:w-24">
-            <Label htmlFor={`points-${item.id}`} className="text-xs sm:text-sm">Points</Label>
+          <div className="space-y-1 w-20 sm:w-24 hidden md:block"> {/* Points input for desktop, next to textarea */}
+            <Label htmlFor={`points-${item.id}-desktop`} className="text-xs sm:text-sm">Points</Label>
             <Input
-              id={`points-${item.id}`}
+              id={`points-${item.id}-desktop`}
               type="number"
               value={item.points}
               onChange={handlePointsChange}
@@ -179,6 +194,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                   onCheckedChange={() => handleCorrectOptionChange(option.id)}
                   aria-label={`Mark option ${getAlphabetLetter(optIndex)} as correct`}
                   disabled={disabled}
+                  className="h-3.5 w-3.5 sm:h-4 sm:w-4"
                 />
                 <Label htmlFor={`option-text-${option.id}`} className="font-semibold text-xs sm:text-sm">{getAlphabetLetter(optIndex)}.</Label>
                 <Input
@@ -197,8 +213,8 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                 )}
               </div>
             ))}
-            <Button type="button" variant="outline" onClick={handleAddOption} size="sm" className="text-xs" disabled={disabled}>
-              <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Add Option
+            <Button type="button" variant="outline" onClick={handleAddOption} size="sm" className="text-2xs sm:text-xs h-7 sm:h-8 px-2 sm:px-3" disabled={disabled}>
+              <PlusCircle className="mr-1 sm:mr-1.5 h-3 w-3 sm:h-3.5 sm:w-3.5" /> Add Option
             </Button>
           </div>
         )}
@@ -214,11 +230,11 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
               disabled={disabled}
             >
               <div className="flex items-center space-x-1 sm:space-x-1.5">
-                <RadioGroupItem value="true" id={`true-${item.id}`} disabled={disabled} />
+                <RadioGroupItem value="true" id={`true-${item.id}`} disabled={disabled} className="h-3.5 w-3.5 sm:h-4 sm:w-4"/>
                 <Label htmlFor={`true-${item.id}`} className="text-xs sm:text-sm font-normal">True</Label>
               </div>
               <div className="flex items-center space-x-1 sm:space-x-1.5">
-                <RadioGroupItem value="false" id={`false-${item.id}`} disabled={disabled} />
+                <RadioGroupItem value="false" id={`false-${item.id}`} disabled={disabled} className="h-3.5 w-3.5 sm:h-4 sm:w-4"/>
                 <Label htmlFor={`false-${item.id}`} className="text-xs sm:text-sm font-normal">False</Label>
               </div>
             </RadioGroup>
@@ -255,8 +271,8 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                 )}
               </div>
             ))}
-            <Button type="button" variant="outline" onClick={handleAddPair} size="sm" className="text-xs" disabled={disabled}>
-              <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Add Pair
+            <Button type="button" variant="outline" onClick={handleAddPair} size="sm" className="text-2xs sm:text-xs h-7 sm:h-8 px-2 sm:px-3" disabled={disabled}>
+              <PlusCircle className="mr-1 sm:mr-1.5 h-3 w-3 sm:h-3.5 sm:w-3.5" /> Add Pair
             </Button>
           </div>
         )}
@@ -264,3 +280,4 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
     </Card>
   );
 }
+

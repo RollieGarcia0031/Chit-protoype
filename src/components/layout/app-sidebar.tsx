@@ -165,9 +165,9 @@ export function AppSidebar() {
         ) : (
           <div className={`flex gap-2 ${isExpanded ? 'flex-col' : 'flex-col items-center'}`}>
             <Button
-              variant="outline"
+              variant="ghost"
               asChild
-              className="w-full"
+              className="w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               title={isExpanded ? "" : "Login"}
             >
               <Link href="/login" className={`flex items-center ${isExpanded ? 'justify-center' : 'justify-center aspect-square p-0 w-10 h-10'}`}>
@@ -176,8 +176,9 @@ export function AppSidebar() {
               </Link>
             </Button>
             <Button
+              variant="ghost"
               asChild
-              className="w-full"
+              className="w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               title={isExpanded ? "" : "Sign Up"}
             >
               <Link href="/signup" className={`flex items-center ${isExpanded ? 'justify-center' : 'justify-center aspect-square p-0 w-10 h-10'}`}>
@@ -191,4 +192,3 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
-

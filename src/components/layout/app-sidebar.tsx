@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { ChitLogo } from '@/components/icons/logo';
 import { Button } from '@/components/ui/button';
-import { Home, LogIn, UserPlus, LogOut, FilePlus2, ListChecks, ClipboardCheck } from 'lucide-react';
+import { HelpCircle, LogIn, UserPlus, LogOut, FilePlus2, ListChecks, ClipboardCheck } from 'lucide-react'; // Changed Home to HelpCircle
 import { useAuth } from '@/contexts/auth-context';
 import {
   DropdownMenu,
@@ -50,7 +50,6 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" variant="sidebar" side="left">
       <SidebarHeader className="p-4 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2" aria-label="Chit Home">
-          {/* Pass showText prop to control logo's text visibility */}
           <ChitLogo className="h-8 w-auto text-primary" showText={isExpanded} />
         </Link>
       </SidebarHeader>
@@ -60,12 +59,12 @@ export function AppSidebar() {
             <SidebarMenuButton
               asChild
               isActive={pathname === '/'}
-              tooltip={isExpanded ? undefined : "Home"}
+              tooltip={isExpanded ? undefined : "What's this?"}
               className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
               <Link href="/" className="flex items-center">
-                <Home />
-                {isExpanded && <span>Home</span>}
+                <HelpCircle /> {/* Changed Home to HelpCircle */}
+                {isExpanded && <span>What&apos;s this?</span>} {/* Changed label */}
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

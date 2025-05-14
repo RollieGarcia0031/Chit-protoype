@@ -11,7 +11,15 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 
 export const metadata: Metadata = {
   title: 'Chit',
-  description: 'Connect and share with Chit.',
+  description: 'Smart Exam Creation Made Simple', // Updated description
+  manifest: '/manifest.json', // Link to your PWA manifest file
+  icons: {
+    icon: '/favicon.ico', // Standard favicon
+    apple: '/apple-touch-icon.png', // Apple touch icon
+    // You can add more specific icons here if needed, e.g., for different sizes
+    // PWA icons (e.g., 192x192, 512x512) are typically defined in manifest.json
+  },
+  themeColor: '#19A0A6', // Sets the browser theme color for PWA on mobile
 };
 
 export default function RootLayout({

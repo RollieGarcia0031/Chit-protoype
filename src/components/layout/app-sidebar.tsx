@@ -102,12 +102,12 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   asChild
                   isActive={pathname === '/render-exam'}
-                  tooltip={isExpanded ? undefined : "Render Exam"}
+                  tooltip={isExpanded ? undefined : "Generate DOCX"}
                   className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 >
                   <Link href="/render-exam" className="flex items-center">
                     <ClipboardCheck />
-                    {isExpanded && <span>Render Exam</span>}
+                    {isExpanded && <span>Generate DOCX</span>}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -170,7 +170,7 @@ export function AppSidebar() {
             <Button
               variant="default"
               asChild
-              className="w-full"
+              className="w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               title={isExpanded ? "" : "Login"}
             >
               <Link href="/login" className={`flex items-center ${isExpanded ? 'justify-start pl-3' : 'justify-center aspect-square p-0 w-10 h-10'}`}>
@@ -181,7 +181,7 @@ export function AppSidebar() {
             <Button
               variant="default"
               asChild
-              className="w-full"
+              className="w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               title={isExpanded ? "" : "Sign Up"}
             >
               <Link href="/signup" className={`flex items-center ${isExpanded ? 'justify-start pl-3' : 'justify-center aspect-square p-0 w-10 h-10'}`}>

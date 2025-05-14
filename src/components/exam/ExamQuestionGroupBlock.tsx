@@ -1,6 +1,7 @@
 // src/components/exam/ExamQuestionGroupBlock.tsx
 'use client';
 
+import type { MatchingTypeQuestion } from "@/types/exam-types"; // Import MatchingTypeQuestion
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -81,18 +82,27 @@ export function ExamQuestionGroupBlock({
           />
         </div>
         <div className="space-y-3">
-          {block.questions.map((question, questionIndex) => (
-            <ExamItemBlock
-              key={question.id}
-              item={question}
-              questionType={block.blockType}
-              onItemChange={(updatedItem) => onUpdateQuestionInBlock(blockIndex, questionIndex, updatedItem)}
-              onItemRemove={() => onRemoveQuestionFromBlock(blockIndex, questionIndex)}
-              itemIndex={questionIndex}
-              disabled={disabled}
-              totalQuestionsInBlock={block.blockType === 'matching' ? block.questions.length : undefined}
-            />
-          ))}
+          {block.questions.map((question, questionIndex) => {
+            let lettersUsedByOtherItemsInBlock: string[] = [];
+            if (block.blockType === 'matching') {
+              lettersUsedByOtherItemsInBlock = block.questions
+                .filter((q, i) => i !== questionIndex && (q as MatchingTypeQuestion).pairs[0]?.responseLetter)
+                .map(q => (q as MatchingTypeQuestion).pairs[0]!.responseLetter!);
+            }
+            return (
+              <ExamItemBlock
+                key={question.id}
+                item={question}
+                questionType={block.blockType}
+                onItemChange={(updatedItem) => onUpdateQuestionInBlock(blockIndex, questionIndex, updatedItem)}
+                onItemRemove={() => onRemoveQuestionFromBlock(blockIndex, questionIndex)}
+                itemIndex={questionIndex}
+                disabled={disabled}
+                totalQuestionsInBlock={block.blockType === 'matching' ? block.questions.length : undefined}
+                lettersUsedByOtherItemsInBlock={block.blockType === 'matching' ? lettersUsedByOtherItemsInBlock : undefined}
+              />
+            );
+          })}
         </div>
       </CardContent>
       <CardFooter>

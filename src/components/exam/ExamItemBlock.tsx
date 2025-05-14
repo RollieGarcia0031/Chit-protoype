@@ -21,7 +21,8 @@ interface ExamItemBlockProps {
   onItemRemove: () => void;
   itemIndex: number;
   disabled?: boolean;
-  totalQuestionsInBlock?: number; // New prop for matching type
+  totalQuestionsInBlock?: number;
+  lettersUsedByOtherItemsInBlock?: string[]; // New prop
 }
 
 // Helper function to get alphabet letter
@@ -29,7 +30,16 @@ const getAlphabetLetter = (index: number): string => {
   return String.fromCharCode(65 + index); // 65 is ASCII for 'A'
 };
 
-export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, itemIndex, disabled = false, totalQuestionsInBlock }: ExamItemBlockProps) {
+export function ExamItemBlock({
+  item,
+  questionType,
+  onItemChange,
+  onItemRemove,
+  itemIndex,
+  disabled = false,
+  totalQuestionsInBlock,
+  lettersUsedByOtherItemsInBlock
+}: ExamItemBlockProps) {
   const handleQuestionTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     onItemChange({ ...item, questionText: e.target.value });
   };
@@ -95,7 +105,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
   };
 
   // --- Matching Type Specific Handlers ---
-  const handleMatchingPremiseChange = (text: string) => { // Renamed for clarity
+  const handleMatchingPremiseChange = (text: string) => { 
     if (item.type === 'matching') {
       const currentPairs = (item as MatchingTypeQuestion).pairs;
       const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "" }];
@@ -104,7 +114,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
     }
   };
 
-  const handleMatchingResponseChange = (text: string) => { // Renamed for clarity
+  const handleMatchingResponseChange = (text: string) => { 
     if (item.type === 'matching') {
       const currentPairs = (item as MatchingTypeQuestion).pairs;
       const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "" }];
@@ -123,12 +133,25 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
   };
 
 
+  const getAvailableLettersForMatching = (): string[] => {
+    if (questionType !== 'matching' || !totalQuestionsInBlock) return [];
+    const currentAssignedLetter = (item as MatchingTypeQuestion).pairs[0]?.responseLetter;
+    const allPossibleLetters = Array.from({ length: totalQuestionsInBlock }, (_, i) => getAlphabetLetter(i));
+    
+    return allPossibleLetters.filter(possibleLetter => {
+      if (possibleLetter === currentAssignedLetter) return true; // Always allow the current item's letter
+      if (lettersUsedByOtherItemsInBlock && lettersUsedByOtherItemsInBlock.includes(possibleLetter)) return false; // Used by another
+      return true; // Available
+    });
+  };
+
+
   return (
     <Card className="border-border shadow-sm bg-card/50">
       <CardHeader className="flex flex-row items-center justify-between py-2 px-3 sm:py-3 sm:px-4 gap-2">
         <CardTitle className="text-xs sm:text-sm md:text-base font-medium flex-shrink-0">Question {itemIndex + 1}</CardTitle>
         <div className="flex items-center gap-2 ml-auto">
-            <div className="space-y-0 md:hidden"> {/* Show only on mobile/small screens */}
+            <div className="space-y-0 md:hidden"> 
                 <Label htmlFor={`points-${item.id}-mobile`} className="sr-only">Points</Label>
                 <Input
                 id={`points-${item.id}-mobile`}
@@ -147,7 +170,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
         </div>
       </CardHeader>
       <CardContent className="space-y-3 sm:space-y-4 px-3 pb-3 sm:px-4 sm:pb-4">
-        {questionType !== 'matching' && ( // Standard layout for MC and T/F
+        {questionType !== 'matching' && (
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 sm:gap-4 items-start">
             <div className="space-y-1">
               <Label htmlFor={`questionText-${item.id}`} className="text-xs sm:text-sm">Question Text / Instructions</Label>
@@ -160,7 +183,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                 disabled={disabled}
               />
             </div>
-            <div className="space-y-1 w-20 sm:w-24 hidden md:block"> {/* Points for desktop */}
+            <div className="space-y-1 w-20 sm:w-24 hidden md:block"> 
               <Label htmlFor={`points-${item.id}-desktop`} className="text-xs sm:text-sm">Points</Label>
               <Input
                 id={`points-${item.id}-desktop`}
@@ -176,7 +199,6 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
           </div>
         )}
 
-        {/* Specific fields based on questionType */}
         {questionType === 'multiple-choice' && item.type === 'multiple-choice' && (
           <div className="space-y-1.5 sm:space-y-2">
             <Label className="block text-xs sm:text-sm font-medium">Options (Mark the correct one)</Label>
@@ -236,10 +258,6 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
 
         {questionType === 'matching' && item.type === 'matching' && (
           <div className="space-y-2 sm:space-y-3">
-             {/* General instructions (item.questionText) for matching are handled by blockTitle or can be displayed here if needed */}
-             {/* This layout assumes block.blockTitle provides overall instructions for matching. */}
-             {/* If item.questionText is used for per-pair instructions, it's currently not displayed. */}
-             {/* Points input for desktop, hidden for mobile as it's in header */}
             <div className="space-y-1 w-20 sm:w-24 hidden md:block self-start">
               <Label htmlFor={`points-${item.id}-desktop-matching`} className="text-xs sm:text-sm">Points</Label>
               <Input
@@ -288,7 +306,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                         <SelectValue placeholder="ID" />
                         </SelectTrigger>
                         <SelectContent>
-                        {Array.from({ length: totalQuestionsInBlock }, (_, i) => getAlphabetLetter(i)).map(letter => (
+                        {getAvailableLettersForMatching().map(letter => (
                             <SelectItem key={letter} value={letter} className="text-xs sm:text-sm">
                             {letter}
                             </SelectItem>

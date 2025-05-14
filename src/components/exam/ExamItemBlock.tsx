@@ -132,27 +132,27 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
 
   return (
     <Card className="border-border shadow-sm bg-card/50">
-      <CardHeader className="flex flex-row items-center justify-between py-3 px-4">
-        <CardTitle className="text-md font-medium">Question {itemIndex + 1}</CardTitle>
-        <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block" disabled={disabled}>
-          <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+      <CardHeader className="flex flex-row items-center justify-between py-2 px-3 sm:py-3 sm:px-4">
+        <CardTitle className="text-sm sm:text-base font-medium">Question {itemIndex + 1}</CardTitle>
+        <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block" disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8">
+          <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground hover:text-destructive" />
         </Button>
       </CardHeader>
-      <CardContent className="space-y-4 px-4 pb-4">
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 items-start">
+      <CardContent className="space-y-3 sm:space-y-4 px-3 pb-3 sm:px-4 sm:pb-4">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 sm:gap-4 items-start">
           <div className="space-y-1">
-            <Label htmlFor={`questionText-${item.id}`} className="text-sm">Question Text / Instructions</Label>
+            <Label htmlFor={`questionText-${item.id}`} className="text-xs sm:text-sm">Question Text / Instructions</Label>
             <Textarea
               id={`questionText-${item.id}`}
               value={item.questionText}
               onChange={handleQuestionTextChange}
               placeholder={questionType === 'matching' ? "e.g., Match the terms with their definitions." : "e.g., What is the capital of France?"}
-              className="min-h-[70px] text-sm"
+              className="min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm"
               disabled={disabled}
             />
           </div>
-          <div className="space-y-1 md:w-24">
-            <Label htmlFor={`points-${item.id}`} className="text-sm">Points</Label>
+          <div className="space-y-1 w-20 sm:w-24">
+            <Label htmlFor={`points-${item.id}`} className="text-xs sm:text-sm">Points</Label>
             <Input
               id={`points-${item.id}`}
               type="number"
@@ -160,7 +160,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
               onChange={handlePointsChange}
               min="0"
               placeholder="Pts"
-              className="h-9 text-sm text-center"
+              className="h-8 sm:h-9 text-xs sm:text-sm text-center"
               disabled={disabled}
             />
           </div>
@@ -169,10 +169,10 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
 
         {/* Multiple Choice Fields */}
         {questionType === 'multiple-choice' && item.type === 'multiple-choice' && (
-          <div className="space-y-2">
-            <Label className="block text-sm font-medium">Options (Mark the correct one)</Label>
+          <div className="space-y-1.5 sm:space-y-2">
+            <Label className="block text-xs sm:text-sm font-medium">Options (Mark the correct one)</Label>
             {(item as MultipleChoiceQuestion).options.map((option, optIndex) => (
-              <div key={option.id} className="flex items-center gap-2">
+              <div key={option.id} className="flex items-center gap-1.5 sm:gap-2">
                 <Checkbox
                   id={`correct-opt-${option.id}`}
                   checked={option.isCorrect}
@@ -180,19 +180,19 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                   aria-label={`Mark option ${getAlphabetLetter(optIndex)} as correct`}
                   disabled={disabled}
                 />
-                <Label htmlFor={`option-text-${option.id}`} className="font-semibold text-sm">{getAlphabetLetter(optIndex)}.</Label>
+                <Label htmlFor={`option-text-${option.id}`} className="font-semibold text-xs sm:text-sm">{getAlphabetLetter(optIndex)}.</Label>
                 <Input
                   id={`option-text-${option.id}`}
                   type="text"
                   value={option.text}
                   onChange={(e) => handleOptionTextChange(optIndex, e.target.value)}
                   placeholder={`Option ${getAlphabetLetter(optIndex)} text`}
-                  className="flex-grow h-9 text-sm"
+                  className="flex-grow h-8 sm:h-9 text-xs sm:text-sm"
                   disabled={disabled}
                 />
                 {(item as MultipleChoiceQuestion).options.length > 1 && (
-                   <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveOption(optIndex)} aria-label={`Remove option ${getAlphabetLetter(optIndex)}`} disabled={disabled}>
-                     <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                   <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveOption(optIndex)} aria-label={`Remove option ${getAlphabetLetter(optIndex)}`} disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8">
+                     <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-muted-foreground" />
                    </Button>
                 )}
               </div>
@@ -206,20 +206,20 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
         {/* True/False Fields */}
         {questionType === 'true-false' && item.type === 'true-false' && (
           <div>
-            <Label className="block text-sm font-medium mb-1.5">Correct Answer</Label>
+            <Label className="block text-xs sm:text-sm font-medium mb-1 sm:mb-1.5">Correct Answer</Label>
             <RadioGroup
               value={(item as TrueFalseQuestion).correctAnswer === null ? '' : String((item as TrueFalseQuestion).correctAnswer)}
               onValueChange={handleTrueFalseChange}
-              className="flex space-x-3"
+              className="flex space-x-2 sm:space-x-3"
               disabled={disabled}
             >
-              <div className="flex items-center space-x-1.5">
+              <div className="flex items-center space-x-1 sm:space-x-1.5">
                 <RadioGroupItem value="true" id={`true-${item.id}`} disabled={disabled} />
-                <Label htmlFor={`true-${item.id}`} className="text-sm font-normal">True</Label>
+                <Label htmlFor={`true-${item.id}`} className="text-xs sm:text-sm font-normal">True</Label>
               </div>
-              <div className="flex items-center space-x-1.5">
+              <div className="flex items-center space-x-1 sm:space-x-1.5">
                 <RadioGroupItem value="false" id={`false-${item.id}`} disabled={disabled} />
-                <Label htmlFor={`false-${item.id}`} className="text-sm font-normal">False</Label>
+                <Label htmlFor={`false-${item.id}`} className="text-xs sm:text-sm font-normal">False</Label>
               </div>
             </RadioGroup>
           </div>
@@ -227,30 +227,30 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
 
         {/* Matching Type Fields */}
         {questionType === 'matching' && item.type === 'matching' && (
-          <div className="space-y-2">
-            <Label className="block text-sm font-medium">Matching Pairs</Label>
+          <div className="space-y-1.5 sm:space-y-2">
+            <Label className="block text-xs sm:text-sm font-medium">Matching Pairs</Label>
             {(item as MatchingTypeQuestion).pairs.map((pair, pairIndex) => (
-              <div key={pair.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto] gap-2 items-center">
+              <div key={pair.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto] gap-1.5 sm:gap-2 items-center">
                 <Input
                   type="text"
                   value={pair.premise}
                   onChange={(e) => handlePairPremiseChange(pairIndex, e.target.value)}
                   placeholder={`Premise ${pairIndex + 1}`}
-                  className="h-9 text-sm"
+                  className="h-8 sm:h-9 text-xs sm:text-sm"
                   disabled={disabled}
                 />
-                <span className="text-center text-muted-foreground hidden md:inline text-sm">=</span>
+                <span className="text-center text-muted-foreground hidden md:inline text-xs sm:text-sm">=</span>
                 <Input
                   type="text"
                   value={pair.response}
                   onChange={(e) => handlePairResponseChange(pairIndex, e.target.value)}
                   placeholder={`Response ${pairIndex + 1}`}
-                  className="h-9 text-sm"
+                  className="h-8 sm:h-9 text-xs sm:text-sm"
                   disabled={disabled}
                 />
                  {(item as MatchingTypeQuestion).pairs.length > 1 && (
-                  <Button type="button" variant="ghost" size="icon" onClick={() => handleRemovePair(pairIndex)} aria-label={`Remove pair ${pairIndex + 1}`} disabled={disabled}>
-                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  <Button type="button" variant="ghost" size="icon" onClick={() => handleRemovePair(pairIndex)} aria-label={`Remove pair ${pairIndex + 1}`} disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8">
+                    <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-muted-foreground" />
                   </Button>
                 )}
               </div>

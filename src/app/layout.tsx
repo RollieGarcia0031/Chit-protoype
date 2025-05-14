@@ -29,7 +29,7 @@ export default function RootLayout({
             <div className="flex flex-col flex-1 min-h-screen md:ml-[var(--sidebar-width)] data-[sidebar-collapsed=true]:md:ml-[var(--sidebar-width-icon)] group-[.is-mobile]/sidebar-provider:ml-0 transition-[margin-left] duration-300 ease-in-out">
               <AppTopBar />
               <main className="flex-grow">
-                <div className="container mx-auto px-4 py-8 sm:px-6 lg:px-8">
+                <div className="container mx-auto px-3 py-4 sm:px-4 sm:py-6 lg:px-8 lg:py-8">
                   {children}
                 </div>
               </main>

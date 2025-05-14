@@ -1,3 +1,4 @@
+
 // src/app/(protected)/create-exam/page.tsx
 'use client';
 
@@ -644,12 +645,12 @@ export default function CreateExamPage() {
         <Button
           variant="outline"
           size="icon"
-          className="fixed left-4 bottom-4 z-50 rounded-full h-14 w-14 shadow-lg bg-primary text-primary-foreground hover:bg-primary/90"
+          className="fixed left-2 bottom-2 sm:left-4 sm:bottom-4 z-50 rounded-full h-12 w-12 sm:h-14 sm:w-14 shadow-lg bg-primary text-primary-foreground hover:bg-primary/90"
           onClick={() => setIsAiDialogOpen(true)}
           aria-label="Open AI Suggestions"
           disabled={isAnalyzingWithAI}
         >
-          {isAnalyzingWithAI ? <Loader2 className="h-6 w-6 animate-spin" /> : <Sparkles className="h-6 w-6" />}
+          {isAnalyzingWithAI ? <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" /> : <Sparkles className="h-5 w-5 sm:h-6 sm:w-6" />}
           {aiFeedbackList.length > 0 && !isAnalyzingWithAI && (
              aiFeedbackList.some(f => f.suggestionText !== "AI analysis requires more complete exam content (e.g., all questions filled, answers selected, options defined)." &&
                                      f.suggestionText !== "Add at least one question block to get AI suggestions." &&
@@ -690,13 +691,13 @@ export default function CreateExamPage() {
       )}
 
       <Dialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[80vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle className="text-2xl flex items-center">
-              <Sparkles className="mr-2 h-6 w-6 text-primary" />
+            <DialogTitle className="text-xl sm:text-2xl flex items-center">
+              <Sparkles className="mr-2 h-5 w-5 sm:h-6 sm:w-6 text-primary" />
               AI Exam Analysis & Suggestions
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs sm:text-sm">
               Review AI-generated feedback to improve your exam. Analysis is based on current exam content.
               Content is analyzed approximately every 10 seconds if changes are made.
             </DialogDescription>
@@ -704,30 +705,30 @@ export default function CreateExamPage() {
           <div className="flex-grow overflow-y-auto space-y-3 pr-2">
             {isAnalyzingWithAI && (
               <div className="flex items-center justify-center py-10">
-                <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-                <p className="text-muted-foreground">Analyzing exam content...</p>
+                <Loader2 className="mr-2 h-6 w-6 sm:h-8 sm:w-8 animate-spin text-primary" />
+                <p className="text-muted-foreground text-sm sm:text-base">Analyzing exam content...</p>
               </div>
             )}
             {aiError && !isAnalyzingWithAI && (
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Analysis Error</AlertTitle>
-                <AlertDescription>{aiError}</AlertDescription>
+                <AlertTitle className="text-sm sm:text-base">Analysis Error</AlertTitle>
+                <AlertDescription className="text-xs sm:text-sm">{aiError}</AlertDescription>
               </Alert>
             )}
             {!isAnalyzingWithAI && !aiError && aiFeedbackList.length === 0 && (
               <div className="text-center py-10">
-                <Info className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-                <p className="text-muted-foreground">No AI suggestions available at the moment.</p>
-                <p className="text-sm text-muted-foreground">Ensure AI suggestions are enabled and you have some exam content that is sufficiently complete.</p>
+                <Info className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mb-3" />
+                <p className="text-muted-foreground text-sm sm:text-base">No AI suggestions available at the moment.</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Ensure AI suggestions are enabled and you have some exam content that is sufficiently complete.</p>
               </div>
             )}
             {!isAnalyzingWithAI && !aiError && aiFeedbackList.length > 0 && (
                <ul className="space-y-2">
                 {aiFeedbackList.map((feedback, index) => (
-                  <li key={index} className="text-sm text-foreground p-3 bg-muted/50 rounded-md shadow-sm">
+                  <li key={index} className="text-xs sm:text-sm text-foreground p-2 sm:p-3 bg-muted/50 rounded-md shadow-sm">
                     <p className="font-medium">Suggestion:</p>
-                    <ul className="list-disc pl-5 mt-1 text-muted-foreground">
+                    <ul className="list-disc pl-4 sm:pl-5 mt-1 text-muted-foreground">
                        {feedback.suggestionText.split('\n').map((line, lineIndex) => {
                           if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
                             return <li key={lineIndex}>{line.trim().substring(2)}</li>;
@@ -736,10 +737,10 @@ export default function CreateExamPage() {
                        }).filter(Boolean)}
                     </ul>
                     {feedback.elementPath && (
-                       <p className="text-xs text-primary/80 mt-1">Related to: <code>{feedback.elementPath}</code></p>
+                       <p className="text-2xs sm:text-xs text-primary/80 mt-1">Related to: <code>{feedback.elementPath}</code></p>
                     )}
                     {feedback.severity && (
-                       <Badge variant={feedback.severity === 'error' ? 'destructive' : feedback.severity === 'warning' ? 'secondary' : 'outline'} className="mt-1.5 text-xs">
+                       <Badge variant={feedback.severity === 'error' ? 'destructive' : feedback.severity === 'warning' ? 'secondary' : 'outline'} className="mt-1.5 text-2xs sm:text-xs">
                          {feedback.severity.charAt(0).toUpperCase() + feedback.severity.slice(1)}
                        </Badge>
                     )}
@@ -748,9 +749,9 @@ export default function CreateExamPage() {
               </ul>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAiDialogOpen(false)}>Close</Button>
-            <Button onClick={performAIAnalysis} disabled={isAnalyzingWithAI || !aiSuggestionsEnabled}>
+          <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setIsAiDialogOpen(false)} size="sm">Close</Button>
+            <Button onClick={performAIAnalysis} disabled={isAnalyzingWithAI || !aiSuggestionsEnabled} size="sm">
               {isAnalyzingWithAI && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Re-analyze Now
             </Button>
@@ -762,41 +763,40 @@ export default function CreateExamPage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle className="text-3xl font-bold tracking-tight">
+            <CardTitle className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight">
               {editingExamId ? "Edit Exam" : "Create New Exam"}
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-sm sm:text-base">
               {editingExamId 
                 ? `Editing exam: "${examTitle || 'Loading...'}"` 
                 : "Fill in the details below to create a new exam. Your progress is saved locally for new exams."}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="examTitle" className="text-base">Exam Title</Label>
+            <div className="space-y-4 sm:space-y-6">
+              <div className="space-y-1 sm:space-y-2">
+                <Label htmlFor="examTitle" className="text-sm sm:text-base">Exam Title</Label>
                 <Input
                   id="examTitle"
                   placeholder="e.g., Midterm Mathematics"
-                  className="text-base"
                   value={examTitle}
                   onChange={(e) => setExamTitle(e.target.value)}
                   required
                   disabled={isSaving || isLoadingExamData}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="examDescription" className="text-base">Description (Optional)</Label>
+              <div className="space-y-1 sm:space-y-2">
+                <Label htmlFor="examDescription" className="text-sm sm:text-base">Description (Optional)</Label>
                 <Textarea
                   id="examDescription"
                   placeholder="A brief description of the exam content or instructions."
-                  className="text-base min-h-[100px]"
+                  className="min-h-[80px] sm:min-h-[100px]"
                   value={examDescription}
                   onChange={(e) => setExamDescription(e.target.value)}
                   disabled={isSaving || isLoadingExamData}
                 />
               </div>
-              <div className="flex items-center space-x-2 pt-2">
+              <div className="flex items-center space-x-2 pt-1 sm:pt-2">
                 <Switch
                     id="ai-suggestions-toggle"
                     checked={aiSuggestionsEnabled}
@@ -813,7 +813,7 @@ export default function CreateExamPage() {
                     }}
                     disabled={isSaving || isLoadingExamData}
                 />
-                <Label htmlFor="ai-suggestions-toggle" className="text-sm">
+                <Label htmlFor="ai-suggestions-toggle" className="text-xs sm:text-sm">
                     Enable AI Suggestions
                 </Label>
               </div>
@@ -823,10 +823,10 @@ export default function CreateExamPage() {
 
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle className="text-2xl font-semibold">Question Blocks</CardTitle>
-            <CardDescription>Add blocks of questions. Each block contains questions of the same type. New blocks inherit the type of the previous block. New questions inherit points and (for MCQs) option count from the previous question in the block.</CardDescription>
+            <CardTitle className="text-lg sm:text-xl md:text-2xl font-semibold">Question Blocks</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Add blocks of questions. Each block contains questions of the same type. New blocks inherit the type of the previous block. New questions inherit points and (for MCQs) option count from the previous question in the block.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4 sm:space-y-6">
             {examBlocks.map((block, blockIndex) => {
               return (
                 <ExamQuestionGroupBlock
@@ -843,18 +843,18 @@ export default function CreateExamPage() {
                 />
               );
             })}
-            <Button type="button" variant="outline" onClick={handleAddExamBlock} className="w-full" disabled={isSaving || isLoadingExamData}>
-              <PlusCircle className="mr-2 h-5 w-5" />
+            <Button type="button" variant="outline" onClick={handleAddExamBlock} className="w-full text-xs sm:text-sm" size="sm" disabled={isSaving || isLoadingExamData}>
+              <PlusCircle className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
               Add Question Block
             </Button>
           </CardContent>
         </Card>
 
-        <div className="flex justify-between items-center pt-4">
-           <Button type="button" variant="outline" onClick={resetForm} disabled={isSaving || isLoadingExamData}>
+        <div className="flex flex-col sm:flex-row justify-between items-center pt-4 gap-2">
+           <Button type="button" variant="outline" onClick={resetForm} disabled={isSaving || isLoadingExamData} className="w-full sm:w-auto text-xs sm:text-sm" size="sm">
             {editingExamId ? "Cancel Edit" : "Clear Form & Reset Draft"}
           </Button>
-          <Button type="submit" size="lg" disabled={isSaving || isLoadingExamData || examBlocks.length === 0 || !examTitle.trim() || examBlocks.some(b => b.questions.length === 0)}>
+          <Button type="submit" size="sm" className="w-full sm:w-auto text-xs sm:text-sm sm:size-lg" disabled={isSaving || isLoadingExamData || examBlocks.length === 0 || !examTitle.trim() || examBlocks.some(b => b.questions.length === 0)}>
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {isSaving ? 'Saving...' : (editingExamId ? 'Update Exam' : 'Save Exam')}
           </Button>
@@ -863,4 +863,3 @@ export default function CreateExamPage() {
     </div>
   );
 }
-

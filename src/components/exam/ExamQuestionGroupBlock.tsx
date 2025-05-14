@@ -38,38 +38,38 @@ export function ExamQuestionGroupBlock({
 }: ExamQuestionGroupBlockProps) {
   return (
     <Card className="shadow-md border-border">
-      <CardHeader className="flex flex-row items-start justify-between gap-4 pb-4">
-        <div>
-          <CardTitle className="text-xl">Question Block {blockIndex + 1}</CardTitle>
-          <CardDescription className="text-sm">
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4 pb-3 sm:pb-4">
+        <div className="flex-grow">
+          <CardTitle className="text-lg sm:text-xl">Question Block {blockIndex + 1}</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
             Configure questions of type: <span className="font-semibold">{QUESTION_TYPES.find(qt => qt.value === block.blockType)?.label || block.blockType}</span>
           </CardDescription>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <Select
             value={block.blockType}
             onValueChange={(newType) => onBlockTypeChange(blockIndex, newType as QuestionType)}
             disabled={disabled}
           >
-            <SelectTrigger className="w-[180px] h-9 text-sm" disabled={disabled}>
+            <SelectTrigger className="w-full sm:w-[180px] h-9 text-xs sm:text-sm" disabled={disabled}>
               <SelectValue placeholder="Select type" />
             </SelectTrigger>
             <SelectContent>
               {QUESTION_TYPES.map(qt => (
-                <SelectItem key={qt.value} value={qt.value} className="text-sm">
+                <SelectItem key={qt.value} value={qt.value} className="text-xs sm:text-sm">
                   {qt.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Button variant="destructive" size="icon" onClick={() => onRemoveBlock(blockIndex)} aria-label="Remove question block" disabled={disabled}>
+          <Button variant="destructive" size="icon" onClick={() => onRemoveBlock(blockIndex)} aria-label="Remove question block" disabled={disabled} className="h-9 w-9">
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 sm:space-y-4">
         <div>
-          <Label htmlFor={`blockTitle-${block.id}`} className="mb-1 block text-sm">
+          <Label htmlFor={`blockTitle-${block.id}`} className="mb-1 block text-xs sm:text-sm">
             Block Instructions (Optional)
           </Label>
           <Textarea
@@ -77,7 +77,7 @@ export function ExamQuestionGroupBlock({
             value={block.blockTitle || ""}
             onChange={(e) => onBlockTitleChange(blockIndex, e.target.value)}
             placeholder="e.g., Answer all questions in this section."
-            className="min-h-[60px] text-sm"
+            className="min-h-[60px] text-xs sm:text-sm"
             disabled={disabled}
           />
         </div>
@@ -101,7 +101,7 @@ export function ExamQuestionGroupBlock({
           variant="outline"
           onClick={() => onAddQuestionToBlock(blockIndex)}
           size="sm"
-          className="w-full md:w-auto"
+          className="w-full md:w-auto text-xs sm:text-sm"
           disabled={disabled}
         >
           <PlusCircle className="mr-2 h-4 w-4" /> Add Question to this Block

@@ -1,3 +1,4 @@
+
 // src/app/(protected)/exams/page.tsx
 'use client';
 
@@ -82,6 +83,7 @@ export default function ViewExamsPage() {
       setIsLoadingExams(false); // Not logged in, no exams to load
       setExams([]); // Clear exams if user logs out
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
   const handleDeleteExam = async (examId: string) => {
@@ -127,40 +129,40 @@ export default function ViewExamsPage() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <Skeleton className="h-9 w-48 mb-2" />
-            <Skeleton className="h-5 w-64" />
+            <Skeleton className="h-8 sm:h-9 w-36 sm:w-48 mb-2" />
+            <Skeleton className="h-4 sm:h-5 w-48 sm:w-64" />
           </div>
-          <Skeleton className="h-10 w-36" />
+          <Skeleton className="h-9 sm:h-10 w-28 sm:w-36" />
         </div>
         <Card className="shadow-lg">
           <CardHeader>
-            <Skeleton className="h-7 w-32 mb-1" />
-            <Skeleton className="h-4 w-80" />
+            <Skeleton className="h-6 sm:h-7 w-24 sm:w-32 mb-1" />
+            <Skeleton className="h-4 w-64 sm:w-80" />
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[35%]"><Skeleton className="h-5 w-24" /></TableHead>
-                  <TableHead><Skeleton className="h-5 w-24" /></TableHead>
-                  <TableHead><Skeleton className="h-5 w-20" /></TableHead>
-                  <TableHead className="text-center"><Skeleton className="h-5 w-16" /></TableHead>
-                  <TableHead className="text-center"><Skeleton className="h-5 w-16" /></TableHead>
-                  <TableHead className="text-right"><Skeleton className="h-5 w-28" /></TableHead>
+                  <TableHead className="w-[35%]"><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
+                  <TableHead><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
+                  <TableHead><Skeleton className="h-5 w-16 sm:w-20" /></TableHead>
+                  <TableHead className="text-center"><Skeleton className="h-5 w-12 sm:w-16" /></TableHead>
+                  <TableHead className="text-center"><Skeleton className="h-5 w-12 sm:w-16" /></TableHead>
+                  <TableHead className="text-right"><Skeleton className="h-5 w-20 sm:w-28" /></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {[...Array(3)].map((_, i) => (
                   <TableRow key={i}>
                     <TableCell><Skeleton className="h-5 w-full" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                    <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
-                    <TableCell className="text-center"><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
-                    <TableCell className="text-center"><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Skeleton className="h-8 w-8 inline-block" />
-                      <Skeleton className="h-8 w-8 inline-block" />
-                      <Skeleton className="h-8 w-8 inline-block" />
+                    <TableCell><Skeleton className="h-5 w-20 sm:w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-6 w-16 sm:w-20 rounded-full" /></TableCell>
+                    <TableCell className="text-center"><Skeleton className="h-5 w-6 sm:w-8 mx-auto" /></TableCell>
+                    <TableCell className="text-center"><Skeleton className="h-5 w-6 sm:w-8 mx-auto" /></TableCell>
+                    <TableCell className="text-right space-x-1 sm:space-x-2">
+                      <Skeleton className="h-7 w-7 sm:h-8 sm:w-8 inline-block" />
+                      <Skeleton className="h-7 w-7 sm:h-8 sm:w-8 inline-block" />
+                      <Skeleton className="h-7 w-7 sm:h-8 sm:w-8 inline-block" />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -174,31 +176,31 @@ export default function ViewExamsPage() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center">
-        <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
-        <h2 className="text-2xl font-semibold mb-2">Oops! Something went wrong.</h2>
-        <p className="text-muted-foreground mb-4">{error}</p>
-        <Button onClick={fetchExams}>Try Again</Button>
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4">
+        <AlertTriangle className="h-12 w-12 sm:h-16 sm:w-16 text-destructive mb-4" />
+        <h2 className="text-xl sm:text-2xl font-semibold mb-2">Oops! Something went wrong.</h2>
+        <p className="text-sm sm:text-base text-muted-foreground mb-4">{error}</p>
+        <Button onClick={fetchExams} size="sm" className="text-xs sm:text-sm">Try Again</Button>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
         <div>
-            <h1 className="text-3xl font-bold tracking-tight">Your Exams</h1>
-            <p className="text-muted-foreground">Manage and review your created exams.</p>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Your Exams</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">Manage and review your created exams.</p>
         </div>
-        <Button asChild>
+        <Button asChild size="sm" className="text-xs sm:text-sm w-full sm:w-auto">
             <Link href="/create-exam">Create New Exam</Link>
         </Button>
       </div>
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Exam List</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-xl sm:text-2xl">Exam List</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
             A list of all exams you have created. You can edit, view results, or delete them.
           </CardDescription>
         </CardHeader>
@@ -207,58 +209,56 @@ export default function ViewExamsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[35%]">Title</TableHead>
-                  <TableHead>Date Created</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-center">Questions</TableHead>
-                  <TableHead className="text-center">Points</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="w-[30%] sm:w-[35%] px-2 sm:px-4 text-xs sm:text-sm">Title</TableHead>
+                  <TableHead className="hidden md:table-cell px-2 sm:px-4 text-xs sm:text-sm">Date Created</TableHead>
+                  <TableHead className="px-2 sm:px-4 text-xs sm:text-sm">Status</TableHead>
+                  <TableHead className="text-center px-1 sm:px-4 text-xs sm:text-sm">Questions</TableHead>
+                  <TableHead className="hidden sm:table-cell text-center px-1 sm:px-4 text-xs sm:text-sm">Points</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 text-xs sm:text-sm">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {exams.map((exam) => (
                   <TableRow key={exam.id}>
-                    <TableCell className="font-medium">{exam.title}</TableCell>
-                    <TableCell>{exam.createdAt.toDate().toLocaleDateString()}</TableCell>
-                    <TableCell>
+                    <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">{exam.title}</TableCell>
+                    <TableCell className="hidden md:table-cell px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">{exam.createdAt.toDate().toLocaleDateString()}</TableCell>
+                    <TableCell className="px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">
                       <Badge 
                         variant={exam.status === 'Published' ? 'default' : exam.status === 'Draft' ? 'secondary' : 'outline'}
-                        className={exam.status === 'Archived' ? 'bg-muted text-muted-foreground' : ''}
+                        className={`text-2xs sm:text-xs ${exam.status === 'Archived' ? 'bg-muted text-muted-foreground' : ''}`}
                       >
                         {exam.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-center">{exam.totalQuestions}</TableCell>
-                    <TableCell className="text-center">{exam.totalPoints}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button variant="outline" size="icon" aria-label="Edit Exam" asChild>
-                        {/* TODO: Link to an edit page /exams/[examId]/edit */}
-                        <Link href={`/create-exam?examId=${exam.id}`}><Edit3 className="h-4 w-4" /></Link>
+                    <TableCell className="text-center px-1 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">{exam.totalQuestions}</TableCell>
+                    <TableCell className="hidden sm:table-cell text-center px-1 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">{exam.totalPoints}</TableCell>
+                    <TableCell className="text-right space-x-1 sm:space-x-2 px-2 sm:px-4 py-2 sm:py-4">
+                      <Button variant="outline" size="icon" aria-label="Edit Exam" asChild className="h-7 w-7 sm:h-8 sm:w-8">
+                        <Link href={`/create-exam?examId=${exam.id}`}><Edit3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></Link>
                       </Button>
-                      <Button variant="outline" size="icon" aria-label="View Exam Results" className="text-primary hover:text-primary" asChild>
-                         {/* TODO: Link to a results page /exams/[examId]/results */}
-                        <Link href={`/exams/${exam.id}/results`}><ArrowRight className="h-4 w-4" /></Link>
+                      <Button variant="outline" size="icon" aria-label="View Exam Results" className="text-primary hover:text-primary h-7 w-7 sm:h-8 sm:w-8" asChild>
+                        <Link href={`/exams/${exam.id}/results`}><ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></Link>
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="icon" aria-label="Delete Exam" disabled={deletingExamId === exam.id}>
-                            {deletingExamId === exam.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          <Button variant="destructive" size="icon" aria-label="Delete Exam" disabled={deletingExamId === exam.id} className="h-7 w-7 sm:h-8 sm:w-8">
+                            {deletingExamId === exam.id ? <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
+                            <AlertDialogTitle className="text-base sm:text-lg">Are you sure?</AlertDialogTitle>
+                            <AlertDialogDescription className="text-xs sm:text-sm">
                               This action cannot be undone. This will permanently delete the exam
                               &quot;{exam.title}&quot; and all its associated questions and data.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel disabled={deletingExamId === exam.id}>Cancel</AlertDialogCancel>
+                          <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+                            <AlertDialogCancel disabled={deletingExamId === exam.id} className="text-xs sm:text-sm">Cancel</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => handleDeleteExam(exam.id)}
                               disabled={deletingExamId === exam.id}
-                              className="bg-destructive hover:bg-destructive/90"
+                              className="bg-destructive hover:bg-destructive/90 text-xs sm:text-sm"
                             >
                               {deletingExamId === exam.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                               Delete
@@ -273,15 +273,15 @@ export default function ViewExamsPage() {
             </Table>
           ) : (
             <div className="text-center py-10">
-              <p className="text-muted-foreground text-lg">No exams created yet.</p>
-              <Button asChild className="mt-4">
+              <p className="text-muted-foreground text-base sm:text-lg">No exams created yet.</p>
+              <Button asChild className="mt-4 text-xs sm:text-sm" size="sm">
                 <Link href="/create-exam">Create Your First Exam</Link>
               </Button>
             </div>
           )}
         </CardContent>
         {exams.length > 0 && (
-            <CardFooter className="text-sm text-muted-foreground">
+            <CardFooter className="text-xs sm:text-sm text-muted-foreground">
                 Showing {exams.length} exam{exams.length === 1 ? '' : 's'}.
             </CardFooter>
         )}

@@ -17,15 +17,15 @@ export default function HomePage() {
           priority
           data-ai-hint="modern classroom"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent flex flex-col items-center justify-center p-6 py-10 sm:p-8 sm:py-12 md:p-10 md:py-16 text-primary-foreground">
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl">
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 py-10 sm:p-8 sm:py-12 md:p-10 md:py-16 text-primary-foreground">
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl text-foreground dark:text-primary-foreground">
             Welcome to <span className="text-primary drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">Chit</span> — Smart Exam Creation Made Simple
           </h1>
-          <p className="mt-3 sm:mt-4 max-w-xl sm:max-w-2xl text-sm sm:text-base md:text-lg text-primary-foreground/90">
+          <p className="mt-3 sm:mt-4 max-w-xl sm:max-w-2xl text-sm sm:text-base md:text-lg text-foreground/90 dark:text-primary-foreground/90">
             Effortlessly create, store, and share exams in minutes.
             Focus on teaching, let us handle the formatting.
           </p>
-          <p className="mt-2 max-w-lg sm:max-w-xl text-xs sm:text-sm font-semibold text-primary-foreground/80 italic">
+          <p className="mt-2 max-w-lg sm:max-w-xl text-xs sm:text-sm font-semibold text-foreground/80 dark:text-primary-foreground/80 italic">
             From Idea to Exam, Faster Than Ever. <br className="sm:hidden"/>No more templates. No more formatting struggles.
           </p>
           <Button asChild size="lg" className="mt-6 sm:mt-8">

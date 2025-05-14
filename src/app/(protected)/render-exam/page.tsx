@@ -68,12 +68,13 @@ function ExamPreviewPlaceholder({
     onDownloadDocx: () => Promise<void>;
     isDownloadingDocxFile: boolean;
 }) {
+  let globalPreviewQuestionCounter = 0;
   return (
     <Card className="shadow-lg">
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div>
-          <CardTitle className="text-lg sm:text-xl font-semibold text-foreground">Exam Preview: {exam.title}</CardTitle>
-          <CardDescription className="text-xs sm:text-sm text-foreground">This area shows a simplified preview. The full exam can be downloaded as a DOCX file.</CardDescription>
+          <CardTitle className="text-lg sm:text-xl font-semibold text-black">Exam Preview: {exam.title}</CardTitle>
+          <CardDescription className="text-xs sm:text-sm text-black">This area shows a simplified preview. The full exam can be downloaded as a DOCX file.</CardDescription>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
             <Button variant="outline" onClick={onBack} size="sm" className="text-xs sm:text-sm flex-grow sm:flex-grow-0">
@@ -91,38 +92,38 @@ function ExamPreviewPlaceholder({
         </div>
       </CardHeader>
       <CardContent className="h-[calc(100vh-300px)] min-h-[400px] sm:min-h-[500px] p-3 sm:p-6 border rounded-md bg-muted/30 overflow-auto">
-        <div className="prose prose-sm max-w-none text-black">
-            <h1 className="text-center text-xl sm:text-2xl font-bold mb-2 text-black">{exam.title}</h1>
+        <div className="prose prose-sm max-w-none text-black" style={{ color: 'black' }}>
+            <h1 className="text-center text-xl sm:text-2xl font-bold mb-2 text-black" style={{ color: 'black' }}>{exam.title}</h1>
 
-            <div className="flex justify-between text-xs sm:text-sm mb-4 text-black">
+            <div className="flex justify-between text-xs sm:text-sm mb-4 text-black" style={{ color: 'black' }}>
                 <span>Name: _________________________</span>
                 <span>Score: ____________</span>
             </div>
 
-            {exam.description && <p className="text-center text-sm sm:text-base text-black italic mb-4">{exam.description}</p>}
+            {exam.description && <p className="text-center text-sm sm:text-base text-black italic mb-4" style={{ color: 'black' }}>{exam.description}</p>}
 
             <hr className="my-3 sm:my-4"/>
 
             {exam.examBlocks.map((block, blockIndex) => (
                 <div key={block.id} className="mb-4 sm:mb-6">
-                    <h2 className="text-base sm:text-lg font-semibold mb-1 text-black">
+                    <h2 className="text-base sm:text-lg font-semibold mb-1 text-black" style={{ color: 'black' }}>
                         {toRoman(blockIndex + 1)}. {getQuestionTypeLabel(block.blockType)}
                     </h2>
-                    {block.blockTitle && <p className="text-sm sm:text-base text-black mb-2 italic">{block.blockTitle}</p>}
+                    {block.blockTitle && <p className="text-sm sm:text-base text-black mb-2 italic" style={{ color: 'black' }}>{block.blockTitle}</p>}
 
-                    {block.blockType !== 'matching' && block.questions.map((question, qIndex) => {
-                        const globalQuestionNumber = exam.examBlocks.slice(0, blockIndex).reduce((acc, b) => acc + b.questions.length, 0) + qIndex + 1;
+                    {block.blockType !== 'matching' && block.questions.map((question) => {
+                        globalPreviewQuestionCounter++;
                         return (
                             <div key={question.id} className="mb-2 sm:mb-3 pl-2 sm:pl-4">
-                                <p className="font-medium text-sm sm:text-base text-black">
+                                <p className="font-medium text-sm sm:text-base text-black" style={{ color: 'black' }}>
                                     {question.type === 'true-false' ? '____ ' : ''}
-                                    {globalQuestionNumber}.{' '}
+                                    {globalPreviewQuestionCounter}.{' '}
                                     {question.questionText}
                                 </p>
                                 {question.type === 'multiple-choice' && (
                                     <ul className="list-none pl-4 sm:pl-6 mt-1 space-y-0.5">
                                         {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
-                                            <li key={opt.id} className="text-sm sm:text-base text-black">{getAlphabetLetter(optIndex)}. {opt.text}</li>
+                                            <li key={opt.id} className="text-sm sm:text-base text-black" style={{ color: 'black' }}>{getAlphabetLetter(optIndex)}. {opt.text}</li>
                                         ))}
                                     </ul>
                                 )}
@@ -130,37 +131,42 @@ function ExamPreviewPlaceholder({
                         );
                     })}
                     {block.blockType === 'matching' && (
-                       <>
-                        {block.questions.map((question, qIndex) => {
-                             const globalQuestionNumber = exam.examBlocks.slice(0, blockIndex).reduce((acc, b) => acc + b.questions.length, 0) + qIndex + 1;
-                             return (
-                                 <div key={question.id} className="mb-2 sm:mb-3 pl-2 sm:pl-4">
-                                     <p className="font-medium text-sm sm:text-base text-black">
-                                         {globalQuestionNumber}.{' '}
-                                         {(question as MatchingTypeQuestion).pairs[0]?.premise}
-                                         <span className="inline-block w-12 sm:w-16 border-b border-black/50 ml-2"></span>
-                                     </p>
-                                 </div>
-                             );
-                        })}
-                        <div className="mt-3 sm:mt-4 pl-2 sm:pl-4">
-                            <h3 className="text-sm sm:text-base font-semibold mb-2 text-black">Choices:</h3>
-                            <ul className="list-none pl-4 sm:pl-6 space-y-0.5 columns-1 sm:columns-2 md:columns-3 gap-x-4">
-                                {block.questions
-                                    .filter(qFile => qFile.type === 'matching')
-                                    .map((qFile, choiceIndex) => {
-                                        const matchQFile = qFile as MatchingTypeQuestion;
-                                        const letter = matchQFile.pairs[0]?.responseLetter || getAlphabetLetter(choiceIndex);
-                                        const responseText = matchQFile.pairs[0]?.response;
-                                        return (
-                                            <li key={`choice-${qFile.id}`} className="text-sm sm:text-base text-black break-inside-avoid-column">
-                                                {letter}. {responseText}
-                                            </li>
-                                        );
-                                })}
-                            </ul>
-                        </div>
-                       </>
+                       <table className="w-full text-black" style={{ color: 'black', borderCollapse: 'collapse' }}>
+                           <tbody>
+                               {(() => {
+                                   const premises = block.questions.map(q => (q as MatchingTypeQuestion).pairs[0]?.premise || "");
+                                   const responses = block.questions
+                                     .map(q => ({
+                                       text: (q as MatchingTypeQuestion).pairs[0]?.response || "",
+                                       letter: (q as MatchingTypeQuestion).pairs[0]?.responseLetter || getAlphabetLetter(block.questions.indexOf(q))
+                                     }))
+                                     .sort((a, b) => a.letter.localeCompare(b.letter));
+
+                                   const numRows = Math.max(premises.length, responses.length);
+                                   const rows = [];
+                                   for (let i = 0; i < numRows; i++) {
+                                       globalPreviewQuestionCounter++;
+                                       const premiseText = premises[i] ? `${globalPreviewQuestionCounter}. ${premises[i]}  _________` : "";
+                                       const responseText = responses[i] ? `${responses[i].letter}. ${responses[i].text}` : "";
+                                       rows.push(
+                                           <tr key={`match-row-${block.id}-${i}`}>
+                                               <td className="py-1 pr-2 align-top" style={{ width: '50%', verticalAlign: 'top', paddingRight: '0.5rem', paddingBottom: '0.25rem' }}>{premiseText}</td>
+                                               <td className="py-1 pl-2 align-top" style={{ width: '50%', verticalAlign: 'top', paddingLeft: '0.5rem', paddingBottom: '0.25rem' }}>{responseText}</td>
+                                           </tr>
+                                       );
+                                   }
+                                   // Decrement counter if we over-incremented due to mismatch in premise/response lengths
+                                   if (premises.length !== responses.length && numRows > 0) {
+                                     globalPreviewQuestionCounter -= (numRows - Math.min(premises.length, responses.length));
+                                   } else if (numRows === 0) { // If no questions, ensure counter doesn't get decremented below actual
+                                     globalPreviewQuestionCounter = exam.examBlocks.slice(0, blockIndex).reduce((acc, b) => acc + b.questions.length, 0);
+                                   }
+
+
+                                   return rows;
+                               })()}
+                           </tbody>
+                       </table>
                     )}
                 </div>
             ))}
@@ -211,7 +217,8 @@ export default function RenderExamPage() {
             createdAt: data.createdAt || Timestamp.now(),
             updatedAt: data.updatedAt || Timestamp.now(),
             totalQuestions: data.totalQuestions || 0,
-            status: data.status || "Draft",
+            // totalPoints: data.totalPoints || 0, // Removed
+            status: data.status || "Draft", // Removed
         } as ExamSummaryData);
       });
       setExams(fetchedExams);
@@ -319,16 +326,16 @@ export default function RenderExamPage() {
                 question = {
                   ...baseQuestionProps,
                   type: 'matching',
-                  pairs: (qData.pairs || []).map((p: any) => ({
+                  pairs: (qData.pairs || []).map((p: any, index: number) => ({ // Ensure responseLetter is populated if missing
                       id: String(p?.id || `pair-${Math.random()}`),
                       premise: String(p?.premise || ""),
                       response: String(p?.response || ""),
-                      responseLetter: p?.responseLetter || undefined,
+                      responseLetter: p?.responseLetter || getAlphabetLetter(index), // Assign letter if missing
                     })),
                 } as MatchingTypeQuestion;
                 break;
               default:
-                question = { ...baseQuestionProps, type: 'multiple-choice', options: []};
+                question = { ...baseQuestionProps, type: 'multiple-choice', options: []}; // Fallback, though should not happen
             }
             if(question) loadedQuestions.push(question);
           });
@@ -347,8 +354,8 @@ export default function RenderExamPage() {
             createdAt: examBaseData.createdAt || examDataFromSummary.createdAt || Timestamp.now(),
             updatedAt: examBaseData.updatedAt || examDataFromSummary.updatedAt || Timestamp.now(),
             totalQuestions: Number(examBaseData.totalQuestions || examDataFromSummary.totalQuestions || 0),
-            totalPoints: 0,
-            status: (examBaseData.status || examDataFromSummary.status || "Draft") as FullExamData['status'],
+            totalPoints: 0, // Not used in preview
+            status: (examBaseData.status || examDataFromSummary.status || "Draft") as FullExamData['status'], // Not used in preview
             examBlocks: loadedBlocks,
         };
 
@@ -406,7 +413,7 @@ export default function RenderExamPage() {
         (examForPreview.examBlocks).forEach((block, blockIndex) => {
             children.push(new Paragraph({
                  children: [new TextRun({ text: `${toRoman(blockIndex + 1)}. ${getQuestionTypeLabel(block.blockType)}`, bold: true, size: 28, color: "000000", font: "Calibri" })],
-                heading: HeadingLevel.HEADING_2,
+                //heading: HeadingLevel.HEADING_2, // Using bold text instead of heading for better control
                 spacing: { before: 200, after: block.blockTitle ? 50 : 100 }
             }));
 
@@ -421,11 +428,8 @@ export default function RenderExamPage() {
                 const premisesForTable: Array<{ text: string; num: number }> = [];
                 const responsesForTable: Array<{ text: string; letter: string }> = [];
 
-                let currentGlobalQNumForBlock = 0;
-                for(let k=0; k<blockIndex; k++) {
-                    currentGlobalQNumForBlock += examForPreview.examBlocks[k].questions.length;
-                }
-                
+                let currentGlobalQNumForBlock = globalQuestionCounter; // Start from current global counter
+
                 (block.questions).forEach((question, qIdx) => {
                     currentGlobalQNumForBlock++;
                     const matchQ = question as MatchingTypeQuestion;
@@ -461,10 +465,10 @@ export default function RenderExamPage() {
                                 new DocxTableCell({
                                     children: [new Paragraph({
                                         children: [new TextRun({ text: premiseText, size: 24, color: "000000", font: "Calibri" })],
-                                        tabStops: [{type: TabStopType.RIGHT, position: 4000}], // Added tab stop for underline
+                                        tabStops: [{type: TabStopType.RIGHT, position: 4000}],
                                     })],
                                     width: { size: 4500, type: WidthType.DXA },
-                                    borders: { // No borders for cell
+                                    borders: {
                                         top: { style: BorderStyle.NONE, size: 0, color: "auto" },
                                         bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
                                         left: { style: BorderStyle.NONE, size: 0, color: "auto" },
@@ -496,7 +500,7 @@ export default function RenderExamPage() {
                             rows: tableRows,
                             width: { size: 9000, type: WidthType.DXA },
                             columnWidths: [4500, 4500],
-                            borders: { // No borders for table itself
+                            borders: {
                                 top: { style: BorderStyle.NONE, size: 0, color: "auto" },
                                 bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
                                 left: { style: BorderStyle.NONE, size: 0, color: "auto" },
@@ -507,7 +511,9 @@ export default function RenderExamPage() {
                         })
                     );
                 }
-                children.push(new Paragraph({ text: "", spacing: {after: 100}}));
+                // Reduced spacing after matching table
+                children.push(new Paragraph({ text: "", spacing: {after: 50}}));
+
 
             } else { // For non-matching blocks
                 (block.questions).forEach((question) => {
@@ -525,11 +531,11 @@ export default function RenderExamPage() {
                         ((question as MultipleChoiceQuestion).options).forEach((opt, optIndex) => {
                             children.push(new Paragraph({
                                 children: [new TextRun({text: `${getAlphabetLetter(optIndex)}. ${String(opt.text)}`, size: 24, color: "000000", font: "Calibri"})],
-                                indent: { left: 1080 }, // Increased indent for options
+                                indent: { left: 1080 }, 
                             }));
                         });
                     }
-                     children.push(new Paragraph({ text: "", spacing: {after: 80}})); // Add spacing after each question
+                     children.push(new Paragraph({ text: "", spacing: {after: 80}}));
                 });
             }
         });
@@ -542,21 +548,21 @@ export default function RenderExamPage() {
                         id: "Normal",
                         name: "Normal",
                         run: { font: "Calibri", size: 24, color: "000000" },
-                        paragraph: { spacing: { after: 0, line: 240 } }, // Minimal spacing for normal text
+                        paragraph: { spacing: { after: 0, line: 240 } },
                     },
-                    { // Style for question text
+                    {
                         id: "QuestionText",
                         name: "Question Text",
                         basedOn: "Normal",
                         run: { font: "Calibri", size: 24, color: "000000" },
-                        paragraph: { spacing: { after: 80 } } // Spacing after question text
+                        paragraph: { spacing: { after: 80 } }
                     },
-                     { // Style for options in MCQs
+                     {
                         id: "OptionText",
                         name: "Option Text",
                         basedOn: "Normal",
                         run: { font: "Calibri", size: 24, color: "000000" },
-                        paragraph: { indent: { left: 1080 }, spacing: { after: 40 } } // Indent and spacing for options
+                        paragraph: { indent: { left: 1080 }, spacing: { after: 40 } }
                     }
                 ],
             }
@@ -781,3 +787,6 @@ export default function RenderExamPage() {
     </div>
   );
 }
+
+
+    

@@ -70,11 +70,11 @@ function ExamPreviewPlaceholder({
 }) {
   let currentDisplayNumber = 1;
   return (
-    <Card className="shadow-lg">
+    <Card className="shadow-lg w-full">
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div>
-          <CardTitle className="text-lg sm:text-xl font-semibold text-black">Exam Preview: {exam.title}</CardTitle>
-          <CardDescription className="text-xs sm:text-sm text-black">This area shows a simplified preview. The full exam can be downloaded as a DOCX file.</CardDescription>
+          <CardTitle className="text-base sm:text-lg md:text-xl font-semibold text-black">Exam Preview: {exam.title}</CardTitle>
+          <CardDescription className="text-2xs sm:text-xs text-black">This area shows a simplified preview. The full exam can be downloaded as a DOCX file.</CardDescription>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
             <Button variant="outline" onClick={onBack} size="sm" className="text-xs sm:text-sm flex-grow sm:flex-grow-0">
@@ -91,43 +91,44 @@ function ExamPreviewPlaceholder({
             </Button>
         </div>
       </CardHeader>
-      <CardContent className="h-[calc(100vh-300px)] min-h-[400px] sm:min-h-[500px] p-3 sm:p-6 border rounded-md bg-muted/30 overflow-auto">
-        <div className="prose prose-sm max-w-none text-black" style={{ color: 'black' }}>
-            <h1 className="text-center text-xl sm:text-2xl font-bold mb-2 text-black" style={{ color: 'black' }}>{exam.title}</h1>
+      <CardContent className="h-[calc(100vh-300px)] min-h-[400px] sm:min-h-[500px] p-2 sm:p-4 md:p-6 border rounded-md bg-muted/30 overflow-auto">
+        <div className="prose prose-xs sm:prose-sm max-w-none text-black" style={{ color: 'black' }}>
+            <h1 className="text-center text-lg sm:text-xl md:text-2xl font-bold mb-2 text-black" style={{ color: 'black' }}>{exam.title}</h1>
 
-            <div className="flex justify-between text-xs sm:text-sm mb-4 text-black" style={{ color: 'black' }}>
+            <div className="flex justify-between text-2xs sm:text-xs md:text-sm mb-3 sm:mb-4 text-black" style={{ color: 'black' }}>
                 <span>Name: _________________________</span>
                 <span>Score: ____________</span>
             </div>
 
-            {exam.description && <p className="text-center text-sm sm:text-base text-black italic mb-4" style={{ color: 'black' }}>{exam.description}</p>}
+            {exam.description && <p className="text-center text-xs sm:text-sm md:text-base text-black italic mb-3 sm:mb-4" style={{ color: 'black' }}>{exam.description}</p>}
 
-            <hr className="my-3 sm:my-4"/>
+            <hr className="my-2 sm:my-3 md:my-4"/>
 
             {exam.examBlocks.map((block, blockIndex) => (
-                <div key={block.id} className="mb-4 sm:mb-6">
-                    <h2 className="text-base sm:text-lg font-semibold mb-1 text-black" style={{ color: 'black' }}>
+                <div key={block.id} className="mb-3 sm:mb-4 md:mb-6">
+                    <h2 className="text-sm sm:text-base md:text-lg font-semibold mb-1 text-black" style={{ color: 'black' }}>
                         {toRoman(blockIndex + 1)}. {getQuestionTypeLabel(block.blockType)}
                     </h2>
-                    {block.blockTitle && <p className="text-sm sm:text-base text-black mb-2 italic" style={{ color: 'black' }}>{block.blockTitle}</p>}
+                    {block.blockTitle && <p className="text-xs sm:text-sm md:text-base text-black mb-1.5 sm:mb-2 italic" style={{ color: 'black' }}>{block.blockTitle}</p>}
 
                     {block.blockType !== 'matching' && block.questions.map((question) => {
+                        const points = question.points;
                         const startNum = currentDisplayNumber;
-                        const endNum = currentDisplayNumber + question.points - 1;
-                        const displayQuestionLabel = question.points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
-                        currentDisplayNumber += question.points;
+                        const endNum = currentDisplayNumber + points - 1;
+                        const displayQuestionLabel = points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
+                        currentDisplayNumber += points;
 
                         return (
-                            <div key={question.id} className="mb-2 sm:mb-3 pl-2 sm:pl-4">
-                                <p className="font-medium text-sm sm:text-base text-black" style={{ color: 'black' }}>
+                            <div key={question.id} className="mb-1.5 sm:mb-2 md:mb-3 pl-1 sm:pl-2 md:pl-4">
+                                <p className="font-medium text-xs sm:text-sm md:text-base text-black" style={{ color: 'black' }}>
                                     {question.type === 'true-false' ? '____ ' : ''}
                                     {displayQuestionLabel}.{' '}
                                     {question.questionText}
                                 </p>
                                 {question.type === 'multiple-choice' && (
-                                    <ul className="list-none pl-4 sm:pl-6 mt-1 space-y-0.5">
+                                    <ul className="list-none pl-2 sm:pl-4 md:pl-6 mt-0.5 sm:mt-1 space-y-0 sm:space-y-0.5">
                                         {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
-                                            <li key={opt.id} className="text-sm sm:text-base text-black" style={{ color: 'black' }}>{getAlphabetLetter(optIndex)}. {opt.text}</li>
+                                            <li key={opt.id} className="text-xs sm:text-sm md:text-base text-black" style={{ color: 'black' }}>{getAlphabetLetter(optIndex)}. {opt.text}</li>
                                         ))}
                                     </ul>
                                 )}
@@ -135,12 +136,12 @@ function ExamPreviewPlaceholder({
                         );
                     })}
                     {block.blockType === 'matching' && (
-                       <table className="w-full text-black" style={{ color: 'black', borderCollapse: 'collapse' }}>
+                       <table className="w-full text-black text-xs sm:text-sm md:text-base my-2" style={{ color: 'black', borderCollapse: 'collapse' }}>
                            <tbody>
                                {(() => {
                                    const formattedPremises = block.questions.map(q => {
-                                       const startNum = currentDisplayNumber;
                                        const points = q.points;
+                                       const startNum = currentDisplayNumber;
                                        const endNum = currentDisplayNumber + points - 1;
                                        const displayLabel = points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
                                        currentDisplayNumber += points;
@@ -164,8 +165,8 @@ function ExamPreviewPlaceholder({
                                        const responseText = responses[i] ? `${responses[i].letter}. ${responses[i].text}` : "";
                                        rows.push(
                                            <tr key={`match-row-${block.id}-${i}`}>
-                                               <td className="py-1 pr-2 align-top" style={{ width: '50%', verticalAlign: 'top', paddingRight: '0.5rem', paddingBottom: '0.25rem' }}>{premiseText}</td>
-                                               <td className="py-1 pl-2 align-top" style={{ width: '50%', verticalAlign: 'top', paddingLeft: '0.5rem', paddingBottom: '0.25rem' }}>{responseText}</td>
+                                               <td className="py-0.5 sm:py-1 pr-1 sm:pr-2 align-top">{premiseText}</td>
+                                               <td className="py-0.5 sm:py-1 pl-1 sm:pl-2 align-top">{responseText}</td>
                                            </tr>
                                        );
                                    }
@@ -179,7 +180,7 @@ function ExamPreviewPlaceholder({
         </div>
       </CardContent>
        <CardFooter>
-        <p className="text-xs text-muted-foreground">This is a simplified preview. For full formatting, please download the DOCX file.</p>
+        <p className="text-2xs sm:text-xs text-muted-foreground">This is a simplified preview. For full formatting, please download the DOCX file.</p>
       </CardFooter>
     </Card>
   );
@@ -403,7 +404,7 @@ export default function RenderExamPage() {
                     new Tab(),
                     new TextRun({text: "Score: ____________", size: 24, color: "000000", font: "Calibri"}),
                 ],
-                tabStops: [ { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 1.5 }, ],
+                tabStops: [ { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 1.5 }, ], // Adjust position as needed
                 spacing: { after: 200 }
             }),
         ];
@@ -602,36 +603,36 @@ export default function RenderExamPage() {
 
   if (authLoading || (isLoadingExams && !showPreview)) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
+      <div className="space-y-6 w-full">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
           <div>
-            <Skeleton className="h-8 sm:h-9 w-36 sm:w-48 mb-2" />
-            <Skeleton className="h-4 sm:h-5 w-48 sm:w-64" />
+            <Skeleton className="h-7 sm:h-8 md:h-9 w-32 sm:w-36 md:w-48 mb-1 sm:mb-2" />
+            <Skeleton className="h-3 sm:h-4 md:h-5 w-40 sm:w-48 md:w-64" />
           </div>
         </div>
-        <Card className="shadow-lg">
+        <Card className="shadow-lg w-full">
           <CardHeader>
-            <Skeleton className="h-6 sm:h-7 w-24 sm:w-32 mb-1" />
-            <Skeleton className="h-4 w-64 sm:w-80" />
+            <Skeleton className="h-5 sm:h-6 md:h-7 w-20 sm:w-24 md:w-32 mb-1" />
+            <Skeleton className="h-3 sm:h-4 w-56 sm:w-64 md:w-80" />
           </CardHeader>
           <CardContent>
             <ShadcnTable>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[40%]"><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
-                  <TableHead><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
-                  <TableHead className="text-center"><Skeleton className="h-5 w-12 sm:w-16" /></TableHead>
-                  <TableHead className="text-right"><Skeleton className="h-5 w-20 sm:w-28" /></TableHead>
+                  <TableHead className="w-[40%] px-1.5 sm:px-2 md:px-4"><Skeleton className="h-4 sm:h-5 w-16 sm:w-20 md:w-24" /></TableHead>
+                  <TableHead className="px-1.5 sm:px-2 md:px-4"><Skeleton className="h-4 sm:h-5 w-16 sm:w-20 md:w-24" /></TableHead>
+                  <TableHead className="text-center px-1 sm:px-1.5 md:px-4"><Skeleton className="h-4 sm:h-5 w-10 sm:w-12 md:w-16" /></TableHead>
+                  <TableHead className="text-right px-1.5 sm:px-2 md:px-4"><Skeleton className="h-4 sm:h-5 w-16 sm:w-20 md:w-28" /></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {[...Array(3)].map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell><Skeleton className="h-5 w-full" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-20 sm:w-24" /></TableCell>
-                    <TableCell className="text-center"><Skeleton className="h-5 w-6 sm:w-8 mx-auto" /></TableCell>
-                    <TableCell className="text-right">
-                      <Skeleton className="h-8 sm:h-9 w-28 sm:w-36 inline-block" />
+                    <TableCell className="px-1.5 sm:px-2 md:px-4 py-1.5 sm:py-2"><Skeleton className="h-4 sm:h-5 w-full" /></TableCell>
+                    <TableCell className="px-1.5 sm:px-2 md:px-4 py-1.5 sm:py-2"><Skeleton className="h-4 sm:h-5 w-16 sm:w-20 md:w-24" /></TableCell>
+                    <TableCell className="text-center px-1 sm:px-1.5 md:px-4 py-1.5 sm:py-2"><Skeleton className="h-4 sm:h-5 w-5 sm:w-6 md:w-8 mx-auto" /></TableCell>
+                    <TableCell className="text-right px-1.5 sm:px-2 md:px-4 py-1.5 sm:py-2">
+                      <Skeleton className="h-7 sm:h-8 w-24 sm:w-28 md:w-36 inline-block" />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -645,10 +646,10 @@ export default function RenderExamPage() {
 
   if (error && !showPreview) {
     return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4">
-        <AlertTriangle className="h-12 w-12 sm:h-16 sm:w-16 text-destructive mb-4" />
-        <h2 className="text-xl sm:text-2xl font-semibold mb-2">Oops! Something went wrong.</h2>
-        <p className="text-sm sm:text-base text-muted-foreground mb-4">{error}</p>
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4 w-full">
+        <AlertTriangle className="h-10 w-10 sm:h-12 md:h-16 text-destructive mb-3 sm:mb-4" />
+        <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-1 sm:mb-2">Oops! Something went wrong.</h2>
+        <p className="text-xs sm:text-sm md:text-base text-muted-foreground mb-3 sm:mb-4">{error}</p>
         <Button onClick={fetchExams} size="sm" className="text-xs sm:text-sm">Try Again</Button>
       </div>
     );
@@ -666,14 +667,14 @@ export default function RenderExamPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card className="shadow-lg">
+    <div className="space-y-6 w-full">
+      <Card className="shadow-lg w-full">
         <CardHeader>
-          <CardTitle className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight flex items-center">
-            <FileType2 className="mr-2 sm:mr-3 h-6 w-6 sm:h-8 sm:w-8 text-primary" />
+          <CardTitle className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight flex items-center">
+            <FileType2 className="mr-1.5 sm:mr-2 md:mr-3 h-5 w-5 sm:h-6 md:h-8 text-primary" />
             Generate DOCX
           </CardTitle>
-          <CardDescription className="text-xs sm:text-sm">
+          <CardDescription className="text-2xs sm:text-xs md:text-sm">
             Select an exam from the list below to generate a DOCX file and preview its content.
           </CardDescription>
         </CardHeader>
@@ -682,37 +683,37 @@ export default function RenderExamPage() {
             <ShadcnTable>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[35%] px-2 sm:px-4 text-xs sm:text-sm">Title</TableHead>
-                  <TableHead className="hidden sm:table-cell px-2 sm:px-4 text-xs sm:text-sm">Status</TableHead>
-                  <TableHead className="hidden md:table-cell px-2 sm:px-4 text-xs sm:text-sm">Date Created</TableHead>
-                  <TableHead className="text-center px-1 sm:px-4 text-xs sm:text-sm">Questions</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 text-xs sm:text-sm">Actions</TableHead>
+                  <TableHead className="w-[35%] px-1.5 py-2 sm:px-3 sm:py-3 text-xs sm:text-sm">Title</TableHead>
+                  <TableHead className="hidden sm:table-cell px-1.5 py-2 sm:px-3 sm:py-3 text-xs sm:text-sm">Status</TableHead>
+                  <TableHead className="hidden md:table-cell px-1.5 py-2 sm:px-3 sm:py-3 text-xs sm:text-sm">Date Created</TableHead>
+                  <TableHead className="text-center px-1 py-2 sm:px-2 sm:py-3 text-xs sm:text-sm">Questions</TableHead>
+                  <TableHead className="text-right px-1.5 py-2 sm:px-3 sm:py-3 text-xs sm:text-sm">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {exams.map((exam) => (
                   <TableRow key={exam.id}>
-                    <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">{exam.title}</TableCell>
-                    <TableCell className="hidden sm:table-cell px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">
+                    <TableCell className="font-medium px-1.5 py-2 sm:px-3 sm:py-3 text-xs sm:text-sm">{exam.title}</TableCell>
+                    <TableCell className="hidden sm:table-cell px-1.5 py-2 sm:px-3 sm:py-3 text-xs sm:text-sm">
                        <Badge variant={exam.status === 'Published' ? 'default' : exam.status === 'Draft' ? 'secondary' : 'outline'}
                         className={`text-2xs sm:text-xs ${exam.status === 'Archived' ? 'bg-muted text-muted-foreground' : ''}`}>
                            {exam.status}
                        </Badge>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">{format(exam.createdAt.toDate(), "PPP")}</TableCell>
-                    <TableCell className="text-center px-1 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">{exam.totalQuestions}</TableCell>
-                    <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-4">
+                    <TableCell className="hidden md:table-cell px-1.5 py-2 sm:px-3 sm:py-3 text-xs sm:text-sm">{format(exam.createdAt.toDate(), "PPP")}</TableCell>
+                    <TableCell className="text-center px-1 py-2 sm:px-2 sm:py-3 text-xs sm:text-sm">{exam.totalQuestions}</TableCell>
+                    <TableCell className="text-right px-1.5 py-2 sm:px-3 sm:py-3">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleOpenConfirmDialog(exam)}
                         disabled={isLoadingPreviewData === exam.id}
-                        className="text-xs sm:text-sm w-full whitespace-nowrap"
+                        className="text-2xs sm:text-xs w-full whitespace-nowrap px-2 sm:px-3"
                       >
                         {isLoadingPreviewData === exam.id ? (
-                          <Loader2 className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                          <Loader2 className="mr-1 sm:mr-2 h-3 w-3 sm:h-3.5 animate-spin" />
                         ) : (
-                          <FileType2 className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                          <FileType2 className="mr-1 sm:mr-2 h-3 w-3 sm:h-3.5" />
                         )}
                         Generate & Preview
                       </Button>
@@ -722,20 +723,20 @@ export default function RenderExamPage() {
               </TableBody>
             </ShadcnTable>
           ) : (
-            <div className="text-center py-10">
-              <FileText className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mb-3" />
-              <p className="text-muted-foreground text-sm sm:text-lg">No exams available to render.</p>
-              <p className="text-xs sm:text-sm text-muted-foreground">
+            <div className="text-center py-8 sm:py-10">
+              <FileText className="mx-auto h-8 w-8 sm:h-10 md:h-12 text-muted-foreground mb-2 sm:mb-3" />
+              <p className="text-muted-foreground text-xs sm:text-sm md:text-base">No exams available to render.</p>
+              <p className="text-2xs sm:text-xs text-muted-foreground">
                 Create an exam first, then come back here to generate a DOCX file.
               </p>
-              <Button asChild className="mt-4 text-xs sm:text-sm" size="sm">
+              <Button asChild className="mt-3 sm:mt-4 text-xs sm:text-sm" size="sm">
                 <Link href="/create-exam">Create New Exam</Link>
               </Button>
             </div>
           )}
         </CardContent>
         {exams.length > 0 && (
-            <CardFooter className="text-xs sm:text-sm text-muted-foreground">
+            <CardFooter className="text-2xs sm:text-xs text-muted-foreground">
                 Showing {exams.length} exam{exams.length === 1 ? '' : 's'} available for rendering.
             </CardFooter>
         )}
@@ -743,21 +744,21 @@ export default function RenderExamPage() {
 
       {selectedExamForDialog && (
         <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
-            <AlertDialogContent>
+            <AlertDialogContent className="w-[90vw] sm:max-w-lg">
                 <AlertDialogHeader>
-                    <AlertDialogTitle className="text-base sm:text-lg">Confirm Preview Generation</AlertDialogTitle>
-                    <AlertDialogDescription className="text-xs sm:text-sm">
+                    <AlertDialogTitle className="text-sm sm:text-base md:text-lg">Confirm Preview Generation</AlertDialogTitle>
+                    <AlertDialogDescription className="text-2xs sm:text-xs md:text-sm">
                     This will fetch the full exam data for: "{selectedExamForDialog.title}" and prepare it for preview and DOCX download.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
-                <div className="space-y-2 sm:space-y-3 py-2 text-xs sm:text-sm">
+                <div className="space-y-1.5 sm:space-y-2 py-1.5 sm:py-2 text-xs sm:text-sm">
                     <div className="flex items-center">
-                        <FileText className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-primary" />
+                        <FileText className="h-3.5 w-3.5 sm:h-4 md:h-5 mr-1.5 sm:mr-2 text-primary" />
                         <strong>Title:</strong> <span className="ml-1">{selectedExamForDialog.title}</span>
                     </div>
                     {selectedExamForDialog.description && (
                         <div className="flex items-start">
-                           <Info className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground flex-shrink-0 mt-0.5" />
+                           <Info className="h-3.5 w-3.5 sm:h-4 md:h-5 mr-1.5 sm:mr-2 text-muted-foreground flex-shrink-0 mt-0.5" />
                            <div>
                              <strong>Description:</strong>
                              <p className="ml-1 text-muted-foreground text-2xs sm:text-xs">{selectedExamForDialog.description}</p>
@@ -765,36 +766,36 @@ export default function RenderExamPage() {
                         </div>
                     )}
                     <div className="flex items-center">
-                        <CalendarDays className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
+                        <CalendarDays className="h-3.5 w-3.5 sm:h-4 md:h-5 mr-1.5 sm:mr-2 text-muted-foreground" />
                         <strong>Created:</strong> <span className="ml-1">{format(selectedExamForDialog.createdAt.toDate(), "PPP p")}</span>
                     </div>
                      <div className="flex items-center">
-                        <CalendarDays className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
+                        <CalendarDays className="h-3.5 w-3.5 sm:h-4 md:h-5 mr-1.5 sm:mr-2 text-muted-foreground" />
                         <strong>Last Updated:</strong> <span className="ml-1">{format(selectedExamForDialog.updatedAt.toDate(), "PPP p")}</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-2 sm:gap-x-4">
+                    <div className="grid grid-cols-2 gap-x-1.5 sm:gap-x-2 md:gap-x-4">
                         <div className="flex items-center">
-                            <HelpCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
+                            <HelpCircle className="h-3.5 w-3.5 sm:h-4 md:h-5 mr-1.5 sm:mr-2 text-muted-foreground" />
                             <strong>Questions:</strong> <span className="ml-1">{selectedExamForDialog.totalQuestions}</span>
                         </div>
                          <div className="flex items-center">
-                            <Star className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
+                            <Star className="h-3.5 w-3.5 sm:h-4 md:h-5 mr-1.5 sm:mr-2 text-muted-foreground" />
                             <strong>Points:</strong> <span className="ml-1">{selectedExamForDialog.totalPoints}</span>
                         </div>
                     </div>
                      <div className="flex items-center">
-                        <Info className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-muted-foreground" />
+                        <Info className="h-3.5 w-3.5 sm:h-4 md:h-5 mr-1.5 sm:mr-2 text-muted-foreground" />
                         <strong>Status:</strong> <span className="ml-1">{selectedExamForDialog.status}</span>
                     </div>
                 </div>
-                <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+                <AlertDialogFooter className="flex-col sm:flex-row gap-1.5 sm:gap-2">
                     <AlertDialogCancel disabled={isLoadingPreviewData === selectedExamForDialog.id} onClick={() => setSelectedExamForDialog(null)} className="text-xs sm:text-sm">Cancel</AlertDialogCancel>
                     <AlertDialogAction
                         onClick={handlePreparePreview}
                         disabled={isLoadingPreviewData === selectedExamForDialog.id || !selectedExamForDialog.id}
                         className="text-xs sm:text-sm"
                     >
-                        {isLoadingPreviewData === selectedExamForDialog.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {isLoadingPreviewData === selectedExamForDialog.id && <Loader2 className="mr-2 h-3.5 w-3.5 sm:h-4 animate-spin" />}
                         Confirm & Prepare
                     </AlertDialogAction>
                 </AlertDialogFooter>
@@ -804,3 +805,4 @@ export default function RenderExamPage() {
     </div>
   );
 }
+

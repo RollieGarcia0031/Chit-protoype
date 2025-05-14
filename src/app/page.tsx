@@ -15,7 +15,7 @@ export default function HomePage() {
           layout="fill"
           objectFit="cover"
           priority
-          data-ai-hint="education technology"
+          data-ai-hint="modern classroom"
         />
         <div className="absolute inset-0 flex flex-col items-center justify-center p-6 py-10 sm:p-8 sm:py-12 md:p-10 md:py-16 text-foreground dark:text-primary-foreground">
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl lg:text-5xl text-foreground dark:text-primary-foreground">

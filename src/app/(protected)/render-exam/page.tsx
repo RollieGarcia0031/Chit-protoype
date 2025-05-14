@@ -146,7 +146,7 @@ function ExamPreviewPlaceholder({
                                    const rows = [];
                                    for (let i = 0; i < numRows; i++) {
                                        globalPreviewQuestionCounter++;
-                                       const premiseText = premises[i] ? `${globalPreviewQuestionCounter}. ${premises[i]}  _________` : "";
+                                       const premiseText = premises[i] ? `${globalPreviewQuestionCounter}. ${premises[i]}` : "";
                                        const responseText = responses[i] ? `${responses[i].letter}. ${responses[i].text}` : "";
                                        rows.push(
                                            <tr key={`match-row-${block.id}-${i}`}>
@@ -161,8 +161,6 @@ function ExamPreviewPlaceholder({
                                    } else if (numRows === 0) { // If no questions, ensure counter doesn't get decremented below actual
                                      globalPreviewQuestionCounter = exam.examBlocks.slice(0, blockIndex).reduce((acc, b) => acc + b.questions.length, 0);
                                    }
-
-
                                    return rows;
                                })()}
                            </tbody>
@@ -300,7 +298,7 @@ export default function RenderExamPage() {
             const baseQuestionProps = {
                 id: String(questionDocSnap.id),
                 questionText: String(qData.questionText || ""),
-                points: Number.isFinite(qPoints) ? qPoints : 0,
+                points: Number.isFinite(qPoints) ? qPoints : 0, // Not shown in preview but part of data
             };
 
             switch (qData.type as QuestionType) {
@@ -311,7 +309,7 @@ export default function RenderExamPage() {
                   options: (qData.options || []).map((opt: any) => ({
                       id: String(opt?.id || `opt-${Math.random()}`),
                       text: String(opt?.text || ""),
-                      isCorrect: Boolean(opt?.isCorrect || false)
+                      isCorrect: Boolean(opt?.isCorrect || false) // Not shown in preview
                     })),
                 } as MultipleChoiceQuestion;
                 break;
@@ -319,23 +317,23 @@ export default function RenderExamPage() {
                 question = {
                   ...baseQuestionProps,
                   type: 'true-false',
-                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer),
+                  correctAnswer: qData.correctAnswer === undefined ? null : Boolean(qData.correctAnswer), // Not shown
                 } as TrueFalseQuestion;
                 break;
               case 'matching':
                 question = {
                   ...baseQuestionProps,
                   type: 'matching',
-                  pairs: (qData.pairs || []).map((p: any, index: number) => ({ // Ensure responseLetter is populated if missing
+                  pairs: (qData.pairs || []).map((p: any, index: number) => ({ 
                       id: String(p?.id || `pair-${Math.random()}`),
                       premise: String(p?.premise || ""),
                       response: String(p?.response || ""),
-                      responseLetter: p?.responseLetter || getAlphabetLetter(index), // Assign letter if missing
+                      responseLetter: p?.responseLetter || getAlphabetLetter(index), 
                     })),
                 } as MatchingTypeQuestion;
                 break;
               default:
-                question = { ...baseQuestionProps, type: 'multiple-choice', options: []}; // Fallback, though should not happen
+                question = { ...baseQuestionProps, type: 'multiple-choice', options: []}; 
             }
             if(question) loadedQuestions.push(question);
           });
@@ -354,8 +352,8 @@ export default function RenderExamPage() {
             createdAt: examBaseData.createdAt || examDataFromSummary.createdAt || Timestamp.now(),
             updatedAt: examBaseData.updatedAt || examDataFromSummary.updatedAt || Timestamp.now(),
             totalQuestions: Number(examBaseData.totalQuestions || examDataFromSummary.totalQuestions || 0),
-            totalPoints: 0, // Not used in preview
-            status: (examBaseData.status || examDataFromSummary.status || "Draft") as FullExamData['status'], // Not used in preview
+            totalPoints: 0, // Not used in preview/docx directly
+            status: (examBaseData.status || examDataFromSummary.status || "Draft") as FullExamData['status'], // Not used in preview/docx
             examBlocks: loadedBlocks,
         };
 
@@ -413,7 +411,6 @@ export default function RenderExamPage() {
         (examForPreview.examBlocks).forEach((block, blockIndex) => {
             children.push(new Paragraph({
                  children: [new TextRun({ text: `${toRoman(blockIndex + 1)}. ${getQuestionTypeLabel(block.blockType)}`, bold: true, size: 28, color: "000000", font: "Calibri" })],
-                //heading: HeadingLevel.HEADING_2, // Using bold text instead of heading for better control
                 spacing: { before: 200, after: block.blockTitle ? 50 : 100 }
             }));
 
@@ -428,7 +425,7 @@ export default function RenderExamPage() {
                 const premisesForTable: Array<{ text: string; num: number }> = [];
                 const responsesForTable: Array<{ text: string; letter: string }> = [];
 
-                let currentGlobalQNumForBlock = globalQuestionCounter; // Start from current global counter
+                let currentGlobalQNumForBlock = globalQuestionCounter;
 
                 (block.questions).forEach((question, qIdx) => {
                     currentGlobalQNumForBlock++;
@@ -444,7 +441,7 @@ export default function RenderExamPage() {
                         });
                     }
                 });
-                globalQuestionCounter = currentGlobalQNumForBlock; // Update global counter
+                globalQuestionCounter = currentGlobalQNumForBlock; 
 
                 responsesForTable.sort((a, b) => a.letter.localeCompare(b.letter));
 
@@ -453,7 +450,7 @@ export default function RenderExamPage() {
 
                 for (let i = 0; i < numRows; i++) {
                     const premiseText = premisesForTable[i]
-                        ? `${premisesForTable[i].num}. ${premisesForTable[i].text}\t_________`
+                        ? `${premisesForTable[i].num}. ${premisesForTable[i].text}`
                         : "";
                     const responseText = responsesForTable[i]
                         ? `${responsesForTable[i].letter}. ${responsesForTable[i].text}`
@@ -465,7 +462,6 @@ export default function RenderExamPage() {
                                 new DocxTableCell({
                                     children: [new Paragraph({
                                         children: [new TextRun({ text: premiseText, size: 24, color: "000000", font: "Calibri" })],
-                                        tabStops: [{type: TabStopType.RIGHT, position: 4000}],
                                     })],
                                     width: { size: 4500, type: WidthType.DXA },
                                     borders: {
@@ -511,11 +507,10 @@ export default function RenderExamPage() {
                         })
                     );
                 }
-                // Reduced spacing after matching table
                 children.push(new Paragraph({ text: "", spacing: {after: 50}}));
 
 
-            } else { // For non-matching blocks
+            } else { 
                 (block.questions).forEach((question) => {
                     globalQuestionCounter++;
                     const questionPrefix = question.type === 'true-false' ? '____ ' : '';

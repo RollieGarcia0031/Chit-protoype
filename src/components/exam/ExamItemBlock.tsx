@@ -135,7 +135,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
       <CardHeader className="flex flex-row items-center justify-between py-2 px-3 sm:py-3 sm:px-4 gap-2">
         <CardTitle className="text-xs sm:text-sm md:text-base font-medium flex-shrink-0">Question {itemIndex + 1}</CardTitle>
         <div className="flex items-center gap-2 ml-auto">
-            <div className="space-y-0 md:hidden"> {/* Points input for mobile, in header */}
+            <div className="space-y-0"> {/* Points input always in header, shown/hidden by md:hidden on its desktop counterpart */}
                 <Label htmlFor={`points-${item.id}-mobile`} className="sr-only">Points</Label>
                 <Input
                 id={`points-${item.id}-mobile`}
@@ -144,7 +144,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                 onChange={handlePointsChange}
                 min="0"
                 placeholder="Pts"
-                className="h-8 w-16 text-2xs sm:text-xs text-center"
+                className="h-8 w-16 text-xs text-center"
                 disabled={disabled}
                 />
             </div>
@@ -213,7 +213,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                 )}
               </div>
             ))}
-            <Button type="button" variant="outline" onClick={handleAddOption} size="sm" className="text-2xs sm:text-xs h-7 sm:h-8 px-2 sm:px-3" disabled={disabled}>
+            <Button type="button" variant="outline" onClick={handleAddOption} size="sm" className="text-xs h-7 sm:h-8 px-2 sm:px-3" disabled={disabled}>
               <PlusCircle className="mr-1 sm:mr-1.5 h-3 w-3 sm:h-3.5 sm:w-3.5" /> Add Option
             </Button>
           </div>
@@ -271,7 +271,7 @@ export function ExamItemBlock({ item, questionType, onItemChange, onItemRemove, 
                 )}
               </div>
             ))}
-            <Button type="button" variant="outline" onClick={handleAddPair} size="sm" className="text-2xs sm:text-xs h-7 sm:h-8 px-2 sm:px-3" disabled={disabled}>
+            <Button type="button" variant="outline" onClick={handleAddPair} size="sm" className="text-xs h-7 sm:h-8 px-2 sm:px-3" disabled={disabled}>
               <PlusCircle className="mr-1 sm:mr-1.5 h-3 w-3 sm:h-3.5 sm:w-3.5" /> Add Pair
             </Button>
           </div>

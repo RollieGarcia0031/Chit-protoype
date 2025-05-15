@@ -75,7 +75,7 @@ export interface ExamSummaryData {
   totalPoints: number;
   status: "Draft" | "Published" | "Archived";
   classIds: string[];
-  subjectId?: string | null; // Added subjectId for filtering
+  subjectId?: string | null;
 }
 
 export interface FullExamData extends ExamSummaryData {
@@ -96,5 +96,17 @@ export interface FetchedSubjectInfo {
   id: string;
   name: string;
   code: string;
-  userId?: string; // Optional, might be present from Firestore data
+  userId?: string;
+}
+
+export interface Student {
+  id: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string;
+  userId?: string; // The ID of the teacher/user who owns this student record
+  classId?: string; // The ID of the class this student belongs to
+  subjectId?: string; // The ID of the subject this student's class belongs to
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }

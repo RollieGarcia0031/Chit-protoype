@@ -9,13 +9,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, PlusCircle, Edit3, Trash2, List, Loader2, AlertTriangle, BookOpen, LayoutGrid } from "lucide-react";
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Users, PlusCircle, Edit3, Trash2, List, Loader2, AlertTriangle, BookOpen, LayoutGrid, UserPlus, Users2 } from "lucide-react";
 import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase/config';
 import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 import type { Timestamp } from "firebase/firestore";
-import { collection, query, where, getDocs, orderBy, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, doc, addDoc, updateDoc, deleteDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -29,6 +28,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import type { Student } from '@/types/exam-types'; // Import Student type
 
 interface FetchedSubjectInfo {
   id: string;
@@ -37,22 +37,23 @@ interface FetchedSubjectInfo {
 }
 
 interface ClassInfo {
-  id: string; 
-  subjectId: string; 
-  subjectName: string; 
-  subjectCode: string; 
+  id: string;
+  subjectId: string;
+  subjectName: string;
+  subjectCode: string;
   sectionName: string;
   yearGrade: string;
-  code: string; 
+  code: string;
   userId?: string;
-  createdAt?: Timestamp; 
-  updatedAt?: Timestamp; 
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+  studentCount?: number; // Optional: for displaying count on card if implemented later
 }
 
 type DisplayMode = 'bySubject' | 'bySectionYear';
 
 interface GroupedBySectionYear {
-  groupTitle: string; // e.g., "Section A (Grade 10)"
+  groupTitle: string;
   parsedYear: number;
   sectionNamePart: string;
   classes: ClassInfo[];
@@ -64,23 +65,35 @@ export default function StudentsPage() {
   const { toast } = useToast();
 
   const [classes, setClasses] = useState<ClassInfo[]>([]);
-  const [isLoadingData, setIsLoadingData] = useState(true); // Combined loading state
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [isSavingClass, setIsSavingClass] = useState(false);
   const [deletingClassId, setDeletingClassId] = useState<string | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
   
   const [isAddClassDialogOpen, setIsAddClassDialogOpen] = useState(false);
   
-  const [selectedSubjectIdForm, setSelectedSubjectIdForm] = useState(''); 
+  const [selectedSubjectIdForm, setSelectedSubjectIdForm] = useState('');
   const [newSectionName, setNewSectionName] = useState('');
   const [newYearGrade, setNewYearGrade] = useState('');
   const [newClassCode, setNewClassCode] = useState('');
   
   const [editingClass, setEditingClass] = useState<ClassInfo | null>(null);
-
   const [userSubjects, setUserSubjects] = useState<FetchedSubjectInfo[]>([]);
-
   const [displayMode, setDisplayMode] = useState<DisplayMode>('bySubject');
+
+  // State for Student List Dialog
+  const [isStudentListDialogOpen, setIsStudentListDialogOpen] = useState(false);
+  const [selectedClassForStudentList, setSelectedClassForStudentList] = useState<ClassInfo | null>(null);
+  const [studentsInDialog, setStudentsInDialog] = useState<Student[]>([]);
+  const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+  const [isSavingStudent, setIsSavingStudent] = useState(false);
+  const [deletingStudentId, setDeletingStudentId] = useState<string | null>(null);
+
+  // State for Add Student Form
+  const [newStudentFirstName, setNewStudentFirstName] = useState('');
+  const [newStudentLastName, setNewStudentLastName] = useState('');
+  const [newStudentMiddleName, setNewStudentMiddleName] = useState('');
+
 
   const fetchPageData = async () => {
     if (!user) {
@@ -96,7 +109,6 @@ export default function StudentsPage() {
     const allClasses: ClassInfo[] = [];
 
     try {
-      // Fetch Subjects
       const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
       const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid), orderBy("name", "asc"));
       const subjectsSnapshot = await getDocs(subjectsQuery);
@@ -105,7 +117,6 @@ export default function StudentsPage() {
       });
       setUserSubjects(fetchedSubjects);
 
-      // Fetch Classes for each subject
       if (fetchedSubjects.length > 0) {
         for (const subject of fetchedSubjects) {
           const classesSubCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME, subject.id, "classes");
@@ -131,11 +142,7 @@ export default function StudentsPage() {
     } catch (e) {
       console.error("Error fetching page data: ", e);
       setDataError("Failed to load subjects or classes.");
-      toast({
-        title: "Error Loading Data",
-        description: "Could not fetch subjects or class list.",
-        variant: "destructive",
-      });
+      toast({ title: "Error Loading Data", description: "Could not fetch subjects or class list.", variant: "destructive" });
     } finally {
       setIsLoadingData(false);
     }
@@ -152,7 +159,6 @@ export default function StudentsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
-
   const generateClassCode = (subjectCodePart: string, section: string, year: string) => {
     const subjectPart = subjectCodePart.replace(/[^a-zA-Z0-9]/g, '').substring(0, 5).toUpperCase();
     const sectionPart = section.replace(/[^a-zA-Z0-9]/g, '').substring(0, 2).toUpperCase();
@@ -162,18 +168,15 @@ export default function StudentsPage() {
   };
 
   useEffect(() => {
-    if (!editingClass) { 
+    if (!editingClass) {
       let subjectCodeForGeneration = "";
       if (selectedSubjectIdForm && userSubjects.length > 0) {
         const selectedSubject = userSubjects.find(sub => sub.id === selectedSubjectIdForm);
-        if (selectedSubject) {
-          subjectCodeForGeneration = selectedSubject.code;
-        }
+        if (selectedSubject) subjectCodeForGeneration = selectedSubject.code;
       }
       setNewClassCode(generateClassCode(subjectCodeForGeneration, newSectionName, newYearGrade));
     }
   }, [selectedSubjectIdForm, newSectionName, newYearGrade, editingClass, userSubjects]);
-
 
   const handleAddOrUpdateClass = async (event: FormEvent) => {
     event.preventDefault();
@@ -185,16 +188,14 @@ export default function StudentsPage() {
       toast({ title: "Validation Error", description: "All fields are required.", variant: "destructive" });
       return;
     }
-
     setIsSavingClass(true);
-    const classDataToSave = {
+    const classDataToSave: any = {
       sectionName: newSectionName,
       yearGrade: newYearGrade,
       code: newClassCode,
       userId: user.uid,
       updatedAt: serverTimestamp(),
     };
-
     try {
       if (editingClass) {
         const classDocRef = doc(db, SUBJECTS_COLLECTION_NAME, editingClass.subjectId, "classes", editingClass.id);
@@ -203,30 +204,27 @@ export default function StudentsPage() {
       } else {
         const subjectForNewClass = userSubjects.find(sub => sub.id === selectedSubjectIdForm);
         if (!subjectForNewClass) {
-            toast({ title: "Error", description: "Selected subject not found.", variant: "destructive"});
-            setIsSavingClass(false);
-            return;
+          toast({ title: "Error", description: "Selected subject not found.", variant: "destructive" });
+          setIsSavingClass(false); return;
         }
+        classDataToSave.createdAt = serverTimestamp();
         const classesSubCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME, selectedSubjectIdForm, "classes");
-        await addDoc(classesSubCollectionRef, {
-          ...classDataToSave,
-          createdAt: serverTimestamp(),
-        });
+        await addDoc(classesSubCollectionRef, classDataToSave);
         toast({ title: "Class Added", description: `Class "${subjectForNewClass.name} - ${newSectionName}" added.` });
       }
-      closeDialog();
-      await fetchPageData(); 
+      closeClassDialog();
+      await fetchPageData();
     } catch (e) {
-        console.error("Error saving class: ", e);
-        toast({ title: "Error Saving Class", description: "There was an issue. Please try again.", variant: "destructive"});
+      console.error("Error saving class: ", e);
+      toast({ title: "Error Saving Class", description: "There was an issue. Please try again.", variant: "destructive" });
     } finally {
-        setIsSavingClass(false);
+      setIsSavingClass(false);
     }
   };
 
   const openEditDialog = (classInfo: ClassInfo) => {
     setEditingClass(classInfo);
-    setSelectedSubjectIdForm(classInfo.subjectId); 
+    setSelectedSubjectIdForm(classInfo.subjectId);
     setNewSectionName(classInfo.sectionName);
     setNewYearGrade(classInfo.yearGrade);
     setNewClassCode(classInfo.code);
@@ -237,9 +235,15 @@ export default function StudentsPage() {
     if (!user) return;
     setDeletingClassId(classToDelete.id);
     try {
+      // Future: Delete students subcollection first if it exists
+      const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, classToDelete.subjectId, "classes", classToDelete.id, "students");
+      const studentsSnap = await getDocs(studentsRef);
+      for (const studentDoc of studentsSnap.docs) {
+          await deleteDoc(studentDoc.ref);
+      }
       const classDocRef = doc(db, SUBJECTS_COLLECTION_NAME, classToDelete.subjectId, "classes", classToDelete.id);
       await deleteDoc(classDocRef);
-      toast({ title: "Class Deleted", description: `Class "${classToDelete.subjectName} - ${classToDelete.sectionName}" has been removed.` });
+      toast({ title: "Class Deleted", description: `Class "${classToDelete.subjectName} - ${classToDelete.sectionName}" and its students have been removed.` });
       setClasses(prevClasses => prevClasses.filter(c => c.id !== classToDelete.id));
     } catch (e) {
       console.error("Error deleting class: ", e);
@@ -249,7 +253,7 @@ export default function StudentsPage() {
     }
   };
   
-  const closeDialog = () => {
+  const closeClassDialog = () => {
     setIsAddClassDialogOpen(false);
     setSelectedSubjectIdForm('');
     setNewSectionName('');
@@ -261,9 +265,7 @@ export default function StudentsPage() {
   const extractNumericYear = (yearGradeStr: string): number => {
     if (!yearGradeStr) return Infinity;
     const numericMatch = yearGradeStr.match(/\d+/);
-    if (numericMatch) {
-        return parseInt(numericMatch[0], 10);
-    }
+    if (numericMatch) return parseInt(numericMatch[0], 10);
     const lowerYearGrade = yearGradeStr.toLowerCase();
     if (lowerYearGrade.includes('k') || lowerYearGrade.includes('kinder')) return -1;
     if (lowerYearGrade.includes('pre-k') || lowerYearGrade.includes('pre k')) return -2;
@@ -272,348 +274,259 @@ export default function StudentsPage() {
 
   const groupedClassesBySectionYear = useMemo(() => {
     if (displayMode !== 'bySectionYear') return [];
-
     const groupMap: Map<string, { groupTitle: string; parsedYear: number; sectionNamePart: string; classes: ClassInfo[] }> = new Map();
-
     classes.forEach(cls => {
       const groupKey = `${cls.sectionName}-${cls.yearGrade}`;
       const groupTitle = `${cls.sectionName} (${cls.yearGrade})`;
       const parsedYear = extractNumericYear(cls.yearGrade);
       const sectionNamePart = cls.sectionName;
-
-      if (!groupMap.has(groupKey)) {
-        groupMap.set(groupKey, { groupTitle, parsedYear, sectionNamePart, classes: [] });
-      }
+      if (!groupMap.has(groupKey)) groupMap.set(groupKey, { groupTitle, parsedYear, sectionNamePart, classes: [] });
       groupMap.get(groupKey)!.classes.push(cls);
     });
-
     return Array.from(groupMap.values()).sort((a, b) => {
-      if (a.parsedYear !== b.parsedYear) {
-        return a.parsedYear - b.parsedYear;
-      }
+      if (a.parsedYear !== b.parsedYear) return a.parsedYear - b.parsedYear;
       return a.sectionNamePart.localeCompare(b.sectionNamePart);
     });
   }, [classes, displayMode]);
 
+  // Student Dialog Functions
+  const openStudentListDialog = async (classInfo: ClassInfo) => {
+    setSelectedClassForStudentList(classInfo);
+    setIsStudentListDialogOpen(true);
+    await fetchStudentsForDialog(classInfo);
+  };
+
+  const closeStudentListDialog = () => {
+    setIsStudentListDialogOpen(false);
+    setSelectedClassForStudentList(null);
+    setStudentsInDialog([]);
+    setNewStudentFirstName('');
+    setNewStudentLastName('');
+    setNewStudentMiddleName('');
+  };
+
+  const fetchStudentsForDialog = async (classInfo: ClassInfo) => {
+    if (!user || !classInfo) {
+      setStudentsInDialog([]);
+      return;
+    }
+    setIsLoadingStudents(true);
+    try {
+      const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, "students");
+      const q = query(studentsRef, orderBy("lastName", "asc"), orderBy("firstName", "asc"));
+      const querySnapshot = await getDocs(q);
+      const fetchedStudents: Student[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
+      setStudentsInDialog(fetchedStudents);
+    } catch (error) {
+      console.error("Error fetching students:", error);
+      toast({ title: "Error", description: "Could not fetch students for this class.", variant: "destructive" });
+    } finally {
+      setIsLoadingStudents(false);
+    }
+  };
+
+  const handleAddStudent = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!user || !selectedClassForStudentList || !newStudentFirstName.trim() || !newStudentLastName.trim()) {
+      toast({ title: "Validation Error", description: "First Name and Last Name are required.", variant: "destructive" });
+      return;
+    }
+    setIsSavingStudent(true);
+    try {
+      const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, selectedClassForStudentList.subjectId, "classes", selectedClassForStudentList.id, "students");
+      await addDoc(studentsRef, {
+        firstName: newStudentFirstName.trim(),
+        lastName: newStudentLastName.trim(),
+        middleName: newStudentMiddleName.trim() || "",
+        userId: user.uid,
+        classId: selectedClassForStudentList.id,
+        subjectId: selectedClassForStudentList.subjectId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      toast({ title: "Student Added", description: `${newStudentFirstName} ${newStudentLastName} added.` });
+      setNewStudentFirstName(''); setNewStudentLastName(''); setNewStudentMiddleName('');
+      await fetchStudentsForDialog(selectedClassForStudentList);
+    } catch (error) {
+      console.error("Error adding student:", error);
+      toast({ title: "Error Adding Student", description: "Could not add student.", variant: "destructive" });
+    } finally {
+      setIsSavingStudent(false);
+    }
+  };
+
+  const handleDeleteStudent = async (student: Student) => {
+    if (!user || !selectedClassForStudentList || !student) return;
+    setDeletingStudentId(student.id);
+    try {
+      const studentDocRef = doc(db, SUBJECTS_COLLECTION_NAME, selectedClassForStudentList.subjectId, "classes", selectedClassForStudentList.id, "students", student.id);
+      await deleteDoc(studentDocRef);
+      toast({ title: "Student Removed", description: `${student.firstName} ${student.lastName} removed.` });
+      await fetchStudentsForDialog(selectedClassForStudentList);
+    } catch (error) {
+      console.error("Error deleting student:", error);
+      toast({ title: "Error Deleting Student", description: "Could not remove student.", variant: "destructive" });
+    } finally {
+      setDeletingStudentId(null);
+    }
+  };
 
   const renderClassItem = (cls: ClassInfo) => (
     <Card key={cls.id} className="shadow-md w-full">
       <CardHeader className="pb-2 sm:pb-3">
         <CardTitle className="text-sm sm:text-base font-semibold">
-            {displayMode === 'bySubject' 
-                ? `${cls.sectionName} (${cls.yearGrade})` 
-                : `${cls.subjectName} (${cls.subjectCode})`
-            }
+          {displayMode === 'bySubject' ? `${cls.sectionName} (${cls.yearGrade})` : `${cls.subjectName} (${cls.subjectCode})`}
         </CardTitle>
         <CardDescription className="text-2xs sm:text-xs pt-0.5">
           Class Code: <span className="font-mono text-primary">{cls.code}</span>
         </CardDescription>
-         {displayMode === 'bySectionYear' && (
-            <CardDescription className="text-2xs sm:text-xs pt-0.5">
-                Section: {cls.sectionName} | Year/Grade: {cls.yearGrade}
-            </CardDescription>
+        {displayMode === 'bySectionYear' && (
+          <CardDescription className="text-2xs sm:text-xs pt-0.5">Section: {cls.sectionName} | Year/Grade: {cls.yearGrade}</CardDescription>
         )}
       </CardHeader>
       <CardContent className="pb-3 sm:pb-4 pt-1">
-        <p className="text-2xs sm:text-xs text-muted-foreground italic">Student list coming soon.</p>
+         <Button variant="outline" size="sm" className="w-full text-xs sm:text-sm" onClick={() => openStudentListDialog(cls)}>
+            <Users2 className="mr-2 h-3.5 w-3.5" /> Manage Students
+        </Button>
       </CardContent>
       <CardFooter className="flex justify-end gap-1.5 sm:gap-2 pt-0 pb-2 sm:pb-3 px-2 sm:px-4">
-          <Button variant="outline" size="icon" className="h-6 w-6 sm:h-7 sm:w-7" onClick={() => openEditDialog(cls)} disabled={deletingClassId === cls.id || isSavingClass}>
-              <Edit3 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-              <span className="sr-only">Edit Class</span>
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="icon" className="h-6 w-6 sm:h-7 sm:w-7" disabled={deletingClassId === cls.id || isSavingClass}>
-                  {deletingClassId === cls.id ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin"/> : <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />}
-                  <span className="sr-only">Delete Class</span>
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle className="text-base sm:text-lg">Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription className="text-xs sm:text-sm">
-                  This action cannot be undone. This will permanently delete the class 
-                  &quot;{cls.subjectName} - {cls.sectionName}&quot; and all its student data.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
-                <AlertDialogCancel disabled={deletingClassId === cls.id} className="text-xs sm:text-sm">Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => handleDeleteClass(cls)}
-                  disabled={deletingClassId === cls.id}
-                  className="bg-destructive hover:bg-destructive/90 text-xs sm:text-sm"
-                >
-                  {deletingClassId === cls.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-                  Delete Class
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+        <Button variant="outline" size="icon" className="h-6 w-6 sm:h-7 sm:w-7" onClick={() => openEditDialog(cls)} disabled={deletingClassId === cls.id || isSavingClass}>
+          <Edit3 className="h-3 w-3 sm:h-3.5 sm:w-3.5" /><span className="sr-only">Edit Class</span>
+        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" size="icon" className="h-6 w-6 sm:h-7 sm:w-7" disabled={deletingClassId === cls.id || isSavingClass}>
+              {deletingClassId === cls.id ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin"/> : <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />}
+              <span className="sr-only">Delete Class</span>
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-base sm:text-lg">Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription className="text-xs sm:text-sm">This action cannot be undone. This will permanently delete the class &quot;{cls.subjectName} - {cls.sectionName}&quot; and all its student data.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+              <AlertDialogCancel disabled={deletingClassId === cls.id} className="text-xs sm:text-sm">Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => handleDeleteClass(cls)} disabled={deletingClassId === cls.id} className="bg-destructive hover:bg-destructive/90 text-xs sm:text-sm">
+                {deletingClassId === cls.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null} Delete Class
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardFooter>
     </Card>
   );
 
   if (authLoading || isLoadingData) {
-     return (
-      <div className="space-y-4 sm:space-y-6">
-        <Card className="shadow-lg">
-          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-            <div>
-              <Skeleton className="h-7 w-40 mb-1 sm:h-8 sm:w-48" />
-              <Skeleton className="h-4 w-64 sm:h-5 sm:w-80" />
-            </div>
-            <div className="flex gap-2 w-full sm:w-auto">
-                <Skeleton className="h-9 sm:h-10 flex-grow sm:w-40" />
-                <Skeleton className="h-9 sm:h-10 flex-grow sm:w-36" />
-            </div>
-          </CardHeader>
-          <CardContent>
-             <Skeleton className="h-6 w-1/3 mb-4" />
-             <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {[...Array(3)].map((_, i) => (
-                    <Card key={i} className="shadow-md">
-                        <CardHeader className="pb-2 sm:pb-3">
-                            <Skeleton className="h-5 w-3/4 mb-1" />
-                            <Skeleton className="h-3 w-1/2 mb-1" />
-                             <Skeleton className="h-3 w-2/3" />
-                        </CardHeader>
-                         <CardContent className="pb-3 sm:pb-4 pt-1">
-                            <Skeleton className="h-3 w-full" />
-                        </CardContent>
-                        <CardFooter className="flex justify-end gap-2 pt-0 pb-2 sm:pb-3 px-2 sm:px-4">
-                           <Skeleton className="h-6 w-6 sm:h-7 sm:w-7 rounded-md" />
-                           <Skeleton className="h-6 w-6 sm:h-7 sm:w-7 rounded-md" />
-                        </CardFooter>
-                    </Card>
-                ))}
-             </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return ( /* Skeleton Loader */ <div className="space-y-4 sm:space-y-6"> <Card className="shadow-lg"> <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2"> <div> <Skeleton className="h-7 w-40 mb-1 sm:h-8 sm:w-48" /> <Skeleton className="h-4 w-64 sm:h-5 sm:w-80" /> </div> <div className="flex gap-2 w-full sm:w-auto"> <Skeleton className="h-9 sm:h-10 flex-grow sm:w-40" /> <Skeleton className="h-9 sm:h-10 flex-grow sm:w-36" /> </div> </CardHeader> <CardContent> <Skeleton className="h-6 w-1/3 mb-4" /> <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3"> {[...Array(3)].map((_, i) => ( <Card key={i} className="shadow-md"> <CardHeader className="pb-2 sm:pb-3"> <Skeleton className="h-5 w-3/4 mb-1" /> <Skeleton className="h-3 w-1/2 mb-1" /> <Skeleton className="h-3 w-2/3" /> </CardHeader> <CardContent className="pb-3 sm:pb-4 pt-1"> <Skeleton className="h-3 w-full" /> </CardContent> <CardFooter className="flex justify-end gap-2 pt-0 pb-2 sm:pb-3 px-2 sm:px-4"> <Skeleton className="h-6 w-6 sm:h-7 sm:w-7 rounded-md" /> <Skeleton className="h-6 w-6 sm:h-7 sm:w-7 rounded-md" /> </CardFooter> </Card> ))} </div> </CardContent> </Card> </div> );
   }
-
   if (dataError) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4">
-        <AlertTriangle className="h-12 w-12 sm:h-16 sm:w-16 text-destructive mb-4" />
-        <h2 className="text-xl sm:text-2xl font-semibold mb-2">Oops! Something went wrong.</h2>
-        <p className="text-sm sm:text-base text-muted-foreground mb-4">{dataError}</p>
-        <Button onClick={fetchPageData} size="sm" className="text-xs sm:text-sm">Try Again</Button>
-      </div>
-    );
+    return ( /* Error UI */ <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4"> <AlertTriangle className="h-12 w-12 sm:h-16 sm:w-16 text-destructive mb-4" /> <h2 className="text-xl sm:text-2xl font-semibold mb-2">Oops! Something went wrong.</h2> <p className="text-sm sm:text-base text-muted-foreground mb-4">{dataError}</p> <Button onClick={fetchPageData} size="sm" className="text-xs sm:text-sm">Try Again</Button> </div> );
   }
-
 
   return (
     <div className="space-y-4 sm:space-y-6">
       <Card className="shadow-lg">
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-          <div>
-            <CardTitle className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight flex items-center">
-              <Users className="mr-2 sm:mr-3 h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-              Your Classes
-            </CardTitle>
-            <CardDescription className="text-xs sm:text-sm">
-              Manage your classes here. Use the filter to change grouping.
-            </CardDescription>
-          </div>
+          <div> <CardTitle className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight flex items-center"> <Users className="mr-2 sm:mr-3 h-5 w-5 sm:h-6 sm:w-6 text-primary" /> Your Classes </CardTitle> <CardDescription className="text-xs sm:text-sm"> Manage your classes and student lists here. </CardDescription> </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <Select value={displayMode} onValueChange={(value) => setDisplayMode(value as DisplayMode)}>
-                <SelectTrigger className="w-full sm:w-[180px] h-9 text-xs sm:text-sm">
-                    <SelectValue placeholder="Display mode" />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="bySubject" className="text-xs sm:text-sm">Group by Subject</SelectItem>
-                    <SelectItem value="bySectionYear" className="text-xs sm:text-sm">Group by Section/Year</SelectItem>
-                </SelectContent>
-            </Select>
-            <Dialog open={isAddClassDialogOpen} onOpenChange={(isOpen) => {
-                if (!isOpen) closeDialog();
-                else setIsAddClassDialogOpen(true);
-            }}>
-                <DialogTrigger asChild>
-                <Button size="sm" className="text-xs sm:text-sm w-full sm:w-auto h-9" disabled={isSavingClass || userSubjects.length === 0}>
-                    <PlusCircle className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                    Add New Class
-                </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                    <DialogTitle className="text-base sm:text-lg">{editingClass ? "Edit Class" : "Add New Class"}</DialogTitle>
-                    <DialogDescription className="text-xs sm:text-sm">
-                    {editingClass ? `Editing class: ${editingClass.subjectName} - ${editingClass.sectionName}` : "Enter the details for your new class below."}
-                    {userSubjects.length === 0 && !editingClass && " You must create a subject first before adding a class."}
-                    </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleAddOrUpdateClass} className="grid gap-3 sm:gap-4 py-2 sm:py-4">
-                    <div className="grid grid-cols-4 items-center gap-2 sm:gap-4">
-                    <Label htmlFor="subjectId" className="text-right text-xs sm:text-sm col-span-1">
-                        Subject
-                    </Label>
-                    <Select
-                        value={selectedSubjectIdForm} 
-                        onValueChange={(value) => setSelectedSubjectIdForm(value)}
-                        required
-                        disabled={isSavingClass || !!editingClass || userSubjects.length === 0}
-                    >
-                        <SelectTrigger id="subjectId" className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm">
-                        <SelectValue placeholder={userSubjects.length === 0 ? "No subjects available" : "Select subject"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                        {userSubjects.map(subject => (
-                            <SelectItem key={subject.id} value={subject.id} className="text-xs sm:text-sm">
-                            {subject.name} ({subject.code})
-                            </SelectItem>
-                        ))}
-                        </SelectContent>
-                    </Select>
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-2 sm:gap-4">
-                    <Label htmlFor="sectionName" className="text-right text-xs sm:text-sm col-span-1">
-                        Section
-                    </Label>
-                    <Input
-                        id="sectionName"
-                        value={newSectionName}
-                        onChange={(e) => setNewSectionName(e.target.value)}
-                        placeholder="e.g., Section A, P3"
-                        className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
-                        required
-                        disabled={isSavingClass}
-                    />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-2 sm:gap-4">
-                    <Label htmlFor="yearGrade" className="text-right text-xs sm:text-sm col-span-1">
-                        Year/Grade
-                    </Label>
-                    <Input
-                        id="yearGrade"
-                        value={newYearGrade}
-                        onChange={(e) => setNewYearGrade(e.target.value)}
-                        placeholder="e.g., Grade 10, Year 2"
-                        className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
-                        required
-                        disabled={isSavingClass}
-                    />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-2 sm:gap-4">
-                    <Label htmlFor="classCode" className="text-right text-xs sm:text-sm col-span-1">
-                        Code
-                    </Label>
-                    <Input
-                        id="classCode"
-                        value={newClassCode}
-                        onChange={(e) => setNewClassCode(e.target.value.toUpperCase())}
-                        placeholder="Auto-generated or custom"
-                        className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
-                        required
-                        disabled={isSavingClass || (!editingClass && (!selectedSubjectIdForm || !newSectionName || !newYearGrade))} 
-                    />
-                    </div>
-                    <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 mt-2">
-                    <DialogClose asChild>
-                        <Button type="button" variant="outline" size="sm" className="text-xs sm:text-sm" disabled={isSavingClass}>Cancel</Button>
-                    </DialogClose>
-                    <Button type="submit" size="sm" className="text-xs sm:text-sm" disabled={isSavingClass || userSubjects.length === 0 && !editingClass}>
-                        {isSavingClass && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {editingClass ? "Save Changes" : "Add Class"}
-                    </Button>
-                    </DialogFooter>
-                </form>
-                </DialogContent>
-            </Dialog>
+            <Select value={displayMode} onValueChange={(value) => setDisplayMode(value as DisplayMode)}> <SelectTrigger className="w-full sm:w-[180px] h-9 text-xs sm:text-sm"> <SelectValue placeholder="Display mode" /> </SelectTrigger> <SelectContent> <SelectItem value="bySubject" className="text-xs sm:text-sm">Group by Subject</SelectItem> <SelectItem value="bySectionYear" className="text-xs sm:text-sm">Group by Section/Year</SelectItem> </SelectContent> </Select>
+            <Dialog open={isAddClassDialogOpen} onOpenChange={(isOpen) => { if (!isOpen) closeClassDialog(); else setIsAddClassDialogOpen(true); }}> <DialogTrigger asChild> <Button size="sm" className="text-xs sm:text-sm w-full sm:w-auto h-9" disabled={isSavingClass || userSubjects.length === 0}> <PlusCircle className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" /> Add New Class </Button> </DialogTrigger> <DialogContent className="sm:max-w-[425px]"> <DialogHeader> <DialogTitle className="text-base sm:text-lg">{editingClass ? "Edit Class" : "Add New Class"}</DialogTitle> <DialogDescription className="text-xs sm:text-sm"> {editingClass ? `Editing class: ${editingClass.subjectName} - ${editingClass.sectionName}` : "Enter the details for your new class below."} {userSubjects.length === 0 && !editingClass && " You must create a subject first before adding a class."} </DialogDescription> </DialogHeader> <form onSubmit={handleAddOrUpdateClass} className="grid gap-3 sm:gap-4 py-2 sm:py-4"> <div className="grid grid-cols-4 items-center gap-2 sm:gap-4"> <Label htmlFor="subjectId" className="text-right text-xs sm:text-sm col-span-1"> Subject </Label> <Select value={selectedSubjectIdForm} onValueChange={(value) => setSelectedSubjectIdForm(value)} required disabled={isSavingClass || !!editingClass || userSubjects.length === 0}> <SelectTrigger id="subjectId" className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"> <SelectValue placeholder={userSubjects.length === 0 ? "No subjects available" : "Select subject"} /> </SelectTrigger> <SelectContent> {userSubjects.map(subject => ( <SelectItem key={subject.id} value={subject.id} className="text-xs sm:text-sm"> {subject.name} ({subject.code}) </SelectItem> ))} </SelectContent> </Select> </div> <div className="grid grid-cols-4 items-center gap-2 sm:gap-4"> <Label htmlFor="sectionName" className="text-right text-xs sm:text-sm col-span-1"> Section </Label> <Input id="sectionName" value={newSectionName} onChange={(e) => setNewSectionName(e.target.value)} placeholder="e.g., Section A, P3" className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm" required disabled={isSavingClass} /> </div> <div className="grid grid-cols-4 items-center gap-2 sm:gap-4"> <Label htmlFor="yearGrade" className="text-right text-xs sm:text-sm col-span-1"> Year/Grade </Label> <Input id="yearGrade" value={newYearGrade} onChange={(e) => setNewYearGrade(e.target.value)} placeholder="e.g., Grade 10, Year 2" className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm" required disabled={isSavingClass} /> </div> <div className="grid grid-cols-4 items-center gap-2 sm:gap-4"> <Label htmlFor="classCode" className="text-right text-xs sm:text-sm col-span-1"> Code </Label> <Input id="classCode" value={newClassCode} onChange={(e) => setNewClassCode(e.target.value.toUpperCase())} placeholder="Auto-generated or custom" className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm" required disabled={isSavingClass || (!editingClass && (!selectedSubjectIdForm || !newSectionName || !newYearGrade))} /> </div> <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 mt-2"> <DialogClose asChild> <Button type="button" variant="outline" size="sm" className="text-xs sm:text-sm" disabled={isSavingClass}>Cancel</Button> </DialogClose> <Button type="submit" size="sm" className="text-xs sm:text-sm" disabled={isSavingClass || (userSubjects.length === 0 && !editingClass)}> {isSavingClass && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {editingClass ? "Save Changes" : "Add Class"} </Button> </DialogFooter> </form> </DialogContent> </Dialog>
           </div>
         </CardHeader>
         <CardContent>
-          {isLoadingData && classes.length === 0 ? ( 
-             <div className="text-center py-8 sm:py-10">
-                <Loader2 className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-primary animate-spin mb-3 sm:mb-4" />
-                <p className="text-md sm:text-lg font-medium text-muted-foreground">Loading classes...</p>
-            </div>
-          ) : !isLoadingData && classes.length === 0 && userSubjects.length === 0 ? (
-             <div className="text-center py-8 sm:py-10">
-                <List className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mb-3 sm:mb-4" />
-                <h3 className="text-md sm:text-lg font-medium text-muted-foreground">
-                    No subjects created yet.
-                </h3>
-                <p className="text-xs sm:text-sm text-muted-foreground">
-                    Please add a subject first in the &apos;Subjects&apos; tab before adding classes.
-                </p>
-             </div>
-          ) : !isLoadingData && classes.length === 0 && userSubjects.length > 0 ? (
-            <div className="text-center py-8 sm:py-10">
-              <List className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mb-3 sm:mb-4" />
-              <h3 className="text-md sm:text-lg font-medium text-muted-foreground">
-                No classes created yet.
-              </h3>
-              <p className="text-xs sm:text-sm text-muted-foreground">
-                Click &quot;Add New Class&quot; to get started.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4 pr-1 sm:pr-3"> {/* Replaced ScrollArea with a div */}
-              {displayMode === 'bySubject' && userSubjects.map(subject => {
-                  const subjectClasses = classes.filter(c => c.subjectId === subject.id);
-                  if (subjectClasses.length === 0 && userSubjects.length > 1) return null; 
-                  if (subjectClasses.length === 0 && userSubjects.length === 1 && classes.length > 0) return null; 
-
-                  return (
-                      <Card key={subject.id} className="shadow-md">
-                          <CardHeader className="pt-3 pb-2 sm:pt-4 sm:pb-3">
-                              <CardTitle className="text-base sm:text-lg font-semibold flex items-center">
-                                  <BookOpen className="mr-2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground"/>
-                                  {subject.name} <span className="text-xs sm:text-sm font-normal text-muted-foreground ml-1">({subject.code})</span>
-                              </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                              {subjectClasses.length === 0 ? (
-                                  <p className="text-xs sm:text-sm text-muted-foreground py-2 text-center">No classes in this subject.</p>
-                              ) : (
-                                  <div className="grid gap-2 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                      {subjectClasses.map(cls => renderClassItem(cls))}
-                                  </div>
-                              )}
-                          </CardContent>
-                      </Card>
-                  );
-              })}
-
-              {displayMode === 'bySectionYear' && groupedClassesBySectionYear.map(group => (
-                  <Card key={group.groupTitle} className="shadow-md">
-                       <CardHeader className="pt-3 pb-2 sm:pt-4 sm:pb-3">
-                          <CardTitle className="text-base sm:text-lg font-semibold flex items-center">
-                              <LayoutGrid className="mr-2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground"/>
-                              {group.groupTitle}
-                          </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                          {group.classes.length === 0 ? (
-                               <p className="text-xs sm:text-sm text-muted-foreground py-2 text-center">No classes in this section/year.</p>
-                          ) : (
-                              <div className="grid gap-2 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                  {group.classes.map(cls => renderClassItem(cls))}
-                              </div>
-                          )}
-                      </CardContent>
-                  </Card>
-              ))}
-            </div>
-          )}
+          {isLoadingData && classes.length === 0 ? ( <div className="text-center py-8 sm:py-10"> <Loader2 className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-primary animate-spin mb-3 sm:mb-4" /> <p className="text-md sm:text-lg font-medium text-muted-foreground">Loading classes...</p> </div> ) : !isLoadingData && classes.length === 0 && userSubjects.length === 0 ? ( <div className="text-center py-8 sm:py-10"> <List className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mb-3 sm:mb-4" /> <h3 className="text-md sm:text-lg font-medium text-muted-foreground"> No subjects created yet. </h3> <p className="text-xs sm:text-sm text-muted-foreground"> Please add a subject first in the 'Subjects' tab before adding classes. </p> </div> ) : !isLoadingData && classes.length === 0 && userSubjects.length > 0 ? ( <div className="text-center py-8 sm:py-10"> <List className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mb-3 sm:mb-4" /> <h3 className="text-md sm:text-lg font-medium text-muted-foreground"> No classes created yet. </h3> <p className="text-xs sm:text-sm text-muted-foreground"> Click &quot;Add New Class&quot; to get started. </p> </div> ) : ( <div className="space-y-4 pr-1 sm:pr-3"> {displayMode === 'bySubject' && userSubjects.map(subject => { const subjectClasses = classes.filter(c => c.subjectId === subject.id); if (subjectClasses.length === 0 && userSubjects.length > 1) return null; if (subjectClasses.length === 0 && userSubjects.length === 1 && classes.length > 0) return null; return ( <Card key={subject.id} className="shadow-md"> <CardHeader className="pt-3 pb-2 sm:pt-4 sm:pb-3"> <CardTitle className="text-base sm:text-lg font-semibold flex items-center"> <BookOpen className="mr-2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground"/> {subject.name} <span className="text-xs sm:text-sm font-normal text-muted-foreground ml-1">({subject.code})</span> </CardTitle> </CardHeader> <CardContent> {subjectClasses.length === 0 ? ( <p className="text-xs sm:text-sm text-muted-foreground py-2 text-center">No classes in this subject.</p> ) : ( <div className="grid gap-2 sm:gap-3 md:grid-cols-2 xl:grid-cols-3"> {subjectClasses.map(cls => renderClassItem(cls))} </div> )} </CardContent> </Card> ); })} {displayMode === 'bySectionYear' && groupedClassesBySectionYear.map(group => ( <Card key={group.groupTitle} className="shadow-md"> <CardHeader className="pt-3 pb-2 sm:pt-4 sm:pb-3"> <CardTitle className="text-base sm:text-lg font-semibold flex items-center"> <LayoutGrid className="mr-2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground"/> {group.groupTitle} </CardTitle> </CardHeader> <CardContent> {group.classes.length === 0 ? ( <p className="text-xs sm:text-sm text-muted-foreground py-2 text-center">No classes in this section/year.</p> ) : ( <div className="grid gap-2 sm:gap-3 md:grid-cols-2 xl:grid-cols-3"> {group.classes.map(cls => renderClassItem(cls))} </div> )} </CardContent> </Card> ))} </div> )}
         </CardContent>
-         {(classes.length > 0 || userSubjects.length > 0) && !isLoadingData && (
-            <CardFooter className="text-xs sm:text-sm text-muted-foreground pt-3 sm:pt-4 border-t">
-                {displayMode === 'bySubject' 
-                    ? `Showing ${userSubjects.length} subject${userSubjects.length === 1 ? '' : 's'} with ${classes.length} class${classes.length === 1 ? '' : 'es'} in total.`
-                    : `Showing ${groupedClassesBySectionYear.length} section/year group${groupedClassesBySectionYear.length === 1 ? '' : 's'} with ${classes.length} class${classes.length === 1 ? '' : 'es'} in total.`
-                }
-            </CardFooter>
-        )}
+        {(classes.length > 0 || userSubjects.length > 0) && !isLoadingData && ( <CardFooter className="text-xs sm:text-sm text-muted-foreground pt-3 sm:pt-4 border-t"> {displayMode === 'bySubject' ? `Showing ${userSubjects.length} subject${userSubjects.length === 1 ? '' : 's'} with ${classes.length} class${classes.length === 1 ? '' : 'es'} in total.` : `Showing ${groupedClassesBySectionYear.length} section/year group${groupedClassesBySectionYear.length === 1 ? '' : 's'} with ${classes.length} class${classes.length === 1 ? '' : 'es'} in total.` } </CardFooter> )}
       </Card>
+
+      {/* Student List Dialog */}
+      <Dialog open={isStudentListDialogOpen} onOpenChange={(isOpen) => { if (!isOpen) closeStudentListDialog(); else setIsStudentListDialogOpen(true); }}>
+        <DialogContent className="sm:max-w-3xl md:max-w-5xl lg:max-w-6xl max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="p-4 sm:p-6 border-b">
+            <DialogTitle className="text-lg sm:text-xl">
+              Students in {selectedClassForStudentList?.subjectName} - {selectedClassForStudentList?.sectionName} ({selectedClassForStudentList?.yearGrade})
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              Manage the list of students enrolled in this class. Class Code: {selectedClassForStudentList?.code}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex-grow overflow-hidden grid grid-cols-1 md:grid-cols-3 gap-0">
+            {/* Left Panel: Add Student Form */}
+            <div className="md:col-span-1 bg-muted/50 p-4 sm:p-6 border-b md:border-b-0 md:border-r flex flex-col">
+              <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4">Add New Student</h3>
+              <form onSubmit={handleAddStudent} className="space-y-3 sm:space-y-4">
+                <div>
+                  <Label htmlFor="studentFirstName" className="text-xs sm:text-sm">First Name</Label>
+                  <Input id="studentFirstName" value={newStudentFirstName} onChange={(e) => setNewStudentFirstName(e.target.value)} required disabled={isSavingStudent} className="h-8 sm:h-9 text-xs sm:text-sm"/>
+                </div>
+                <div>
+                  <Label htmlFor="studentLastName" className="text-xs sm:text-sm">Last Name</Label>
+                  <Input id="studentLastName" value={newStudentLastName} onChange={(e) => setNewStudentLastName(e.target.value)} required disabled={isSavingStudent} className="h-8 sm:h-9 text-xs sm:text-sm"/>
+                </div>
+                <div>
+                  <Label htmlFor="studentMiddleName" className="text-xs sm:text-sm">Middle Name (Optional)</Label>
+                  <Input id="studentMiddleName" value={newStudentMiddleName} onChange={(e) => setNewStudentMiddleName(e.target.value)} disabled={isSavingStudent} className="h-8 sm:h-9 text-xs sm:text-sm"/>
+                </div>
+                <Button type="submit" disabled={isSavingStudent || isLoadingStudents} size="sm" className="w-full text-xs sm:text-sm">
+                  {isSavingStudent ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} Add Student
+                </Button>
+              </form>
+            </div>
+
+            {/* Right Panel: Student List */}
+            <div className="md:col-span-2 p-4 sm:p-6 flex flex-col overflow-hidden">
+              <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4">Enrolled Students ({studentsInDialog.length})</h3>
+              {isLoadingStudents ? (
+                <div className="flex-grow flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+              ) : studentsInDialog.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No students enrolled in this class yet.</p>
+              ) : (
+                <div className="flex-grow overflow-y-auto -mr-2 pr-2">
+                  <ul className="space-y-2">
+                    {studentsInDialog.map(student => (
+                      <li key={student.id} className="flex items-center justify-between p-2.5 sm:p-3 bg-card border rounded-md shadow-sm">
+                        <span className="text-xs sm:text-sm">
+                          {student.lastName}, {student.firstName} {student.middleName && ` ${student.middleName.charAt(0)}.`}
+                        </span>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" disabled={deletingStudentId === student.id}>
+                              {deletingStudentId === student.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="text-base sm:text-lg">Remove Student?</AlertDialogTitle>
+                              <AlertDialogDescription className="text-xs sm:text-sm">
+                                Are you sure you want to remove {student.firstName} {student.lastName} from this class?
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+                              <AlertDialogCancel className="text-xs sm:text-sm" disabled={deletingStudentId === student.id}>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteStudent(student)}
+                                disabled={deletingStudentId === student.id}
+                                className="bg-destructive hover:bg-destructive/90 text-xs sm:text-sm"
+                              >
+                                {deletingStudentId === student.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Remove
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="p-4 sm:p-6 border-t">
+            <Button variant="outline" onClick={closeStudentListDialog} size="sm" className="text-xs sm:text-sm">Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-    
-
-    

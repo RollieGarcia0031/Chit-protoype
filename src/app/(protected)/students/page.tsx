@@ -13,7 +13,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase/config';
 import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 import type { Timestamp } from "firebase/firestore";
-import { collection, query, where, getDocs, orderBy, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, doc, addDoc, updateDoc, deleteDoc, serverTimestamp, getCountFromServer } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -36,11 +36,11 @@ interface FetchedSubjectInfo {
   code: string;
 }
 
-// Renaming to avoid confusion with type from exam-types if it's too generic
 interface ClassInfo extends OriginalClassInfoForDropdown {
   userId?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+  studentCount?: number;
 }
 
 type DisplayMode = 'bySubject' | 'bySectionYear';
@@ -75,7 +75,6 @@ export default function StudentsPage() {
   const [isLoadingUserSubjects, setIsLoadingUserSubjects] = useState(true);
   const [displayMode, setDisplayMode] = useState<DisplayMode>('bySubject');
 
-  // State for Student Management
   const [managingStudentsForClass, setManagingStudentsForClass] = useState<ClassInfo | null>(null);
   const [studentsForSelectedClass, setStudentsForSelectedClass] = useState<Student[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
@@ -114,8 +113,19 @@ export default function StudentsPage() {
         for (const subject of fetchedSubjects) {
           const classesSubCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME, subject.id, "classes");
           const classesQuerySnapshot = await getDocs(query(classesSubCollectionRef, where("userId", "==", user.uid), orderBy("sectionName", "asc")));
-          classesQuerySnapshot.forEach((classDoc) => {
+          
+          for (const classDoc of classesQuerySnapshot.docs) {
             const classData = classDoc.data();
+            let studentCount = 0;
+            try {
+                const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, subject.id, "classes", classDoc.id, "students");
+                const studentCountSnapshot = await getCountFromServer(studentsRef);
+                studentCount = studentCountSnapshot.data().count;
+            } catch (countError) {
+                console.warn(`Could not fetch student count for class ${classDoc.id}:`, countError);
+                // studentCount remains 0 or you can set it to undefined/null
+            }
+
             allClasses.push({
               id: classDoc.id,
               subjectId: subject.id,
@@ -127,8 +137,9 @@ export default function StudentsPage() {
               userId: classData.userId,
               createdAt: classData.createdAt,
               updatedAt: classData.updatedAt,
+              studentCount: studentCount,
             });
-          });
+          }
         }
       }
       setClasses(allClasses);
@@ -239,7 +250,7 @@ export default function StudentsPage() {
       toast({ title: "Class Deleted", description: `Class "${classToDelete.subjectName} - ${classToDelete.sectionName}" and its students have been removed.` });
       setClasses(prevClasses => prevClasses.filter(c => c.id !== classToDelete.id));
       if(managingStudentsForClass?.id === classToDelete.id) {
-        setManagingStudentsForClass(null); // If the deleted class was being managed, clear it
+        setManagingStudentsForClass(null); 
       }
     } catch (e) {
       console.error("Error deleting class: ", e);
@@ -285,7 +296,6 @@ export default function StudentsPage() {
     });
   }, [classes, displayMode]);
 
-  // Student Management Functions
   const openStudentManagementView = async (classInfo: ClassInfo) => {
     setManagingStudentsForClass(classInfo);
     await fetchStudentsForClass(classInfo);
@@ -332,7 +342,7 @@ export default function StudentsPage() {
         firstName: newStudentFirstName.trim(),
         lastName: newStudentLastName.trim(),
         middleName: newStudentMiddleName.trim() || "",
-        userId: user.uid, // Associate student with the teacher
+        userId: user.uid, 
         classId: managingStudentsForClass.id,
         subjectId: managingStudentsForClass.subjectId,
         createdAt: serverTimestamp(),
@@ -340,7 +350,15 @@ export default function StudentsPage() {
       });
       toast({ title: "Student Added", description: `${newStudentFirstName} ${newStudentLastName} added.` });
       setNewStudentFirstName(''); setNewStudentLastName(''); setNewStudentMiddleName('');
-      await fetchStudentsForClass(managingStudentsForClass);
+      await fetchStudentsForClass(managingStudentsForClass); // Refresh list
+      // Also refresh student count on the managingStudentsForClass object to update the button if it's shown there
+      if (managingStudentsForClass) {
+        const updatedClassInfo = {...managingStudentsForClass, studentCount: (managingStudentsForClass.studentCount || 0) + 1};
+        setManagingStudentsForClass(updatedClassInfo);
+        // And update the main classes list
+        setClasses(prev => prev.map(c => c.id === updatedClassInfo.id ? updatedClassInfo : c));
+      }
+
     } catch (error) {
       console.error("Error adding student:", error);
       toast({ title: "Error Adding Student", description: "Could not add student.", variant: "destructive" });
@@ -356,7 +374,12 @@ export default function StudentsPage() {
       const studentDocRef = doc(db, SUBJECTS_COLLECTION_NAME, managingStudentsForClass.subjectId, "classes", managingStudentsForClass.id, "students", student.id);
       await deleteDoc(studentDocRef);
       toast({ title: "Student Removed", description: `${student.firstName} ${student.lastName} removed.` });
-      await fetchStudentsForClass(managingStudentsForClass);
+      await fetchStudentsForClass(managingStudentsForClass); // Refresh list
+      if (managingStudentsForClass) {
+        const updatedClassInfo = {...managingStudentsForClass, studentCount: Math.max(0, (managingStudentsForClass.studentCount || 0) - 1)};
+        setManagingStudentsForClass(updatedClassInfo);
+         setClasses(prev => prev.map(c => c.id === updatedClassInfo.id ? updatedClassInfo : c));
+      }
     } catch (error) {
       console.error("Error deleting student:", error);
       toast({ title: "Error Deleting Student", description: "Could not remove student.", variant: "destructive" });
@@ -374,13 +397,16 @@ export default function StudentsPage() {
         <CardDescription className="text-2xs sm:text-xs pt-0.5">
           Class Code: <span className="font-mono text-primary">{cls.code}</span>
         </CardDescription>
+        <CardDescription className="text-2xs sm:text-xs pt-0.5">
+          Students: {typeof cls.studentCount === 'number' ? cls.studentCount : '...'}
+        </CardDescription>
         {displayMode === 'bySectionYear' && (
           <CardDescription className="text-2xs sm:text-xs pt-0.5">Section: {cls.sectionName} | Year/Grade: {cls.yearGrade}</CardDescription>
         )}
       </CardHeader>
       <CardContent className="pb-3 sm:pb-4 pt-1">
          <Button variant="outline" size="sm" className="w-full text-xs sm:text-sm" onClick={() => openStudentManagementView(cls)}>
-            <Users2 className="mr-2 h-3.5 w-3.5" /> Manage Students ({isLoadingStudents && managingStudentsForClass?.id === cls.id ? '...' : studentsForSelectedClass.length > 0 && managingStudentsForClass?.id === cls.id ? studentsForSelectedClass.length : '...'})
+            <Users2 className="mr-2 h-3.5 w-3.5" /> Manage Students ({typeof cls.studentCount === 'number' ? cls.studentCount : '...'})
         </Button>
       </CardContent>
       <CardFooter className="flex justify-end gap-1.5 sm:gap-2 pt-0 pb-2 sm:pb-3 px-2 sm:px-4">
@@ -467,7 +493,7 @@ export default function StudentsPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : studentsForSelectedClass.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
+              <p className="text-sm text-muted-foreground text-center py-8 flex-grow flex items-center justify-center">
                 No students enrolled in this class yet.
               </p>
             ) : (
@@ -512,7 +538,6 @@ export default function StudentsPage() {
     );
   }
 
-  // Class Listing View
   return (
     <div className="space-y-4 sm:space-y-6">
       <Card className="shadow-lg">
@@ -543,3 +568,4 @@ export default function StudentsPage() {
     </div>
   );
 }
+

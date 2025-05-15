@@ -108,7 +108,7 @@ export default function CreateExamPage() {
   const [isLoadingUserSubjectsForDropdown, setIsLoadingUserSubjectsForDropdown] = useState(true);
   const [selectedSubjectIdForFilter, setSelectedSubjectIdForFilter] = useState<string | null>(null);
   
-  const [assignedClassSlots, setAssignedClassSlots] = useState<AssignedClassSlot[]>([]);
+  const [assignedClassSlots, setAssignedClassSlots] = useState<AssignedClassSlot[]>([{ key: generateId('class-slot'), selectedClassId: null }]);
   const [allUserClasses, setAllUserClasses] = useState<ClassInfoForDropdown[]>([]);
   const [isLoadingUserClasses, setIsLoadingUserClasses] = useState(true);
 
@@ -203,7 +203,7 @@ export default function CreateExamPage() {
   const handleSubjectFilterChange = (subjectIdValue: string) => {
     const newSubjectId = subjectIdValue === "none" ? null : subjectIdValue;
     setSelectedSubjectIdForFilter(newSubjectId);
-    setAssignedClassSlots([]); // Reset assigned class slots when subject changes
+    setAssignedClassSlots([{ key: generateId('class-slot'), selectedClassId: null }]); // Reset assigned class slots when subject changes to one default slot
   };
   
   const handleAddClassAssignmentSlot = () => {
@@ -387,14 +387,21 @@ export default function CreateExamPage() {
             const parsedData = JSON.parse(savedData);
             if (parsedData.title) setExamTitle(parsedData.title);
             if (parsedData.description) setExamDescription(parsedData.description);
-            if (parsedData.selectedSubjectIdForFilter) setSelectedSubjectIdForFilter(parsedData.selectedSubjectIdForFilter);
-            if (parsedData.assignedClassSlots && Array.isArray(parsedData.assignedClassSlots)) {
+            
+            // Robustly set selectedSubjectIdForFilter, defaulting to null if not present
+            setSelectedSubjectIdForFilter(parsedData.hasOwnProperty('selectedSubjectIdForFilter') ? parsedData.selectedSubjectIdForFilter : null);
+
+            // Robustly set assignedClassSlots, defaulting to a single empty slot if not found or invalid
+            if (parsedData.assignedClassSlots && Array.isArray(parsedData.assignedClassSlots) && parsedData.assignedClassSlots.length > 0) {
               setAssignedClassSlots(parsedData.assignedClassSlots.map((slot: any) => ({
                 key: slot.key || generateId('loaded-class-slot'),
                 selectedClassId: slot.selectedClassId || null,
               })));
+            } else if (parsedData.assignedClassSlots && Array.isArray(parsedData.assignedClassSlots) && parsedData.assignedClassSlots.length === 0){
+                setAssignedClassSlots([]); // If an empty array was saved, restore it as empty.
+            } else {
+                 setAssignedClassSlots([{ key: generateId('default-class-slot'), selectedClassId: null }]);
             }
-
 
             if (parsedData.blocks && Array.isArray(parsedData.blocks)) {
               const validatedBlocks = parsedData.blocks.map((block: ExamBlock) => ({
@@ -432,7 +439,13 @@ export default function CreateExamPage() {
           } catch (error) {
             console.error("Error parsing exam data from localStorage:", error);
             localStorage.removeItem(LOCAL_STORAGE_KEY);
+            setSelectedSubjectIdForFilter(null);
+            setAssignedClassSlots([{ key: generateId('error-reset-class-slot'), selectedClassId: null }]);
           }
+        } else {
+            // No saved data in local storage, initialize with defaults
+            setSelectedSubjectIdForFilter(null);
+            setAssignedClassSlots([{ key: generateId('init-class-slot'), selectedClassId: null }]);
         }
       }
       setIsLoadingExamData(false); 
@@ -441,7 +454,7 @@ export default function CreateExamPage() {
         setIsInitialLoadComplete(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]); 
+  }, [searchParams, isInitialLoadComplete]); // Ensure isInitialLoadComplete is a dependency
 
 
   useEffect(() => {
@@ -480,12 +493,15 @@ export default function CreateExamPage() {
             setSelectedSubjectIdForFilter(null);
         }
 
-        if (examData.classIds && Array.isArray(examData.classIds)) {
+        if (examData.classIds && Array.isArray(examData.classIds) && examData.classIds.length > 0) {
           setAssignedClassSlots(
             examData.classIds.map((id: string) => ({ key: generateId('loaded-slot'), selectedClassId: id }))
           );
-        } else {
-          setAssignedClassSlots([]);
+        } else if (examData.classIds && Array.isArray(examData.classIds) && examData.classIds.length === 0){
+             setAssignedClassSlots([]); // If an empty array was saved, restore it as empty.
+        }
+        else {
+          setAssignedClassSlots([{ key: generateId('default-fetch-slot'), selectedClassId: null }]);
         }
 
 
@@ -700,7 +716,7 @@ export default function CreateExamPage() {
     setExamTitle("");
     setExamDescription("");
     setSelectedSubjectIdForFilter(null);
-    setAssignedClassSlots([]);
+    setAssignedClassSlots([{ key: generateId('reset-class-slot'), selectedClassId: null }]);
     setExamBlocks([]);
     setAiSuggestionsEnabled(false);
     setAiFeedbackList([]);

@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { ChitLogo } from '@/components/icons/logo';
 import { Button } from '@/components/ui/button';
-import { HelpCircle, LogIn, UserPlus, LogOut, FilePlus2, ListChecks, ClipboardCheck } from 'lucide-react'; // Changed Home to HelpCircle
+import { HelpCircle, LogIn, UserPlus, LogOut, FilePlus2, ListChecks, ClipboardCheck, Users } from 'lucide-react'; // Added Users
 import { useAuth } from '@/contexts/auth-context';
 import {
   DropdownMenu,
@@ -63,8 +63,8 @@ export function AppSidebar() {
               className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
               <Link href="/" className="flex items-center">
-                <HelpCircle /> {/* Changed Home to HelpCircle */}
-                {isExpanded && <span>What&apos;s this?</span>} {/* Changed label */}
+                <HelpCircle />
+                {isExpanded && <span>What&apos;s this?</span>}
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -108,6 +108,19 @@ export function AppSidebar() {
                   <Link href="/render-exam" className="flex items-center">
                     <ClipboardCheck />
                     {isExpanded && <span>Generate DOCX</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === '/students'}
+                  tooltip={isExpanded ? undefined : "Students"}
+                  className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                >
+                  <Link href="/students" className="flex items-center">
+                    <Users />
+                    {isExpanded && <span>Students</span>}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -170,7 +183,7 @@ export function AppSidebar() {
             <Button
               variant="default"
               asChild
-              className="w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="w-full"
               title={isExpanded ? "" : "Login"}
             >
               <Link href="/login" className={`flex items-center ${isExpanded ? 'justify-start pl-3' : 'justify-center aspect-square p-0 w-10 h-10'}`}>
@@ -181,7 +194,7 @@ export function AppSidebar() {
             <Button
               variant="default"
               asChild
-              className="w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="w-full"
               title={isExpanded ? "" : "Sign Up"}
             >
               <Link href="/signup" className={`flex items-center ${isExpanded ? 'justify-start pl-3' : 'justify-center aspect-square p-0 w-10 h-10'}`}>

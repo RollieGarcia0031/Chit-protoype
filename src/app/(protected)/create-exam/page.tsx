@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { useState, type FormEvent, useEffect, useCallback, useMemo } from "react";
-import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair } from "@/types/exam-types";
+import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair, PooledChoicesQuestion, PoolOption } from "@/types/exam-types";
 import { generateId, debounce } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
 import { TotalPointsDisplay } from "@/components/exam/TotalPointsDisplay";
@@ -59,6 +59,12 @@ const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'
         type: 'matching',
         pairs: [{ id: generateId('pair'), premise: "", response: "", responseLetter: "" }],
       };
+    case 'pooled-choices':
+      return {
+        ...baseQuestionProps,
+        type: 'pooled-choices',
+        correctAnswersFromPool: [],
+      };
     default:
       console.warn(`createDefaultQuestion received an unknown type: ${type}. Defaulting to multiple-choice.`);
       return {
@@ -102,7 +108,7 @@ export default function CreateExamPage() {
 
   const performAIAnalysis = useCallback(async () => {
     if (!aiSuggestionsEnabled || !user || isSaving || isLoadingExamData) {
-      setAiFeedbackList([]); // Clear feedback if conditions not met
+      setAiFeedbackList([]); 
       return;
     }
 
@@ -165,6 +171,22 @@ export default function CreateExamPage() {
                         missingInfoMessage = "Assign a letter ID to all answers in matching questions.";
                         break;
                     }
+                } else if (q.type === 'pooled-choices') {
+                    if (!block.choicePool || block.choicePool.length < 1) {
+                        isContentSufficientForAnalysis = false;
+                        missingInfoMessage = "Pooled-choices blocks need at least one option in their choice pool.";
+                        break;
+                    }
+                    if (block.choicePool.some(pOpt => !pOpt.text.trim())) {
+                         isContentSufficientForAnalysis = false;
+                         missingInfoMessage = "Fill in all option texts for the choice pool.";
+                         break;
+                    }
+                    if ((q as PooledChoicesQuestion).correctAnswersFromPool.length === 0) {
+                        isContentSufficientForAnalysis = false;
+                        missingInfoMessage = "Select a correct answer from the pool for all pooled-choices questions.";
+                        break;
+                    }
                 }
             }
             if (!isContentSufficientForAnalysis) break;
@@ -189,7 +211,10 @@ export default function CreateExamPage() {
       examTitle,
       examDescription,
       examBlocks: examBlocks.map(block => ({
-        ...block,
+        id: block.id,
+        blockType: block.blockType,
+        blockTitle: block.blockTitle,
+        choicePool: block.blockType === 'pooled-choices' ? block.choicePool : undefined,
         questions: block.questions.map(q => {
           const questionPayload: any = {
             id: q.id,
@@ -203,6 +228,8 @@ export default function CreateExamPage() {
             questionPayload.correctAnswer = (q as TrueFalseQuestion).correctAnswer;
           } else if (q.type === 'matching') {
             questionPayload.pairs = (q as MatchingTypeQuestion).pairs;
+          } else if (q.type === 'pooled-choices') {
+            questionPayload.correctAnswersFromPool = (q as PooledChoicesQuestion).correctAnswersFromPool;
           }
           return questionPayload;
         })
@@ -248,6 +275,12 @@ export default function CreateExamPage() {
               const validatedBlocks = parsedData.blocks.map((block: ExamBlock) => ({
                 ...block,
                 id: block.id || generateId('block'),
+                ...(block.blockType === 'pooled-choices' && {
+                    choicePool: (block.choicePool || []).map((pOpt: PoolOption) => ({
+                        ...pOpt,
+                        id: pOpt.id || generateId('pool-opt'),
+                    }))
+                }),
                 questions: block.questions.map((q: ExamQuestion) => ({
                   ...q,
                   id: q.id || generateId('question'),
@@ -263,6 +296,9 @@ export default function CreateExamPage() {
                       id: p.id || generateId('pair'),
                       responseLetter: p.responseLetter || "",
                     })) || [],
+                  }),
+                  ...(q.type === 'pooled-choices' && {
+                    correctAnswersFromPool: (q as PooledChoicesQuestion).correctAnswersFromPool || [],
                   }),
                 })),
               }));
@@ -354,6 +390,15 @@ export default function CreateExamPage() {
                   pairs: (qData.pairs || []).map((p: any) => ({ ...p, id: p.id || generateId('pair'), responseLetter: p.responseLetter || "" })),
                 } as MatchingTypeQuestion;
                 break;
+              case 'pooled-choices':
+                question = {
+                  id: questionDocSnap.id,
+                  questionText: qData.questionText,
+                  points: qData.points,
+                  type: 'pooled-choices',
+                  correctAnswersFromPool: qData.correctAnswersFromPool || [],
+                } as PooledChoicesQuestion;
+                break;
               default:
                 console.warn("Unknown question type from Firestore:", qData.type);
                 question = createDefaultQuestion('multiple-choice', questionDocSnap.id) as MultipleChoiceQuestion;
@@ -366,6 +411,7 @@ export default function CreateExamPage() {
             blockType: blockData.blockType,
             blockTitle: blockData.blockTitle || "",
             questions: loadedQuestions,
+            choicePool: blockData.blockType === 'pooled-choices' ? (blockData.choicePool || []).map((pOpt: PoolOption) => ({...pOpt, id: pOpt.id || generateId('pool-opt-load')})) : undefined,
           });
         }
         setExamBlocks(loadedBlocks);
@@ -411,6 +457,7 @@ export default function CreateExamPage() {
       blockType: newBlockType,
       questions: [initialQuestion],
       blockTitle: "",
+      ...(newBlockType === 'pooled-choices' && { choicePool: [{id: generateId('pool-opt'), text: ""}, {id: generateId('pool-opt'), text: ""}] }),
     };
     setExamBlocks([...examBlocks, newBlock]);
   };
@@ -427,7 +474,8 @@ export default function CreateExamPage() {
     newBlocks[blockIndex] = {
       ...currentBlock,
       blockType: newType,
-      questions: [initialQuestion], 
+      questions: [initialQuestion],
+      choicePool: newType === 'pooled-choices' ? (currentBlock.choicePool && currentBlock.blockType === newType ? currentBlock.choicePool : [{id: generateId('pool-opt'), text: ""}, {id: generateId('pool-opt'), text: ""}]) : undefined,
     };
     setExamBlocks(newBlocks);
     toast({ title: "Block Type Changed", description: `Questions in block ${blockIndex + 1} reset for new type.`});
@@ -436,6 +484,12 @@ export default function CreateExamPage() {
   const handleBlockTitleChange = (blockIndex: number, title: string) => {
     const newBlocks = [...examBlocks];
     newBlocks[blockIndex].blockTitle = title;
+    setExamBlocks(newBlocks);
+  };
+
+  const handleUpdateBlock = (blockIndex: number, updatedBlock: ExamBlock) => {
+    const newBlocks = [...examBlocks];
+    newBlocks[blockIndex] = updatedBlock;
     setExamBlocks(newBlocks);
   };
 
@@ -470,6 +524,9 @@ export default function CreateExamPage() {
         break;
       case 'matching':
         newQuestion = { ...baseNewQuestionProps, type: 'matching', pairs: [{ id: generateId('pair'), premise: "", response: "", responseLetter: "" }] };
+        break;
+      case 'pooled-choices':
+        newQuestion = { ...baseNewQuestionProps, type: 'pooled-choices', correctAnswersFromPool: [] };
         break;
       default: 
         newQuestion = { ...baseNewQuestionProps, type: 'multiple-choice', options: newOptionsForMC };
@@ -523,7 +580,7 @@ export default function CreateExamPage() {
     setIsSaving(true);
 
     let calculatedTotalQuestions = 0;
-    let calculatedTotalPoints = 0; // Renamed to avoid conflict with the state variable totalPoints
+    let calculatedTotalPoints = 0;
     examBlocks.forEach(block => {
       calculatedTotalQuestions += block.questions.length;
       block.questions.forEach(question => { calculatedTotalPoints += question.points; });
@@ -569,13 +626,18 @@ export default function CreateExamPage() {
 
         examBlocks.forEach((block, blockIndex) => {
             const blockDocRef = doc(collection(db, EXAMS_COLLECTION_NAME, examDocId, "questionBlocks"));
-            batch.set(blockDocRef, {
+            const blockDataToSave: any = {
                 clientSideBlockId: block.id, 
                 blockType: block.blockType,
                 blockTitle: block.blockTitle || "",
                 orderIndex: blockIndex,
                 examId: examDocId,
-            });
+            };
+            if (block.blockType === 'pooled-choices') {
+                blockDataToSave.choicePool = (block.choicePool || []).map(pOpt => ({...pOpt, id: pOpt.id || generateId('pool-opt-save')}));
+            }
+            batch.set(blockDocRef, blockDataToSave);
+
             block.questions.forEach((question, questionIndex) => {
                 const questionDocRef = doc(collection(db, EXAMS_COLLECTION_NAME, examDocId, "questionBlocks", blockDocRef.id, "questions")); 
                 const questionData: any = {
@@ -590,6 +652,7 @@ export default function CreateExamPage() {
                 if (question.type === 'multiple-choice') questionData.options = (question as MultipleChoiceQuestion).options.map(opt => ({ ...opt, id: opt.id || generateId('option-save') }));
                 else if (question.type === 'true-false') questionData.correctAnswer = (question as TrueFalseQuestion).correctAnswer;
                 else if (question.type === 'matching') questionData.pairs = (question as MatchingTypeQuestion).pairs.map(pair => ({ ...pair, id: pair.id || generateId('pair-save'), responseLetter: pair.responseLetter || "" }));
+                else if (question.type === 'pooled-choices') questionData.correctAnswersFromPool = (question as PooledChoicesQuestion).correctAnswersFromPool;
                 batch.set(questionDocRef, questionData);
             });
         });
@@ -675,6 +738,9 @@ export default function CreateExamPage() {
                                      f.suggestionText !== "Matching questions need at least one pair." &&
                                      f.suggestionText !== "Fill in all premise and response texts for matching pairs." &&
                                      f.suggestionText !== "Assign a letter ID to all answers in matching questions." &&
+                                     f.suggestionText !== "Pooled-choices blocks need at least one option in their choice pool." &&
+                                     f.suggestionText !== "Fill in all option texts for the choice pool." &&
+                                     f.suggestionText !== "Select a correct answer from the pool for all pooled-choices questions." &&
                                      f.suggestionText !== "AI analysis failed to produce output. Please try again." && 
                                      f.suggestionText !== "Exam content is empty. Please add a title or some questions to analyze." && 
                                      f.suggestionText !== "All question blocks are empty. Add questions to get feedback." 
@@ -695,6 +761,9 @@ export default function CreateExamPage() {
                                             f.suggestionText !== "Matching questions need at least one pair." &&
                                             f.suggestionText !== "Fill in all premise and response texts for matching pairs." &&
                                             f.suggestionText !== "Assign a letter ID to all answers in matching questions." &&
+                                            f.suggestionText !== "Pooled-choices blocks need at least one option in their choice pool." &&
+                                            f.suggestionText !== "Fill in all option texts for the choice pool." &&
+                                            f.suggestionText !== "Select a correct answer from the pool for all pooled-choices questions." &&
                                             f.suggestionText !== "AI analysis failed to produce output. Please try again." &&
                                             f.suggestionText !== "Exam content is empty. Please add a title or some questions to analyze." &&
                                             f.suggestionText !== "All question blocks are empty. Add questions to get feedback."
@@ -854,6 +923,7 @@ export default function CreateExamPage() {
                   onUpdateQuestionInBlock={handleUpdateQuestionInBlock}
                   onRemoveQuestionFromBlock={handleRemoveQuestionFromBlock}
                   onRemoveBlock={handleRemoveExamBlock}
+                  onUpdateBlock={handleUpdateBlock}
                   disabled={isSaving || isLoadingExamData}
                 />
               );

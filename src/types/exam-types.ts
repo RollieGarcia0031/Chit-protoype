@@ -1,3 +1,4 @@
+
 // src/types/exam-types.ts
 import type { Timestamp } from "firebase/firestore";
 
@@ -7,7 +8,7 @@ export interface Option {
   isCorrect: boolean; // Used for multiple choice to indicate the correct answer
 }
 
-export interface PoolOption { // Specifically for choice pools, no 'isCorrect' here
+export interface PoolOption { // Specifically for choice pools
   id: string;
   text: string;
 }
@@ -37,14 +38,13 @@ export interface MatchingPair {
 
 export interface MatchingTypeQuestion extends BaseQuestion {
   type: 'matching';
-  pairs: MatchingPair[];
+  pairs: MatchingPair[]; // Expecting one pair for the simplified UI
 }
 
 export interface PooledChoicesQuestion extends BaseQuestion {
   type: 'pooled-choices';
-  // Stores the TEXT of the choices selected from the pool as correct for THIS question.
-  // Assumes choice texts within a pool are unique for simplicity when checking answers.
-  correctAnswersFromPool: string[]; // Array of choice texts that are correct for this question
+  // Stores the TEXT of the single choice selected from the block's pool as correct for THIS question.
+  correctAnswersFromPool: string[]; // Array will contain zero or one string (the text of the selected choice)
 }
 
 export type ExamQuestion = MultipleChoiceQuestion | TrueFalseQuestion | MatchingTypeQuestion | PooledChoicesQuestion;
@@ -64,7 +64,7 @@ export interface ExamBlock {
   blockType: QuestionType;
   questions: ExamQuestion[];
   blockTitle?: string; // Optional title/instructions for the entire block
-  choicePool?: PoolOption[]; // Used for 'pooled-choices' blockType
+  choicePool?: PoolOption[]; // Used for 'pooled-choices' blockType. An array of {id: string, text: string}
 }
 
 // Interface for summary data shown in lists

@@ -14,7 +14,7 @@ import { db } from "@/lib/firebase/config";
 import { collection, query, where, getDocs, Timestamp, orderBy, doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { EXAMS_COLLECTION_NAME } from "@/config/firebase-constants";
-import type { FullExamData, ExamSummaryData, ExamBlock, ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, PooledChoicesQuestion, PoolOption } from "@/types/exam-types";
+import type { FullExamData, ExamSummaryData, ExamBlock, ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair, PooledChoicesQuestion, PoolOption } from "@/types/exam-types";
 import { QUESTION_TYPES } from "@/types/exam-types";
 import Link from "next/link";
 import {
@@ -93,30 +93,30 @@ function ExamPreviewPlaceholder({
         </div>
       </CardHeader>
       <CardContent className="h-[calc(100vh-300px)] min-h-[400px] sm:min-h-[500px] p-3 sm:p-6 border rounded-md bg-muted/30 overflow-auto">
-        <div className="prose prose-sm max-w-none text-black" style={{ color: 'black' }}>
-            <h1 className="text-center text-xl sm:text-2xl font-bold mb-2 text-black" style={{ color: 'black' }}>{exam.title}</h1>
+        <div className="prose prose-sm max-w-none" style={{ color: 'black' }}>
+            <h1 className="text-center text-xl sm:text-2xl font-bold mb-2" style={{ color: 'black' }}>{exam.title}</h1>
 
-            <div className="flex justify-between text-xs sm:text-sm mb-4 text-black" style={{ color: 'black' }}>
+            <div className="flex justify-between text-xs sm:text-sm mb-4" style={{ color: 'black' }}>
                 <span>Name: _________________________</span>
                 <span>Score: ____________</span>
             </div>
 
-            {exam.description && <p className="text-center text-sm sm:text-base text-black italic mb-4" style={{ color: 'black' }}>{exam.description}</p>}
+            {exam.description && <p className="text-center text-sm sm:text-base italic mb-4" style={{ color: 'black' }}>{exam.description}</p>}
 
             <hr className="my-3 sm:my-4"/>
 
             {exam.examBlocks.map((block, blockIndex) => (
                 <div key={block.id} className="mb-4 sm:mb-6">
-                    <h2 className="text-base sm:text-lg font-semibold mb-1 text-black" style={{ color: 'black' }}>
+                    <h2 className="text-base sm:text-lg font-semibold mb-1" style={{ color: 'black' }}>
                         {toRoman(blockIndex + 1)}. {getQuestionTypeLabel(block.blockType)}
                     </h2>
-                    {block.blockTitle && <p className="text-sm sm:text-base text-black mb-2 italic" style={{ color: 'black' }}>{block.blockTitle}</p>}
+                    {block.blockTitle && <p className="text-sm sm:text-base mb-2 italic" style={{ color: 'black' }}>{block.blockTitle}</p>}
 
                     {block.blockType === 'pooled-choices' && block.choicePool && block.choicePool.length > 0 && (
                         <div className="mb-2 sm:mb-3 p-2 sm:p-3 border border-dashed border-gray-400 rounded-md bg-gray-50" style={{color: 'black'}}>
                             <ul className="list-none pl-0 space-y-0.5 columns-1 sm:columns-2 md:columns-3 gap-x-4">
                                 {block.choicePool.map((poolOpt, poolOptIndex) => (
-                                    <li key={poolOpt.id} className="text-sm sm:text-base text-black break-inside-avoid-column" style={{ color: 'black' }}>
+                                    <li key={poolOpt.id} className="text-sm sm:text-base break-inside-avoid-column" style={{ color: 'black' }}>
                                         {getAlphabetLetter(poolOptIndex)}. {poolOpt.text}
                                     </li>
                                 ))}
@@ -133,7 +133,7 @@ function ExamPreviewPlaceholder({
 
                         return (
                             <div key={question.id} className="mb-2 sm:mb-3 pl-2 sm:pl-4">
-                                <p className="font-medium text-sm sm:text-base text-black" style={{ color: 'black' }}>
+                                <p className="font-medium text-sm sm:text-base" style={{ color: 'black' }}>
                                     {answerPrefix}
                                     {displayQuestionLabel}.{' '}
                                     {question.questionText}
@@ -141,7 +141,7 @@ function ExamPreviewPlaceholder({
                                 {question.type === 'multiple-choice' && (
                                     <ul className="list-none pl-4 sm:pl-6 mt-1 space-y-0.5">
                                         {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
-                                            <li key={opt.id} className="text-sm sm:text-base text-black" style={{ color: 'black' }}>{getAlphabetLetter(optIndex)}. {opt.text}</li>
+                                            <li key={opt.id} className="text-sm sm:text-base" style={{ color: 'black' }}>{getAlphabetLetter(optIndex)}. {opt.text}</li>
                                         ))}
                                     </ul>
                                 )}
@@ -149,7 +149,7 @@ function ExamPreviewPlaceholder({
                         );
                     })}
                     {block.blockType === 'matching' && (
-                       <table className="w-full text-black my-2" style={{ color: 'black', borderCollapse: 'collapse' }}>
+                       <table className="w-full my-2" style={{ color: 'black', borderCollapse: 'collapse' }}>
                            <tbody>
                                {(() => {
                                    const premisesForTable: Array<{ text: string; displayLabel: string }> = [];
@@ -625,7 +625,7 @@ export default function RenderExamPage() {
                             new TextRun({text: `${answerPrefix}${displayQuestionLabel}. ${String(question.questionText)} `, size: 24, color: "000000", font: "Calibri"}),
                         ],
                         indent: { left: 720 },
-                        spacing: { after: 80 }
+                        spacing: { after: question.type === 'pooled-choices' ? 40 : 80 }
                     }));
 
                     if (question.type === 'multiple-choice') {
@@ -637,10 +637,10 @@ export default function RenderExamPage() {
                             }));
                         });
                          children.push(new Paragraph({ text: "", spacing: {after: 80}})); 
-                    } else if (question.type === 'true-false' || question.type === 'pooled-choices') {
-                         // Just spacing after the question line for T/F and Pooled
+                    } else if (question.type === 'true-false') {
                          children.push(new Paragraph({ text: "", spacing: {after: 80}})); 
                     }
+                    // No extra empty paragraph for 'pooled-choices' questions here.
                 });
             }
         });
@@ -896,3 +896,6 @@ export default function RenderExamPage() {
     </div>
   );
 }
+
+
+    

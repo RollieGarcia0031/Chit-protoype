@@ -2,12 +2,13 @@
 // src/app/(protected)/students/page.tsx
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, PlusCircle, Edit3, Trash2, List } from "lucide-react";
 import { generateId } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -18,8 +19,18 @@ interface ClassInfo {
   sectionName: string;
   yearGrade: string;
   code: string;
-  // Eventually, student list or count
 }
+
+// Placeholder subjects. Ideally, this would come from a shared state or database.
+const placeholderSubjects = [
+  { id: 'subj-math', name: 'Mathematics' },
+  { id: 'subj-sci', name: 'Science' },
+  { id: 'subj-eng', name: 'English' },
+  { id: 'subj-hist', name: 'History' },
+  { id: 'subj-cs', name: 'Computer Science' },
+  { id: 'subj-art', name: 'Arts' },
+  { id: 'subj-pe', name: 'Physical Education' },
+];
 
 export default function StudentsPage() {
   const [classes, setClasses] = useState<ClassInfo[]>([]);
@@ -40,18 +51,19 @@ export default function StudentsPage() {
     return `${subjectPart}${sectionPart}${yearPart}-${randomPart}`;
   };
 
-  const handleInputChangeForCodeGeneration = () => {
-    if (!editingClass && (!newClassCode || newClassCode.startsWith(newSubjectName.substring(0,2).toUpperCase()))) { 
-        // Only auto-generate if code is empty or seems to be based on old subject name
-        setNewClassCode(generateClassCode(newSubjectName, newSectionName, newYearGrade));
+  // Effect to auto-generate class code when relevant fields change for a new class
+  useEffect(() => {
+    if (!editingClass) { // Only for new classes
+      setNewClassCode(generateClassCode(newSubjectName, newSectionName, newYearGrade));
     }
-  };
+  }, [newSubjectName, newSectionName, newYearGrade, editingClass]);
 
 
   const handleAddOrUpdateClass = (event: FormEvent) => {
     event.preventDefault();
     if (!newSubjectName.trim() || !newSectionName.trim() || !newYearGrade.trim() || !newClassCode.trim()) {
-      alert("All fields (Subject Name, Section Name, Year/Grade, and Code) are required.");
+      // Basic validation, consider using a toast for user feedback
+      alert("All fields (Subject, Section Name, Year/Grade, and Code) are required.");
       return;
     }
 
@@ -87,7 +99,7 @@ export default function StudentsPage() {
   };
 
   const handleDeleteClass = (classId: string) => {
-    // Add confirmation dialog later if needed
+    // TODO: Add confirmation dialog before deleting
     setClasses(classes.filter(c => c.id !== classId));
   };
   
@@ -135,14 +147,22 @@ export default function StudentsPage() {
                   <Label htmlFor="subjectName" className="text-right text-xs sm:text-sm col-span-1">
                     Subject
                   </Label>
-                  <Input
-                    id="subjectName"
+                  <Select
                     value={newSubjectName}
-                    onChange={(e) => { setNewSubjectName(e.target.value); handleInputChangeForCodeGeneration(); }}
-                    placeholder="e.g., Mathematics"
-                    className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
+                    onValueChange={(value) => setNewSubjectName(value)}
                     required
-                  />
+                  >
+                    <SelectTrigger id="subjectName" className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm">
+                      <SelectValue placeholder="Select a subject" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {placeholderSubjects.map(subject => (
+                        <SelectItem key={subject.id} value={subject.name} className="text-xs sm:text-sm">
+                          {subject.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="grid grid-cols-4 items-center gap-2 sm:gap-4">
                   <Label htmlFor="sectionName" className="text-right text-xs sm:text-sm col-span-1">
@@ -151,7 +171,7 @@ export default function StudentsPage() {
                   <Input
                     id="sectionName"
                     value={newSectionName}
-                    onChange={(e) => { setNewSectionName(e.target.value); handleInputChangeForCodeGeneration(); }}
+                    onChange={(e) => setNewSectionName(e.target.value)}
                     placeholder="e.g., Section A, P3"
                     className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
                     required
@@ -164,7 +184,7 @@ export default function StudentsPage() {
                   <Input
                     id="yearGrade"
                     value={newYearGrade}
-                    onChange={(e) => { setNewYearGrade(e.target.value); handleInputChangeForCodeGeneration(); }}
+                    onChange={(e) => setNewYearGrade(e.target.value)}
                     placeholder="e.g., Grade 10, Year 2"
                     className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
                     required
@@ -181,6 +201,7 @@ export default function StudentsPage() {
                     placeholder="Auto-generated or custom"
                     className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
                     required
+                    disabled={!editingClass && (!newSubjectName || !newSectionName || !newYearGrade)} // Disable if auto-generating and fields are empty
                   />
                 </div>
                 <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 mt-2">
@@ -246,3 +267,5 @@ export default function StudentsPage() {
     </div>
   );
 }
+
+    

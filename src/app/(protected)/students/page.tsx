@@ -25,7 +25,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger as RadixAlertDialogTrigger, 
+  AlertDialogTrigger as RadixAlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import type { Student, ClassInfoForDropdown as OriginalClassInfoForDropdown } from '@/types/exam-types';
 import { cn } from '@/lib/utils';
@@ -406,7 +406,7 @@ export default function StudentsPage() {
       </CardHeader>
       <CardContent className="pb-3 sm:pb-4 pt-1">
          <Button variant="outline" size="sm" className="w-full text-xs sm:text-sm" onClick={() => openStudentManagementView(cls)}>
-            <Users2 className="mr-2 h-3.5 w-3.5" /> Manage Students ({typeof cls.studentCount === 'number' ? cls.studentCount : '...'})
+            <Users2 className="mr-2 h-3.5 w-3.5" /> Manage Students
         </Button>
       </CardContent>
       <CardFooter className="flex justify-end gap-1.5 sm:gap-2 pt-0 pb-2 sm:pb-3 px-2 sm:px-4">

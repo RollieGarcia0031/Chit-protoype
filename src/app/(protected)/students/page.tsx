@@ -27,6 +27,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger, // Added AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 
 interface FetchedSubjectInfo {
@@ -526,7 +527,7 @@ export default function StudentsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoadingData && classes.length === 0 ? ( // Show loading only if no classes are yet displayed
+          {isLoadingData && classes.length === 0 ? ( 
              <div className="text-center py-8 sm:py-10">
                 <Loader2 className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-primary animate-spin mb-3 sm:mb-4" />
                 <p className="text-md sm:text-lg font-medium text-muted-foreground">Loading classes...</p>
@@ -556,8 +557,8 @@ export default function StudentsPage() {
               <div className="space-y-4">
                 {displayMode === 'bySubject' && userSubjects.map(subject => {
                     const subjectClasses = classes.filter(c => c.subjectId === subject.id);
-                    if (subjectClasses.length === 0 && userSubjects.length > 1) return null; // Don't show empty subjects unless it's the only one
-                    if (subjectClasses.length === 0 && userSubjects.length === 1 && classes.length > 0) return null; // Don't show if it's the only subject and has no classes but other subjects do (edge case)
+                    if (subjectClasses.length === 0 && userSubjects.length > 1) return null; 
+                    if (subjectClasses.length === 0 && userSubjects.length === 1 && classes.length > 0) return null; 
 
                     return (
                         <Card key={subject.id} className="shadow-md">

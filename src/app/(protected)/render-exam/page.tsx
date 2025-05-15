@@ -1,3 +1,4 @@
+
 // src/app/(protected)/render-exam/page.tsx
 'use client';
 
@@ -13,7 +14,7 @@ import { db } from "@/lib/firebase/config";
 import { collection, query, where, getDocs, Timestamp, orderBy, doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { EXAMS_COLLECTION_NAME } from "@/config/firebase-constants";
-import type { FullExamData, ExamSummaryData, ExamBlock, ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion } from "@/types/exam-types";
+import type { FullExamData, ExamSummaryData, ExamBlock, ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, PooledChoicesQuestion, PoolOption } from "@/types/exam-types";
 import { QUESTION_TYPES } from "@/types/exam-types";
 import Link from "next/link";
 import {
@@ -27,7 +28,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { format } from 'date-fns';
-import { Packer, Document as DocxDocument, Paragraph, TextRun, HeadingLevel, AlignmentType, TabStopPosition, TabStopType, Tab, Table, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, VerticalAlign, BorderStyle } from 'docx';
+import { Packer, Document as DocxDocument, Paragraph, TextRun, HeadingLevel, AlignmentType, TabStopPosition, TabStopType, Tab, Table, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, VerticalAlign, BorderStyle, Indent, ShadingType } from 'docx';
 import { saveAs } from 'file-saver';
 
 
@@ -111,16 +112,30 @@ function ExamPreviewPlaceholder({
                     </h2>
                     {block.blockTitle && <p className="text-sm sm:text-base text-black mb-2 italic" style={{ color: 'black' }}>{block.blockTitle}</p>}
 
+                    {block.blockType === 'pooled-choices' && block.choicePool && block.choicePool.length > 0 && (
+                        <div className="mb-2 sm:mb-3 p-2 sm:p-3 border border-dashed border-gray-400 rounded-md bg-gray-50" style={{color: 'black'}}>
+                            <h3 className="text-sm sm:text-base font-medium mb-1 text-black" style={{ color: 'black' }}>Choices for this Section:</h3>
+                            <ul className="list-none pl-2 sm:pl-3 space-y-0.5">
+                                {block.choicePool.map((poolOpt, poolOptIndex) => (
+                                    <li key={poolOpt.id} className="text-sm sm:text-base text-black" style={{ color: 'black' }}>
+                                        {getAlphabetLetter(poolOptIndex)}. {poolOpt.text}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
                     {block.blockType !== 'matching' && block.questions.map((question) => {
                         const startNum = currentDisplayNumber;
                         const endNum = currentDisplayNumber + question.points - 1;
                         const displayQuestionLabel = question.points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
                         currentDisplayNumber += question.points;
+                        const answerPrefix = question.type === 'true-false' || question.type === 'pooled-choices' ? '____ ' : '';
 
                         return (
                             <div key={question.id} className="mb-2 sm:mb-3 pl-2 sm:pl-4">
                                 <p className="font-medium text-sm sm:text-base text-black" style={{ color: 'black' }}>
-                                    {question.type === 'true-false' ? '____ ' : ''}
+                                    {answerPrefix}
                                     {displayQuestionLabel}.{' '}
                                     {question.questionText}
                                 </p>
@@ -135,37 +150,41 @@ function ExamPreviewPlaceholder({
                         );
                     })}
                     {block.blockType === 'matching' && (
-                       <table className="w-full text-black" style={{ color: 'black', borderCollapse: 'collapse' }}>
+                       <table className="w-full text-black my-2" style={{ color: 'black', borderCollapse: 'collapse' }}>
                            <tbody>
                                {(() => {
-                                   const formattedPremises = block.questions.map(q => {
-                                       const startNum = currentDisplayNumber;
-                                       const points = q.points;
-                                       const endNum = currentDisplayNumber + points - 1;
-                                       const displayLabel = points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
-                                       currentDisplayNumber += points;
-                                       return {
-                                           text: (q as MatchingTypeQuestion).pairs[0]?.premise || "",
-                                           displayLabel: displayLabel
-                                       };
+                                   const premisesForTable: Array<{ text: string; displayLabel: string }> = [];
+                                   const responsesForTable: Array<{ text: string; letter: string }> = [];
+
+                                   block.questions.forEach((q, qIdx) => {
+                                       const matchQ = q as MatchingTypeQuestion;
+                                       if (matchQ.pairs && matchQ.pairs.length > 0) {
+                                           const points = q.points;
+                                           const startNum = currentDisplayNumber;
+                                           const endNum = currentDisplayNumber + points - 1;
+                                           const premiseDisplayLabel = points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
+                                           currentDisplayNumber += points;
+
+                                           premisesForTable.push({
+                                               text: String(matchQ.pairs[0]?.premise || ''),
+                                               displayLabel: premiseDisplayLabel,
+                                           });
+                                           responsesForTable.push({
+                                               text: String(matchQ.pairs[0]?.response || ''),
+                                               letter: matchQ.pairs[0]?.responseLetter || getAlphabetLetter(qIdx),
+                                           });
+                                       }
                                    });
-
-                                   const responses = block.questions
-                                     .map((q, index) => ({
-                                       text: (q as MatchingTypeQuestion).pairs[0]?.response || "",
-                                       letter: (q as MatchingTypeQuestion).pairs[0]?.responseLetter || getAlphabetLetter(index)
-                                     }))
-                                     .sort((a, b) => a.letter.localeCompare(b.letter));
-
-                                   const numRows = Math.max(formattedPremises.length, responses.length);
+                                   responsesForTable.sort((a, b) => a.letter.localeCompare(b.letter));
+                                   const numRows = Math.max(premisesForTable.length, responsesForTable.length);
                                    const rows = [];
                                    for (let i = 0; i < numRows; i++) {
-                                       const premiseText = formattedPremises[i] ? `${formattedPremises[i].displayLabel}. ${formattedPremises[i].text}` : "";
-                                       const responseText = responses[i] ? `${responses[i].letter}. ${responses[i].text}` : "";
+                                       const premiseText = premisesForTable[i] ? `${premisesForTable[i].displayLabel}. ${premisesForTable[i].text}` : "";
+                                       const responseText = responsesForTable[i] ? `${responsesForTable[i].letter}. ${responsesForTable[i].text}` : "";
                                        rows.push(
                                            <tr key={`match-row-${block.id}-${i}`}>
-                                               <td className="py-1 pr-2 align-top" style={{ width: '50%', verticalAlign: 'top', paddingRight: '0.5rem', paddingBottom: '0.25rem' }}>{premiseText}</td>
-                                               <td className="py-1 pl-2 align-top" style={{ width: '50%', verticalAlign: 'top', paddingLeft: '0.5rem', paddingBottom: '0.25rem' }}>{responseText}</td>
+                                               <td className="py-0.5 pr-1 sm:pr-2 align-top text-sm sm:text-base" style={{ verticalAlign: 'top', paddingRight: '0.5rem', paddingBottom: '0.125rem' }}>{premiseText}</td>
+                                               <td className="py-0.5 pl-1 sm:pl-2 align-top text-sm sm:text-base" style={{ verticalAlign: 'top', paddingLeft: '0.5rem', paddingBottom: '0.125rem' }}>{responseText}</td>
                                            </tr>
                                        );
                                    }
@@ -340,6 +359,13 @@ export default function RenderExamPage() {
                     })),
                 } as MatchingTypeQuestion;
                 break;
+              case 'pooled-choices':
+                question = {
+                  ...baseQuestionProps,
+                  type: 'pooled-choices',
+                  correctAnswersFromPool: Array.isArray(qData.correctAnswersFromPool) ? qData.correctAnswersFromPool.map(String) : [],
+                } as PooledChoicesQuestion;
+                break;
               default:
                 question = { ...baseQuestionProps, type: 'multiple-choice', points: baseQuestionProps.points, options: []}; 
             }
@@ -350,6 +376,7 @@ export default function RenderExamPage() {
             blockType: blockData.blockType || 'multiple-choice',
             blockTitle: String(blockData.blockTitle || ""),
             questions: loadedQuestions,
+            choicePool: blockData.blockType === 'pooled-choices' ? (blockData.choicePool || []).map((pOpt: PoolOption) => ({id: String(pOpt.id || `poolopt-${Math.random()}`), text: String(pOpt.text || "")})) : undefined,
           });
         }
 
@@ -428,6 +455,22 @@ export default function RenderExamPage() {
                     spacing: { after: 100 }
                 }));
             }
+
+            if (block.blockType === 'pooled-choices' && block.choicePool && block.choicePool.length > 0) {
+                 children.push(new Paragraph({
+                    children: [new TextRun({ text: "Choices for this Section:", bold: true, size: 24, color: "000000", font: "Calibri" })],
+                    spacing: { before: 100, after: 50 }
+                }));
+                block.choicePool.forEach((poolOpt, poolOptIndex) => {
+                    children.push(new Paragraph({
+                        children: [new TextRun({ text: `${getAlphabetLetter(poolOptIndex)}. ${String(poolOpt.text)}`, size: 24, color: "000000", font: "Calibri" })],
+                        indent: { left: 360 }, // Indent choices
+                        spacing: { after: 40 }
+                    }));
+                });
+                children.push(new Paragraph({ text: "", spacing: { after: 100 } })); // Space after choices
+            }
+
 
             if (block.blockType === 'matching') {
                 const premisesForTable: Array<{ text: string; displayLabel: string }> = [];
@@ -517,7 +560,6 @@ export default function RenderExamPage() {
                         })
                     );
                 }
-                 // Minimal spacing after the table for matching type
                 children.push(new Paragraph({ text: "", spacing: {after: 50}}));
 
 
@@ -529,10 +571,10 @@ export default function RenderExamPage() {
                     const displayQuestionLabel = points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
                     currentDocxDisplayNumber += points;
 
-                    const questionPrefix = question.type === 'true-false' ? '____ ' : '';
+                    const answerPrefix = (question.type === 'true-false' || question.type === 'pooled-choices') ? '____ ' : '';
                     children.push(new Paragraph({
                         children: [
-                            new TextRun({text: `${questionPrefix}${displayQuestionLabel}. ${String(question.questionText)} `, size: 24, color: "000000", font: "Calibri"}),
+                            new TextRun({text: `${answerPrefix}${displayQuestionLabel}. ${String(question.questionText)} `, size: 24, color: "000000", font: "Calibri"}),
                         ],
                         indent: { left: 720 },
                         spacing: { after: 80 }
@@ -545,9 +587,9 @@ export default function RenderExamPage() {
                                 indent: { left: 1080 }, 
                             }));
                         });
-                         children.push(new Paragraph({ text: "", spacing: {after: 80}})); // Spacing after options of a MC question
+                         children.push(new Paragraph({ text: "", spacing: {after: 80}})); 
                     } else {
-                         children.push(new Paragraph({ text: "", spacing: {after: 80}})); // Spacing after T/F or other non-MC questions
+                         children.push(new Paragraph({ text: "", spacing: {after: 80}})); 
                     }
                 });
             }
@@ -618,19 +660,19 @@ export default function RenderExamPage() {
             <ShadcnTable>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[40%]"><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
-                  <TableHead><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
-                  <TableHead className="text-center"><Skeleton className="h-5 w-12 sm:w-16" /></TableHead>
-                  <TableHead className="text-right"><Skeleton className="h-5 w-20 sm:w-28" /></TableHead>
+                  <TableHead className="w-[40%] px-1.5 sm:px-4"><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
+                  <TableHead className="px-1.5 sm:px-4"><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
+                  <TableHead className="text-center px-1 sm:px-4"><Skeleton className="h-5 w-12 sm:w-16" /></TableHead>
+                  <TableHead className="text-right px-1.5 sm:px-4"><Skeleton className="h-5 w-20 sm:w-28" /></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {[...Array(3)].map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell><Skeleton className="h-5 w-full" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-20 sm:w-24" /></TableCell>
-                    <TableCell className="text-center"><Skeleton className="h-5 w-6 sm:w-8 mx-auto" /></TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="px-1.5 sm:px-4 py-2 sm:py-4"><Skeleton className="h-5 w-full" /></TableCell>
+                    <TableCell className="px-1.5 sm:px-4 py-2 sm:py-4"><Skeleton className="h-5 w-20 sm:w-24" /></TableCell>
+                    <TableCell className="text-center px-1 sm:px-4 py-2 sm:py-4"><Skeleton className="h-5 w-6 sm:w-8 mx-auto" /></TableCell>
+                    <TableCell className="text-right px-1.5 sm:px-4 py-2 sm:py-4">
                       <Skeleton className="h-8 sm:h-9 w-28 sm:w-36 inline-block" />
                     </TableCell>
                   </TableRow>
@@ -669,11 +711,11 @@ export default function RenderExamPage() {
     <div className="space-y-6">
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight flex items-center">
-            <FileType2 className="mr-2 sm:mr-3 h-6 w-6 sm:h-8 sm:w-8 text-primary" />
+          <CardTitle className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight flex items-center">
+            <FileType2 className="mr-2 sm:mr-3 h-5 w-5 sm:h-6 sm:w-6 text-primary" />
             Generate DOCX
           </CardTitle>
-          <CardDescription className="text-xs sm:text-sm">
+          <CardDescription className="text-2xs sm:text-xs">
             Select an exam from the list below to generate a DOCX file and preview its content.
           </CardDescription>
         </CardHeader>
@@ -682,37 +724,37 @@ export default function RenderExamPage() {
             <ShadcnTable>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[35%] px-2 sm:px-4 text-xs sm:text-sm">Title</TableHead>
-                  <TableHead className="hidden sm:table-cell px-2 sm:px-4 text-xs sm:text-sm">Status</TableHead>
-                  <TableHead className="hidden md:table-cell px-2 sm:px-4 text-xs sm:text-sm">Date Created</TableHead>
+                  <TableHead className="w-[35%] px-1.5 sm:px-4 text-xs sm:text-sm">Title</TableHead>
+                  <TableHead className="hidden sm:table-cell px-1.5 sm:px-4 text-xs sm:text-sm">Status</TableHead>
+                  <TableHead className="hidden md:table-cell px-1.5 sm:px-4 text-xs sm:text-sm">Date Created</TableHead>
                   <TableHead className="text-center px-1 sm:px-4 text-xs sm:text-sm">Questions</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 text-xs sm:text-sm">Actions</TableHead>
+                  <TableHead className="text-right px-1.5 sm:px-4 text-xs sm:text-sm">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {exams.map((exam) => (
                   <TableRow key={exam.id}>
-                    <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">{exam.title}</TableCell>
-                    <TableCell className="hidden sm:table-cell px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">
+                    <TableCell className="font-medium px-1.5 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">{exam.title}</TableCell>
+                    <TableCell className="hidden sm:table-cell px-1.5 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">
                        <Badge variant={exam.status === 'Published' ? 'default' : exam.status === 'Draft' ? 'secondary' : 'outline'}
                         className={`text-2xs sm:text-xs ${exam.status === 'Archived' ? 'bg-muted text-muted-foreground' : ''}`}>
                            {exam.status}
                        </Badge>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">{format(exam.createdAt.toDate(), "PPP")}</TableCell>
+                    <TableCell className="hidden md:table-cell px-1.5 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">{format(exam.createdAt.toDate(), "PPP")}</TableCell>
                     <TableCell className="text-center px-1 sm:px-4 text-xs sm:text-sm py-2 sm:py-4">{exam.totalQuestions}</TableCell>
-                    <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-4">
+                    <TableCell className="text-right px-1.5 sm:px-4 py-2 sm:py-4">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleOpenConfirmDialog(exam)}
                         disabled={isLoadingPreviewData === exam.id}
-                        className="text-xs sm:text-sm w-full whitespace-nowrap"
+                        className="text-xs sm:text-sm w-full whitespace-nowrap px-2 sm:px-3"
                       >
                         {isLoadingPreviewData === exam.id ? (
-                          <Loader2 className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                          <Loader2 className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
                         ) : (
-                          <FileType2 className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                          <FileType2 className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                         )}
                         Generate & Preview
                       </Button>
@@ -804,3 +846,6 @@ export default function RenderExamPage() {
     </div>
   );
 }
+
+
+    

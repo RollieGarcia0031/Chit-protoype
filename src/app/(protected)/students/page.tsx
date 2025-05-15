@@ -1,20 +1,19 @@
-
 // src/app/(protected)/students/page.tsx
 'use client';
 
 import { useState, type FormEvent, useEffect, useMemo } from 'react';
-import { Button, buttonVariants } from "@/components/ui/button"; // Import buttonVariants
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, PlusCircle, Edit3, Trash2, List, Loader2, AlertTriangle, BookOpen, LayoutGrid, UserPlus, Users2 } from "lucide-react";
+import { Users, PlusCircle, Edit3, Trash2, List, Loader2, AlertTriangle, BookOpen, LayoutGrid, UserPlus, Users2, ArrowLeft } from "lucide-react";
 import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase/config';
 import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 import type { Timestamp } from "firebase/firestore";
-import { collection, query, where, getDocs, orderBy, doc, addDoc, updateDoc, deleteDoc, serverTimestamp, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -28,8 +27,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger as RadixAlertDialogTrigger, 
 } from "@/components/ui/alert-dialog";
-import type { Student } from '@/types/exam-types';
-import { cn } from '@/lib/utils'; // Import cn for combining classNames
+import type { Student, ClassInfoForDropdown as OriginalClassInfoForDropdown } from '@/types/exam-types';
+import { cn } from '@/lib/utils';
 
 interface FetchedSubjectInfo {
   id: string;
@@ -37,14 +36,8 @@ interface FetchedSubjectInfo {
   code: string;
 }
 
-interface ClassInfo {
-  id: string;
-  subjectId: string;
-  subjectName: string;
-  subjectCode: string;
-  sectionName: string;
-  yearGrade: string;
-  code: string;
+// Renaming to avoid confusion with type from exam-types if it's too generic
+interface ClassInfo extends OriginalClassInfoForDropdown {
   userId?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
@@ -82,15 +75,13 @@ export default function StudentsPage() {
   const [isLoadingUserSubjects, setIsLoadingUserSubjects] = useState(true);
   const [displayMode, setDisplayMode] = useState<DisplayMode>('bySubject');
 
-  // State for Student List Dialog
-  const [isStudentListDialogOpen, setIsStudentListDialogOpen] = useState(false);
-  const [selectedClassForStudentList, setSelectedClassForStudentList] = useState<ClassInfo | null>(null);
-  const [studentsInDialog, setStudentsInDialog] = useState<Student[]>([]);
+  // State for Student Management (no longer a dialog)
+  const [managingStudentsForClass, setManagingStudentsForClass] = useState<ClassInfo | null>(null);
+  const [studentsForSelectedClass, setStudentsForSelectedClass] = useState<Student[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [isSavingStudent, setIsSavingStudent] = useState(false);
   const [deletingStudentId, setDeletingStudentId] = useState<string | null>(null);
 
-  // State for Add Student Form
   const [newStudentFirstName, setNewStudentFirstName] = useState('');
   const [newStudentLastName, setNewStudentLastName] = useState('');
   const [newStudentMiddleName, setNewStudentMiddleName] = useState('');
@@ -113,12 +104,11 @@ export default function StudentsPage() {
       const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
       const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid), orderBy("name", "asc"));
       const subjectsSnapshot = await getDocs(subjectsQuery);
-      subjectsSnapshot.forEach((doc) => {
-        fetchedSubjects.push({ id: doc.id, ...doc.data() } as FetchedSubjectInfo);
+      subjectsSnapshot.forEach((docSnap) => {
+        fetchedSubjects.push({ id: docSnap.id, ...docSnap.data() } as FetchedSubjectInfo);
       });
       setUserSubjects(fetchedSubjects);
       setIsLoadingUserSubjects(false);
-
 
       if (fetchedSubjects.length > 0) {
         for (const subject of fetchedSubjects) {
@@ -248,6 +238,9 @@ export default function StudentsPage() {
       await deleteDoc(classDocRef);
       toast({ title: "Class Deleted", description: `Class "${classToDelete.subjectName} - ${classToDelete.sectionName}" and its students have been removed.` });
       setClasses(prevClasses => prevClasses.filter(c => c.id !== classToDelete.id));
+      if(managingStudentsForClass?.id === classToDelete.id) {
+        setManagingStudentsForClass(null); // If the deleted class was being managed, clear it
+      }
     } catch (e) {
       console.error("Error deleting class: ", e);
       toast({ title: "Error Deleting Class", description: "Could not delete class.", variant: "destructive" });
@@ -292,25 +285,23 @@ export default function StudentsPage() {
     });
   }, [classes, displayMode]);
 
-  // Student Dialog Functions
-  const openStudentListDialog = async (classInfo: ClassInfo) => {
-    setSelectedClassForStudentList(classInfo);
-    setIsStudentListDialogOpen(true);
-    await fetchStudentsForDialog(classInfo);
+  // Student Management Functions
+  const openStudentManagementView = async (classInfo: ClassInfo) => {
+    setManagingStudentsForClass(classInfo);
+    await fetchStudentsForClass(classInfo);
   };
 
-  const closeStudentListDialog = () => {
-    setIsStudentListDialogOpen(false);
-    setSelectedClassForStudentList(null);
-    setStudentsInDialog([]);
+  const closeStudentManagementView = () => {
+    setManagingStudentsForClass(null);
+    setStudentsForSelectedClass([]);
     setNewStudentFirstName('');
     setNewStudentLastName('');
     setNewStudentMiddleName('');
   };
 
-  const fetchStudentsForDialog = async (classInfo: ClassInfo) => {
+  const fetchStudentsForClass = async (classInfo: ClassInfo) => {
     if (!user || !classInfo) {
-      setStudentsInDialog([]);
+      setStudentsForSelectedClass([]);
       return;
     }
     setIsLoadingStudents(true);
@@ -318,8 +309,8 @@ export default function StudentsPage() {
       const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, "students");
       const q = query(studentsRef, orderBy("lastName", "asc"), orderBy("firstName", "asc"));
       const querySnapshot = await getDocs(q);
-      const fetchedStudents: Student[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
-      setStudentsInDialog(fetchedStudents);
+      const fetchedStudents: Student[] = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Student));
+      setStudentsForSelectedClass(fetchedStudents);
     } catch (error) {
       console.error("Error fetching students:", error);
       toast({ title: "Error", description: "Could not fetch students for this class.", variant: "destructive" });
@@ -330,26 +321,26 @@ export default function StudentsPage() {
 
   const handleAddStudent = async (event: FormEvent) => {
     event.preventDefault();
-    if (!user || !selectedClassForStudentList || !newStudentFirstName.trim() || !newStudentLastName.trim()) {
+    if (!user || !managingStudentsForClass || !newStudentFirstName.trim() || !newStudentLastName.trim()) {
       toast({ title: "Validation Error", description: "First Name and Last Name are required.", variant: "destructive" });
       return;
     }
     setIsSavingStudent(true);
     try {
-      const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, selectedClassForStudentList.subjectId, "classes", selectedClassForStudentList.id, "students");
+      const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, managingStudentsForClass.subjectId, "classes", managingStudentsForClass.id, "students");
       await addDoc(studentsRef, {
         firstName: newStudentFirstName.trim(),
         lastName: newStudentLastName.trim(),
         middleName: newStudentMiddleName.trim() || "",
-        userId: user.uid,
-        classId: selectedClassForStudentList.id,
-        subjectId: selectedClassForStudentList.subjectId,
+        userId: user.uid, // Associate student with the teacher
+        classId: managingStudentsForClass.id,
+        subjectId: managingStudentsForClass.subjectId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       toast({ title: "Student Added", description: `${newStudentFirstName} ${newStudentLastName} added.` });
       setNewStudentFirstName(''); setNewStudentLastName(''); setNewStudentMiddleName('');
-      await fetchStudentsForDialog(selectedClassForStudentList);
+      await fetchStudentsForClass(managingStudentsForClass);
     } catch (error) {
       console.error("Error adding student:", error);
       toast({ title: "Error Adding Student", description: "Could not add student.", variant: "destructive" });
@@ -359,13 +350,13 @@ export default function StudentsPage() {
   };
 
   const handleDeleteStudent = async (student: Student) => {
-    if (!user || !selectedClassForStudentList || !student) return;
+    if (!user || !managingStudentsForClass || !student) return;
     setDeletingStudentId(student.id);
     try {
-      const studentDocRef = doc(db, SUBJECTS_COLLECTION_NAME, selectedClassForStudentList.subjectId, "classes", selectedClassForStudentList.id, "students", student.id);
+      const studentDocRef = doc(db, SUBJECTS_COLLECTION_NAME, managingStudentsForClass.subjectId, "classes", managingStudentsForClass.id, "students", student.id);
       await deleteDoc(studentDocRef);
       toast({ title: "Student Removed", description: `${student.firstName} ${student.lastName} removed.` });
-      await fetchStudentsForDialog(selectedClassForStudentList);
+      await fetchStudentsForClass(managingStudentsForClass);
     } catch (error) {
       console.error("Error deleting student:", error);
       toast({ title: "Error Deleting Student", description: "Could not remove student.", variant: "destructive" });
@@ -388,8 +379,8 @@ export default function StudentsPage() {
         )}
       </CardHeader>
       <CardContent className="pb-3 sm:pb-4 pt-1">
-         <Button variant="outline" size="sm" className="w-full text-xs sm:text-sm" onClick={() => openStudentListDialog(cls)}>
-            <Users2 className="mr-2 h-3.5 w-3.5" /> Manage Students
+         <Button variant="outline" size="sm" className="w-full text-xs sm:text-sm" onClick={() => openStudentManagementView(cls)}>
+            <Users2 className="mr-2 h-3.5 w-3.5" /> Manage Students ({isLoadingStudents && managingStudentsForClass?.id === cls.id ? '...' : studentsForSelectedClass.length > 0 && managingStudentsForClass?.id === cls.id ? studentsForSelectedClass.length : '...'})
         </Button>
       </CardContent>
       <CardFooter className="flex justify-end gap-1.5 sm:gap-2 pt-0 pb-2 sm:pb-3 px-2 sm:px-4">
@@ -427,6 +418,95 @@ export default function StudentsPage() {
     return ( <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4"> <AlertTriangle className="h-12 w-12 sm:h-16 sm:w-16 text-destructive mb-4" /> <h2 className="text-xl sm:text-2xl font-semibold mb-2">Oops! Something went wrong.</h2> <p className="text-sm sm:text-base text-muted-foreground mb-4">{dataError}</p> <Button onClick={fetchPageData} size="sm" className="text-xs sm:text-sm">Try Again</Button> </div> );
   }
 
+  if (managingStudentsForClass) {
+    return (
+      <Card className="shadow-lg">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight flex items-center">
+                <Users2 className="mr-2 sm:mr-3 h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+                Manage Students: {managingStudentsForClass.subjectName} - {managingStudentsForClass.sectionName} ({managingStudentsForClass.yearGrade})
+              </CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                Add or remove students for this class. Class Code: {managingStudentsForClass.code}
+              </CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={closeStudentManagementView} className="text-xs sm:text-sm">
+              <ArrowLeft className="mr-1 sm:mr-2 h-3.5 w-3.5" /> Back to Class List
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+          <div className="md:col-span-1">
+            <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4 border-b pb-2">Add New Student</h3>
+            <form onSubmit={handleAddStudent} className="space-y-3 sm:space-y-4">
+              <div>
+                <Label htmlFor="studentFirstName" className="text-xs sm:text-sm">First Name</Label>
+                <Input id="studentFirstName" value={newStudentFirstName} onChange={(e) => setNewStudentFirstName(e.target.value)} required disabled={isSavingStudent} className="h-8 sm:h-9 text-xs sm:text-sm"/>
+              </div>
+              <div>
+                <Label htmlFor="studentLastName" className="text-xs sm:text-sm">Last Name</Label>
+                <Input id="studentLastName" value={newStudentLastName} onChange={(e) => setNewStudentLastName(e.target.value)} required disabled={isSavingStudent} className="h-8 sm:h-9 text-xs sm:text-sm"/>
+              </div>
+              <div>
+                <Label htmlFor="studentMiddleName" className="text-xs sm:text-sm">Middle Name (Optional)</Label>
+                <Input id="studentMiddleName" value={newStudentMiddleName} onChange={(e) => setNewStudentMiddleName(e.target.value)} disabled={isSavingStudent} className="h-8 sm:h-9 text-xs sm:text-sm"/>
+              </div>
+              <Button type="submit" disabled={isSavingStudent || isLoadingStudents} size="sm" className="w-full text-xs sm:text-sm">
+                {isSavingStudent ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} Add Student
+              </Button>
+            </form>
+          </div>
+          <div className="md:col-span-2">
+            <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4 border-b pb-2">Enrolled Students ({studentsForSelectedClass.length})</h3>
+            {isLoadingStudents ? (
+              <div className="flex-grow flex items-center justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+            ) : studentsForSelectedClass.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No students enrolled in this class yet.</p>
+            ) : (
+              <ul className="space-y-2 max-h-[calc(100vh-400px)] overflow-y-auto pr-2"> {/* Added max-height and overflow */}
+                {studentsForSelectedClass.map(student => (
+                  <li key={student.id} className="flex items-center justify-between p-2.5 sm:p-3 bg-background border rounded-md shadow-sm">
+                    <span className="text-xs sm:text-sm">
+                      {student.lastName}, {student.firstName} {student.middleName && ` ${student.middleName.charAt(0)}.`}
+                    </span>
+                    <AlertDialog>
+                      <RadixAlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" disabled={deletingStudentId === student.id}>
+                          {deletingStudentId === student.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        </Button>
+                      </RadixAlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle className="text-base sm:text-lg">Remove Student?</AlertDialogTitle>
+                          <AlertDialogDescription className="text-xs sm:text-sm">
+                            Are you sure you want to remove {student.firstName} {student.lastName} from this class?
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+                          <AlertDialogCancel className="text-xs sm:text-sm" disabled={deletingStudentId === student.id}>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDeleteStudent(student)}
+                            disabled={deletingStudentId === student.id}
+                            className="bg-destructive hover:bg-destructive/90 text-xs sm:text-sm"
+                          >
+                            {deletingStudentId === student.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Remove
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Class Listing View
   return (
     <div className="space-y-4 sm:space-y-6">
       <Card className="shadow-lg">
@@ -454,94 +534,6 @@ export default function StudentsPage() {
         </CardContent>
         {(classes.length > 0 || userSubjects.length > 0) && !isLoadingData && ( <CardFooter className="text-xs sm:text-sm text-muted-foreground pt-3 sm:pt-4 border-t"> {displayMode === 'bySubject' ? `Showing ${userSubjects.length} subject${userSubjects.length === 1 ? '' : 's'} with ${classes.length} class${classes.length === 1 ? '' : 'es'} in total.` : `Showing ${groupedClassesBySectionYear.length} section/year group${groupedClassesBySectionYear.length === 1 ? '' : 's'} with ${classes.length} class${classes.length === 1 ? '' : 'es'} in total.` } </CardFooter> )}
       </Card>
-
-      <Dialog open={isStudentListDialogOpen} onOpenChange={(isOpen) => { if (!isOpen) closeStudentListDialog(); else setIsStudentListDialogOpen(true); }}>
-        <DialogContent className="sm:max-w-3xl md:max-w-5xl lg:max-w-6xl max-h-[90vh] flex flex-col p-0">
-          <DialogHeader className="p-4 sm:p-6 border-b">
-            <DialogTitle className="text-lg sm:text-xl">
-              Students in {selectedClassForStudentList?.subjectName} - {selectedClassForStudentList?.sectionName} ({selectedClassForStudentList?.yearGrade})
-            </DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              Manage the list of students enrolled in this class. Class Code: {selectedClassForStudentList?.code}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="flex-grow overflow-hidden grid grid-cols-1 md:grid-cols-3 gap-0">
-            <div className="md:col-span-1 bg-muted/50 p-4 sm:p-6 border-b md:border-b-0 md:border-r flex flex-col">
-              <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4">Add New Student</h3>
-              <form onSubmit={handleAddStudent} className="space-y-3 sm:space-y-4">
-                <div>
-                  <Label htmlFor="studentFirstName" className="text-xs sm:text-sm">First Name</Label>
-                  <Input id="studentFirstName" value={newStudentFirstName} onChange={(e) => setNewStudentFirstName(e.target.value)} required disabled={isSavingStudent} className="h-8 sm:h-9 text-xs sm:text-sm"/>
-                </div>
-                <div>
-                  <Label htmlFor="studentLastName" className="text-xs sm:text-sm">Last Name</Label>
-                  <Input id="studentLastName" value={newStudentLastName} onChange={(e) => setNewStudentLastName(e.target.value)} required disabled={isSavingStudent} className="h-8 sm:h-9 text-xs sm:text-sm"/>
-                </div>
-                <div>
-                  <Label htmlFor="studentMiddleName" className="text-xs sm:text-sm">Middle Name (Optional)</Label>
-                  <Input id="studentMiddleName" value={newStudentMiddleName} onChange={(e) => setNewStudentMiddleName(e.target.value)} disabled={isSavingStudent} className="h-8 sm:h-9 text-xs sm:text-sm"/>
-                </div>
-                <Button type="submit" disabled={isSavingStudent || isLoadingStudents} size="sm" className="w-full text-xs sm:text-sm">
-                  {isSavingStudent ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} Add Student
-                </Button>
-              </form>
-            </div>
-
-            <div className="md:col-span-2 p-4 sm:p-6 flex flex-col overflow-hidden">
-              <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4">Enrolled Students ({studentsInDialog.length})</h3>
-              {isLoadingStudents ? (
-                <div className="flex-grow flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-              ) : studentsInDialog.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No students enrolled in this class yet.</p>
-              ) : (
-                <div className="flex-grow overflow-y-auto -mr-2 pr-2">
-                  <ul className="space-y-2">
-                    {studentsInDialog.map(student => (
-                      <li key={student.id} className="flex items-center justify-between p-2.5 sm:p-3 bg-card border rounded-md shadow-sm">
-                        <span className="text-xs sm:text-sm">
-                          {student.lastName}, {student.firstName} {student.middleName && ` ${student.middleName.charAt(0)}.`}
-                        </span>
-                        <AlertDialog>
-                          <RadixAlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" disabled={deletingStudentId === student.id}>
-                              {deletingStudentId === student.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                            </Button>
-                          </RadixAlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle className="text-base sm:text-lg">Remove Student?</AlertDialogTitle>
-                              <AlertDialogDescription className="text-xs sm:text-sm">
-                                Are you sure you want to remove {student.firstName} {student.lastName} from this class?
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
-                              <AlertDialogCancel className="text-xs sm:text-sm" disabled={deletingStudentId === student.id}>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleDeleteStudent(student)}
-                                disabled={deletingStudentId === student.id}
-                                className="bg-destructive hover:bg-destructive/90 text-xs sm:text-sm"
-                              >
-                                {deletingStudentId === student.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Remove
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
-          <DialogFooter className="p-4 sm:p-6 border-t">
-            <Button variant="outline" onClick={closeStudentListDialog} size="sm" className="text-xs sm:text-sm">Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
-
-
-    

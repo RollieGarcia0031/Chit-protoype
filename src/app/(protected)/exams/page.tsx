@@ -23,6 +23,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger, // Added AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from "@/config/firebase-constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -101,41 +102,6 @@ export default function ViewExamsPage() {
         }
     };
     
-    const fetchUserClasses = async () => {
-        if (!user || allUserSubjects.length === 0) {
-            setIsLoadingClasses(false);
-            setAllUserClasses([]);
-            return;
-        }
-        setIsLoadingClasses(true);
-        const fetchedClasses: ClassInfoForDropdown[] = [];
-        try {
-            for (const subject of allUserSubjects) {
-                const classesSubCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME, subject.id, "classes");
-                const q = query(classesSubCollectionRef, where("userId", "==", user.uid), orderBy("sectionName", "asc"));
-                const classesSnapshot = await getDocs(q);
-                classesSnapshot.forEach((classDoc) => {
-                    const classData = classDoc.data();
-                    fetchedClasses.push({
-                        id: classDoc.id,
-                        subjectId: subject.id,
-                        subjectName: subject.name,
-                        subjectCode: subject.code,
-                        sectionName: classData.sectionName,
-                        yearGrade: classData.yearGrade,
-                        code: classData.code,
-                    });
-                });
-            }
-            setAllUserClasses(fetchedClasses);
-        } catch (e) {
-            console.error("Error fetching classes:", e);
-            toast({ title: "Error", description: "Could not fetch classes.", variant: "destructive" });
-        } finally {
-            setIsLoadingClasses(false);
-        }
-    };
-
 
     if (!authLoading && user) {
       fetchExamsData();

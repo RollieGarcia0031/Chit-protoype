@@ -104,7 +104,7 @@ function ExamPreviewPlaceholder({
             </Button>
         </div>
       </CardHeader>
-      <CardContent className="h-[calc(100vh-300px)] min-h-[400px] sm:min-h-[500px] p-3 sm:p-6 border rounded-md bg-muted/30 overflow-auto">
+      <CardContent className="p-3 sm:p-6 border rounded-md bg-muted/30">
         <div className="prose prose-sm max-w-none" style={{ color: 'black' }}>
             <h1 className="text-center text-xl sm:text-2xl font-bold mb-2" style={{ color: 'black' }}>{exam.title}</h1>
 
@@ -189,7 +189,7 @@ function ExamPreviewPlaceholder({
                                    const numRows = Math.max(premisesForTable.length, responsesForTable.length);
                                    const rows = [];
                                    for (let i = 0; i < numRows; i++) {
-                                       const premiseText = premisesForTable[i] ? `____ ${premisesForTable[i].displayLabel}. ${premisesForTable[i].text}` : "";
+                                       const premiseText = premisesForTable[i] ? `${premisesForTable[i].displayLabel}. ${premisesForTable[i].text}` : "";
                                        const responseText = responsesForTable[i] ? `${responsesForTable[i].letter}. ${responsesForTable[i].text}` : "";
                                        rows.push(
                                            <tr key={`match-row-${block.id}-${i}`}>
@@ -577,7 +577,7 @@ export default function RenderExamPage() {
 
                 for (let i = 0; i < numRows; i++) {
                     const premiseText = premisesForTable[i]
-                        ? `____ ${premisesForTable[i].displayLabel}. ${premisesForTable[i].text}`
+                        ? `${premisesForTable[i].displayLabel}. ${premisesForTable[i].text}`
                         : "";
                     const responseText = responsesForTable[i]
                         ? `${responsesForTable[i].letter}. ${responsesForTable[i].text}`
@@ -619,9 +619,6 @@ export default function RenderExamPage() {
                         })
                     );
                 }
-                children.push(new Paragraph({ text: "", spacing: {after: 50}}));
-
-
             } else { 
                 (block.questions).forEach((question) => {
                     const points = question.points;
@@ -636,7 +633,7 @@ export default function RenderExamPage() {
                             new TextRun({text: `${answerPrefix}${displayQuestionLabel}. ${String(question.questionText)} `, size: 24, color: "000000", font: "Calibri"}),
                         ],
                         indent: { left: 720 },
-                        spacing: { after: question.type === 'pooled-choices' ? 40 : 80 }
+                        spacing: { after: (question.type === 'pooled-choices' || question.type === 'true-false') ? 40 : 80 } 
                     }));
 
                     if (question.type === 'multiple-choice') {
@@ -647,8 +644,6 @@ export default function RenderExamPage() {
                                 spacing: { after: 40 }
                             }));
                         });
-                         children.push(new Paragraph({ text: "", spacing: {after: 80}})); 
-                    } else if (question.type === 'true-false') {
                          children.push(new Paragraph({ text: "", spacing: {after: 80}})); 
                     }
                 });
@@ -1001,3 +996,4 @@ export default function RenderExamPage() {
     </div>
   );
 }
+

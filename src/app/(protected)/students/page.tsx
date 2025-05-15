@@ -14,7 +14,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface ClassInfo {
   id: string;
-  name: string;
+  subjectName: string;
+  sectionName: string;
+  yearGrade: string;
   code: string;
   // Eventually, student list or count
 }
@@ -22,35 +24,51 @@ interface ClassInfo {
 export default function StudentsPage() {
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [isAddClassDialogOpen, setIsAddClassDialogOpen] = useState(false);
-  const [newClassName, setNewClassName] = useState('');
+  
+  const [newSubjectName, setNewSubjectName] = useState('');
+  const [newSectionName, setNewSectionName] = useState('');
+  const [newYearGrade, setNewYearGrade] = useState('');
   const [newClassCode, setNewClassCode] = useState('');
+  
   const [editingClass, setEditingClass] = useState<ClassInfo | null>(null);
 
-  const generateClassCodeFromName = (name: string) => {
-    return name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+  const generateClassCode = (subject: string, section: string, year: string) => {
+    const subjectPart = subject.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase();
+    const sectionPart = section.replace(/[^a-zA-Z0-9]/g, '').substring(0, 2).toUpperCase();
+    const yearPart = year.replace(/[^a-zA-Z0-9]/g, '').substring(0, 2).toUpperCase();
+    const randomPart = Math.random().toString(36).substring(2, 5).toUpperCase();
+    return `${subjectPart}${sectionPart}${yearPart}-${randomPart}`;
   };
 
-  const handleClassNameChangeForCode = (name: string) => {
-    setNewClassName(name);
-    if (!editingClass && !newClassCode) { // Only auto-generate if code is empty and not editing
-        setNewClassCode(generateClassCodeFromName(name));
+  const handleInputChangeForCodeGeneration = () => {
+    if (!editingClass && (!newClassCode || newClassCode.startsWith(newSubjectName.substring(0,2).toUpperCase()))) { 
+        // Only auto-generate if code is empty or seems to be based on old subject name
+        setNewClassCode(generateClassCode(newSubjectName, newSectionName, newYearGrade));
     }
   };
 
+
   const handleAddOrUpdateClass = (event: FormEvent) => {
     event.preventDefault();
-    if (!newClassName.trim() || !newClassCode.trim()) {
-      // Basic validation, ideally use a schema
-      alert("Class Name and Code are required.");
+    if (!newSubjectName.trim() || !newSectionName.trim() || !newYearGrade.trim() || !newClassCode.trim()) {
+      alert("All fields (Subject Name, Section Name, Year/Grade, and Code) are required.");
       return;
     }
 
     if (editingClass) {
-      setClasses(classes.map(c => c.id === editingClass.id ? { ...c, name: newClassName, code: newClassCode } : c));
+      setClasses(classes.map(c => c.id === editingClass.id ? { 
+        ...c, 
+        subjectName: newSubjectName, 
+        sectionName: newSectionName,
+        yearGrade: newYearGrade,
+        code: newClassCode 
+      } : c));
     } else {
       const newClass: ClassInfo = {
         id: generateId('class'),
-        name: newClassName,
+        subjectName: newSubjectName,
+        sectionName: newSectionName,
+        yearGrade: newYearGrade,
         code: newClassCode,
       };
       setClasses([...classes, newClass]);
@@ -61,7 +79,9 @@ export default function StudentsPage() {
 
   const openEditDialog = (classInfo: ClassInfo) => {
     setEditingClass(classInfo);
-    setNewClassName(classInfo.name);
+    setNewSubjectName(classInfo.subjectName);
+    setNewSectionName(classInfo.sectionName);
+    setNewYearGrade(classInfo.yearGrade);
     setNewClassCode(classInfo.code);
     setIsAddClassDialogOpen(true);
   };
@@ -73,7 +93,9 @@ export default function StudentsPage() {
   
   const closeDialog = () => {
     setIsAddClassDialogOpen(false);
-    setNewClassName('');
+    setNewSubjectName('');
+    setNewSectionName('');
+    setNewYearGrade('');
     setNewClassCode('');
     setEditingClass(null);
   }
@@ -110,14 +132,40 @@ export default function StudentsPage() {
               </DialogHeader>
               <form onSubmit={handleAddOrUpdateClass} className="grid gap-3 sm:gap-4 py-2 sm:py-4">
                 <div className="grid grid-cols-4 items-center gap-2 sm:gap-4">
-                  <Label htmlFor="className" className="text-right text-xs sm:text-sm col-span-1">
-                    Name
+                  <Label htmlFor="subjectName" className="text-right text-xs sm:text-sm col-span-1">
+                    Subject
                   </Label>
                   <Input
-                    id="className"
-                    value={newClassName}
-                    onChange={(e) => handleClassNameChangeForCode(e.target.value)}
-                    placeholder="e.g., Math 101 - Period 3"
+                    id="subjectName"
+                    value={newSubjectName}
+                    onChange={(e) => { setNewSubjectName(e.target.value); handleInputChangeForCodeGeneration(); }}
+                    placeholder="e.g., Mathematics"
+                    className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-2 sm:gap-4">
+                  <Label htmlFor="sectionName" className="text-right text-xs sm:text-sm col-span-1">
+                    Section
+                  </Label>
+                  <Input
+                    id="sectionName"
+                    value={newSectionName}
+                    onChange={(e) => { setNewSectionName(e.target.value); handleInputChangeForCodeGeneration(); }}
+                    placeholder="e.g., Section A, P3"
+                    className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-2 sm:gap-4">
+                  <Label htmlFor="yearGrade" className="text-right text-xs sm:text-sm col-span-1">
+                    Year/Grade
+                  </Label>
+                  <Input
+                    id="yearGrade"
+                    value={newYearGrade}
+                    onChange={(e) => { setNewYearGrade(e.target.value); handleInputChangeForCodeGeneration(); }}
+                    placeholder="e.g., Grade 10, Year 2"
                     className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
                     required
                   />
@@ -130,7 +178,7 @@ export default function StudentsPage() {
                     id="classCode"
                     value={newClassCode}
                     onChange={(e) => setNewClassCode(e.target.value.toUpperCase())}
-                    placeholder="e.g., M101P3A"
+                    placeholder="Auto-generated or custom"
                     className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
                     required
                   />
@@ -157,16 +205,20 @@ export default function StudentsPage() {
               </p>
             </div>
           ) : (
-            <ScrollArea className="h-[calc(100vh-300px)] sm:h-[calc(100vh-320px)] pr-3"> {/* Adjust height as needed */}
+            <ScrollArea className="h-[calc(100vh-300px)] sm:h-[calc(100vh-320px)] pr-3">
               <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {classes.map((cls) => (
                   <Card key={cls.id} className="shadow-md">
                     <CardHeader className="pb-2 sm:pb-3">
-                      <CardTitle className="text-md sm:text-lg font-semibold">{cls.name}</CardTitle>
-                      <CardDescription className="text-xs sm:text-sm">Code: <span className="font-mono text-primary">{cls.code}</span></CardDescription>
+                      <CardTitle className="text-md sm:text-lg font-semibold">{cls.subjectName}</CardTitle>
+                      <CardDescription className="text-xs sm:text-sm">
+                        Section: {cls.sectionName} | Year/Grade: {cls.yearGrade}
+                      </CardDescription>
+                      <CardDescription className="text-xs sm:text-sm pt-1">
+                        Code: <span className="font-mono text-primary">{cls.code}</span>
+                      </CardDescription>
                     </CardHeader>
                     <CardContent className="pb-3 sm:pb-4">
-                      {/* Placeholder for student count or list */}
                       <p className="text-xs sm:text-sm text-muted-foreground italic">Student management coming soon.</p>
                     </CardContent>
                     <CardFooter className="flex justify-end gap-2 pt-0 pb-3 sm:pb-4">
@@ -194,4 +246,3 @@ export default function StudentsPage() {
     </div>
   );
 }
-

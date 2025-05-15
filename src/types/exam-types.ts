@@ -74,15 +74,14 @@ export interface ExamSummaryData {
   totalQuestions: number;
   totalPoints: number;
   status: "Draft" | "Published" | "Archived";
-  classIds: string[]; // Changed from classId: string
+  classIds: string[];
+  subjectId?: string | null; // Added subjectId for filtering
 }
 
 export interface FullExamData extends ExamSummaryData {
     examBlocks: ExamBlock[];
-    // classIds is inherited from ExamSummaryData
 }
 
-// This type is used in student/page.tsx and will be used in create-exam/page.tsx
 export interface ClassInfoForDropdown {
   id: string; // classId from Firestore
   subjectId: string;
@@ -97,5 +96,5 @@ export interface FetchedSubjectInfo {
   id: string;
   name: string;
   code: string;
+  userId?: string; // Optional, might be present from Firestore data
 }
-

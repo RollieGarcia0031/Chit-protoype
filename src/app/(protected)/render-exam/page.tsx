@@ -114,10 +114,9 @@ function ExamPreviewPlaceholder({
 
                     {block.blockType === 'pooled-choices' && block.choicePool && block.choicePool.length > 0 && (
                         <div className="mb-2 sm:mb-3 p-2 sm:p-3 border border-dashed border-gray-400 rounded-md bg-gray-50" style={{color: 'black'}}>
-                            <h3 className="text-sm sm:text-base font-medium mb-1 text-black" style={{ color: 'black' }}>Choices for this Section:</h3>
-                            <ul className="list-none pl-2 sm:pl-3 space-y-0.5">
+                            <ul className="list-none pl-0 space-y-0.5 columns-1 sm:columns-2 md:columns-3 gap-x-4">
                                 {block.choicePool.map((poolOpt, poolOptIndex) => (
-                                    <li key={poolOpt.id} className="text-sm sm:text-base text-black" style={{ color: 'black' }}>
+                                    <li key={poolOpt.id} className="text-sm sm:text-base text-black break-inside-avoid-column" style={{ color: 'black' }}>
                                         {getAlphabetLetter(poolOptIndex)}. {poolOpt.text}
                                     </li>
                                 ))}
@@ -417,6 +416,15 @@ export default function RenderExamPage() {
     setIsDownloadingDocxFile(true);
     try {
         let currentDocxDisplayNumber = 1;
+        const noBorders = {
+            top: { style: BorderStyle.NONE, size: 0, color: "auto" },
+            bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
+            left: { style: BorderStyle.NONE, size: 0, color: "auto" },
+            right: { style: BorderStyle.NONE, size: 0, color: "auto" },
+            insideHorizontal: { style: BorderStyle.NONE, size: 0, color: "auto" },
+            insideVertical: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        };
+
         const children: (Paragraph | Table)[] = [
             new Paragraph({
                 children: [new TextRun({ text: String(examForPreview.title), bold: true, size: 32, color: "000000", font: "Calibri" })],
@@ -430,7 +438,7 @@ export default function RenderExamPage() {
                     new Tab(),
                     new TextRun({text: "Score: ____________", size: 24, color: "000000", font: "Calibri"}),
                 ],
-                tabStops: [ { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 1.5 }, ],
+                tabStops: [ { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 1.5 }, ], // Adjusted tab stop
                 spacing: { after: 200 }
             }),
         ];
@@ -457,18 +465,73 @@ export default function RenderExamPage() {
             }
 
             if (block.blockType === 'pooled-choices' && block.choicePool && block.choicePool.length > 0) {
-                 children.push(new Paragraph({
-                    children: [new TextRun({ text: "Choices for this Section:", bold: true, size: 24, color: "000000", font: "Calibri" })],
-                    spacing: { before: 100, after: 50 }
-                }));
-                block.choicePool.forEach((poolOpt, poolOptIndex) => {
-                    children.push(new Paragraph({
-                        children: [new TextRun({ text: `${getAlphabetLetter(poolOptIndex)}. ${String(poolOpt.text)}`, size: 24, color: "000000", font: "Calibri" })],
-                        indent: { left: 360 }, // Indent choices
-                        spacing: { after: 40 }
-                    }));
-                });
-                children.push(new Paragraph({ text: "", spacing: { after: 100 } })); // Space after choices
+                const choicePool = block.choicePool;
+                const AVG_CHOICE_LENGTH_THRESHOLD = 25;
+                const averageLength = choicePool.reduce((acc, opt) => acc + opt.text.length, 0) / choicePool.length;
+                const useTwoRowLayout = averageLength < AVG_CHOICE_LENGTH_THRESHOLD || choicePool.length <= 4;
+
+                let choiceTable: Table;
+
+                if (useTwoRowLayout) {
+                    const numCols = Math.ceil(choicePool.length / 2);
+                    const cellsRow1: DocxTableCell[] = [];
+                    const cellsRow2: DocxTableCell[] = [];
+
+                    for (let i = 0; i < numCols; i++) {
+                        if (i < choicePool.length) {
+                            const choice = choicePool[i];
+                            cellsRow1.push(new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${getAlphabetLetter(i)}. ${choice.text}`, size: 24, color: "000000", font: "Calibri" })] })], borders: { ...noBorders }, verticalAlign: VerticalAlign.TOP }));
+                        } else {
+                            cellsRow1.push(new DocxTableCell({ children: [new Paragraph("")], borders: { ...noBorders }, verticalAlign: VerticalAlign.TOP }));
+                        }
+                    }
+                    for (let i = 0; i < numCols; i++) {
+                        const choiceIndex = i + numCols;
+                        if (choiceIndex < choicePool.length) {
+                            const choice = choicePool[choiceIndex];
+                            cellsRow2.push(new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${getAlphabetLetter(choiceIndex)}. ${choice.text}`, size: 24, color: "000000", font: "Calibri" })] })], borders: { ...noBorders }, verticalAlign: VerticalAlign.TOP }));
+                        } else {
+                            cellsRow2.push(new DocxTableCell({ children: [new Paragraph("")], borders: { ...noBorders }, verticalAlign: VerticalAlign.TOP }));
+                        }
+                    }
+                    choiceTable = new Table({
+                        rows: [new DocxTableRow({ children: cellsRow1 }), new DocxTableRow({ children: cellsRow2 })],
+                        columnWidths: Array(numCols).fill(Math.floor(9000 / Math.max(1, numCols))), // Ensure numCols is at least 1
+                        borders: noBorders,
+                    });
+                } else { // Two-column layout
+                    const numRows = Math.ceil(choicePool.length / 2);
+                    const tableRows: DocxTableRow[] = [];
+                    for (let i = 0; i < numRows; i++) {
+                        const cell1Children: Paragraph[] = [new Paragraph("")]; // Default to empty
+                        if (i < choicePool.length) {
+                             const choice1 = choicePool[i];
+                             cell1Children[0] = new Paragraph({ children: [new TextRun({ text: `${getAlphabetLetter(i)}. ${choice1.text}`, size: 24, color: "000000", font: "Calibri" })] });
+                        }
+
+                        const cell2Children: Paragraph[] = [new Paragraph("")]; // Default to empty
+                        const choice2Index = i + numRows;
+                        if (choice2Index < choicePool.length) {
+                            const choice2 = choicePool[choice2Index];
+                            cell2Children[0] = new Paragraph({ children: [new TextRun({ text: `${getAlphabetLetter(choice2Index)}. ${choice2.text}`, size: 24, color: "000000", font: "Calibri" })] });
+                        }
+                        tableRows.push(
+                            new DocxTableRow({
+                                children: [
+                                    new DocxTableCell({ children: cell1Children, width: { size: 4500, type: WidthType.DXA }, borders: { ...noBorders }, verticalAlign: VerticalAlign.TOP }),
+                                    new DocxTableCell({ children: cell2Children, width: { size: 4500, type: WidthType.DXA }, borders: { ...noBorders }, verticalAlign: VerticalAlign.TOP }),
+                                ],
+                            })
+                        );
+                    }
+                    choiceTable = new Table({
+                        rows: tableRows,
+                        columnWidths: [4500, 4500],
+                        borders: noBorders,
+                    });
+                }
+                children.push(choiceTable);
+                children.push(new Paragraph({ text: "", spacing: { after: 100 } }));
             }
 
 
@@ -515,27 +578,19 @@ export default function RenderExamPage() {
                                 new DocxTableCell({
                                     children: [new Paragraph({
                                         children: [new TextRun({ text: premiseText, size: 24, color: "000000", font: "Calibri" })],
+                                        spacing: { after: 40 }
                                     })],
                                     width: { size: 4500, type: WidthType.DXA },
-                                    borders: {
-                                        top: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                        bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                        left: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                        right: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                    },
+                                    borders: noBorders,
                                     verticalAlign: VerticalAlign.TOP,
                                 }),
                                 new DocxTableCell({
                                     children: [new Paragraph({
                                         children: [new TextRun({ text: responseText, size: 24, color: "000000", font: "Calibri" })],
+                                        spacing: { after: 40 }
                                     })],
                                     width: { size: 4500, type: WidthType.DXA },
-                                    borders: {
-                                        top: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                        bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                        left: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                        right: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                    },
+                                    borders: noBorders,
                                     verticalAlign: VerticalAlign.TOP,
                                 }),
                             ],
@@ -549,14 +604,7 @@ export default function RenderExamPage() {
                             rows: tableRows,
                             width: { size: 9000, type: WidthType.DXA },
                             columnWidths: [4500, 4500],
-                            borders: {
-                                top: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                left: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                right: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                insideHorizontal: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                                insideVertical: { style: BorderStyle.NONE, size: 0, color: "auto" },
-                            },
+                            borders: noBorders,
                         })
                     );
                 }
@@ -585,10 +633,12 @@ export default function RenderExamPage() {
                             children.push(new Paragraph({
                                 children: [new TextRun({text: `${getAlphabetLetter(optIndex)}. ${String(opt.text)}`, size: 24, color: "000000", font: "Calibri"})],
                                 indent: { left: 1080 }, 
+                                spacing: { after: 40 }
                             }));
                         });
                          children.push(new Paragraph({ text: "", spacing: {after: 80}})); 
-                    } else {
+                    } else if (question.type === 'true-false' || question.type === 'pooled-choices') {
+                         // Just spacing after the question line for T/F and Pooled
                          children.push(new Paragraph({ text: "", spacing: {after: 80}})); 
                     }
                 });
@@ -846,6 +896,3 @@ export default function RenderExamPage() {
     </div>
   );
 }
-
-
-    

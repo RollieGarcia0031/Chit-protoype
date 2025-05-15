@@ -22,13 +22,13 @@ interface ExamItemBlockProps {
   onItemRemove: () => void;
   itemIndex: number;
   disabled?: boolean;
-  totalQuestionsInBlock?: number; 
-  lettersUsedByOtherItemsInBlock?: string[]; 
-  choicePool?: PoolOption[]; 
+  totalQuestionsInBlock?: number;
+  lettersUsedByOtherItemsInBlock?: string[];
+  choicePool?: PoolOption[];
 }
 
 const getAlphabetLetter = (index: number): string => {
-  return String.fromCharCode(65 + index); 
+  return String.fromCharCode(65 + index);
 };
 
 export function ExamItemBlock({
@@ -104,7 +104,7 @@ export function ExamItemBlock({
     }
   };
 
-  const handleMatchingPremiseChange = (text: string) => { 
+  const handleMatchingPremiseChange = (text: string) => {
     if (item.type === 'matching') {
       const currentPairs = (item as MatchingTypeQuestion).pairs;
       const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "", responseLetter: "" }];
@@ -113,7 +113,7 @@ export function ExamItemBlock({
     }
   };
 
-  const handleMatchingResponseChange = (text: string) => { 
+  const handleMatchingResponseChange = (text: string) => {
     if (item.type === 'matching') {
       const currentPairs = (item as MatchingTypeQuestion).pairs;
       const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "", responseLetter: "" }];
@@ -135,11 +135,11 @@ export function ExamItemBlock({
     if (questionType !== 'matching' || !totalQuestionsInBlock) return [];
     const currentAssignedLetter = (item as MatchingTypeQuestion).pairs[0]?.responseLetter;
     const allPossibleLetters = Array.from({ length: totalQuestionsInBlock }, (_, i) => getAlphabetLetter(i));
-    
+
     return allPossibleLetters.filter(possibleLetter => {
-      if (possibleLetter === currentAssignedLetter) return true; 
-      if (lettersUsedByOtherItemsInBlock && lettersUsedByOtherItemsInBlock.includes(possibleLetter)) return false; 
-      return true; 
+      if (possibleLetter === currentAssignedLetter) return true;
+      if (lettersUsedByOtherItemsInBlock && lettersUsedByOtherItemsInBlock.includes(possibleLetter)) return false;
+      return true;
     });
   };
 
@@ -153,7 +153,7 @@ export function ExamItemBlock({
         }
       }
     }
-    return ""; 
+    return "";
   };
 
   const handlePooledChoiceAnswerChange = (selectedLetter: string) => {
@@ -171,38 +171,39 @@ export function ExamItemBlock({
 
   return (
     <Card className="border-border shadow-sm bg-card/50">
-      <CardHeader className="flex flex-row items-center justify-between py-2 px-3 sm:py-3 sm:px-4 gap-1 sm:gap-2">
-        <CardTitle className="text-xs sm:text-sm md:text-base font-medium flex-shrink-0 mr-auto">Question {itemIndex + 1}</CardTitle>
-        
-        <div className="flex items-center gap-1 sm:gap-2 ml-auto sm:ml-0 order-first sm:order-none"> 
-            <Label htmlFor={`points-${item.id}-q${itemIndex}`} className="sr-only sm:not-sr-only text-xs sm:text-sm whitespace-nowrap">Points:</Label>
-            <Input
-            id={`points-${item.id}-q${itemIndex}`}
-            type="number"
-            value={item.points}
-            onChange={handlePointsChange}
-            min="0"
-            placeholder="Pts"
-            className="h-7 w-12 text-xs text-center sm:h-8 sm:w-14"
-            disabled={disabled}
-            />
+      <CardHeader className="flex flex-col items-stretch gap-1.5 py-2 px-3 sm:flex-row sm:items-center sm:justify-between sm:py-3 sm:px-4 sm:gap-2">
+        <CardTitle className="text-xs sm:text-sm md:text-base font-medium flex-shrink-0 mr-auto order-first">Question {itemIndex + 1}</CardTitle>
+        <div className="flex items-center gap-1 sm:gap-2 w-full justify-between sm:w-auto sm:ml-auto sm:order-none">
+            <div className="flex items-center gap-1 sm:gap-1.5">
+                <Label htmlFor={`points-${item.id}-q${itemIndex}`} className="text-2xs sm:text-xs whitespace-nowrap">Points:</Label>
+                <Input
+                    id={`points-${item.id}-q${itemIndex}`}
+                    type="number"
+                    value={item.points}
+                    onChange={handlePointsChange}
+                    min="0"
+                    placeholder="Pts"
+                    className="h-7 w-10 text-2xs text-center sm:h-8 sm:w-14 sm:text-xs"
+                    disabled={disabled}
+                />
+            </div>
+            <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block" disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
+                <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground hover:text-destructive" />
+            </Button>
         </div>
-        <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block" disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
-            <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground hover:text-destructive" />
-        </Button>
       </CardHeader>
       <CardContent className="space-y-3 sm:space-y-4 px-3 pb-3 sm:px-4 sm:pb-4">
-        {questionType !== 'matching' && (
+        {/* Question Text for MC and T/F */}
+        {questionType !== 'matching' && questionType !== 'pooled-choices' && (
           <div className="space-y-1">
             <Label htmlFor={`questionText-${item.id}`} className="text-xs sm:text-sm">Question Text / Instructions</Label>
             <Textarea
               id={`questionText-${item.id}`}
               value={item.questionText}
               onChange={handleQuestionTextChange}
-              placeholder={ 
+              placeholder={
                 questionType === 'multiple-choice' ? "e.g., What is the capital of France?" :
                 questionType === 'true-false' ? "e.g., The Earth is flat." :
-                questionType === 'pooled-choices' ? "e.g., Which of the following is a primary color?" :
                 "Enter question text"
               }
               className="min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm"
@@ -210,6 +211,53 @@ export function ExamItemBlock({
             />
           </div>
         )}
+
+        {/* Specific UI for Pooled Choices */}
+        {questionType === 'pooled-choices' && item.type === 'pooled-choices' && (
+          <div className="space-y-1.5 sm:space-y-2">
+            <Label htmlFor={`questionText-${item.id}`} className="block text-xs sm:text-sm font-medium">
+              Question Text (Select correct answer from pool on the left)
+            </Label>
+            <div className="flex items-start gap-2">
+              <Select
+                value={getSelectedLetterFromPool()}
+                onValueChange={handlePooledChoiceAnswerChange}
+                disabled={disabled || !choicePool || choicePool.length === 0}
+              >
+                <SelectTrigger
+                  id={`pooled-choice-answer-trigger-${item.id}`}
+                  className="h-9 w-16 text-xs sm:text-sm px-2 flex-shrink-0 mt-0.5" // mt-0.5 to align better with textarea if font sizes differ
+                  aria-label="Select correct answer from pool"
+                >
+                  <SelectValue placeholder="Ans." />
+                </SelectTrigger>
+                <SelectContent>
+                  {(choicePool || []).map((poolOpt, poolOptIndex) => (
+                    <SelectItem key={poolOpt.id} value={getAlphabetLetter(poolOptIndex)} className="text-xs sm:text-sm">
+                      {getAlphabetLetter(poolOptIndex)}. {poolOpt.text}
+                    </SelectItem>
+                  ))}
+                   {(!choicePool || choicePool.length === 0) && (
+                    <SelectItem value="no-options" disabled className="text-xs sm:text-sm">No choices in pool</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+
+              <Textarea
+                id={`questionText-${item.id}`}
+                value={item.questionText}
+                onChange={handleQuestionTextChange}
+                placeholder="e.g., Which of the following is a primary color?"
+                className="min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm flex-grow"
+                disabled={disabled}
+              />
+            </div>
+            {!choicePool || choicePool.length === 0 && (
+                <p className="text-2xs sm:text-xs text-muted-foreground">No choices in the pool. Add choices in the block settings above.</p>
+            )}
+          </div>
+        )}
+
 
         {questionType === 'multiple-choice' && item.type === 'multiple-choice' && (
           <div className="space-y-1.5 sm:space-y-2">
@@ -241,7 +289,7 @@ export function ExamItemBlock({
                 )}
               </div>
             ))}
-            <Button type="button" variant="outline" onClick={handleAddOption} size="sm" className="text-xs h-7 sm:h-8 px-2 sm:px-3" disabled={disabled}>
+            <Button type="button" variant="outline" onClick={handleAddOption} size="sm" className="text-2xs sm:text-xs h-7 sm:h-8 px-2 sm:px-3" disabled={disabled}>
               <PlusCircle className="mr-1 sm:mr-1.5 h-3 w-3 sm:h-3.5 sm:w-3.5" /> Add Option
             </Button>
           </div>
@@ -316,34 +364,7 @@ export function ExamItemBlock({
              </div>
           </div>
         )}
-
-        {questionType === 'pooled-choices' && item.type === 'pooled-choices' && (
-          <div className="space-y-1.5 sm:space-y-2">
-            <Label htmlFor={`pooled-choice-answer-${item.id}`} className="block text-xs sm:text-sm font-medium">Correct Answer from Pool</Label>
-            <Select
-              value={getSelectedLetterFromPool()}
-              onValueChange={handlePooledChoiceAnswerChange}
-              disabled={disabled || !choicePool || choicePool.length === 0}
-            >
-              <SelectTrigger id={`pooled-choice-answer-${item.id}`} className="h-9 text-xs sm:text-sm">
-                <SelectValue placeholder="Select answer from pool" />
-              </SelectTrigger>
-              <SelectContent>
-                {(choicePool || []).map((poolOpt, poolOptIndex) => (
-                  <SelectItem key={poolOpt.id} value={getAlphabetLetter(poolOptIndex)} className="text-xs sm:text-sm">
-                    {getAlphabetLetter(poolOptIndex)}. {poolOpt.text}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {!choicePool || choicePool.length === 0 && (
-                <p className="text-xs text-muted-foreground">No choices available in the pool for this block. Please add choices to the pool above.</p>
-            )}
-          </div>
-        )}
-
       </CardContent>
     </Card>
   );
 }
-

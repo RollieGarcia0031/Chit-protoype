@@ -394,10 +394,12 @@ export default function CreateExamPage() {
             if (parsedData.title) setExamTitle(parsedData.title);
             if (parsedData.description) setExamDescription(parsedData.description);
             
+            // More robust loading for selectedSubjectIdForFilter
             setSelectedSubjectIdForFilter(
               parsedData.hasOwnProperty('selectedSubjectIdForFilter') ? parsedData.selectedSubjectIdForFilter : null
             );
 
+            // More robust loading for assignedClassSlots
             if (parsedData.assignedClassSlots && Array.isArray(parsedData.assignedClassSlots)) {
                 if (parsedData.assignedClassSlots.length > 0) {
                     setAssignedClassSlots(parsedData.assignedClassSlots.map((slot: any) => ({
@@ -405,7 +407,7 @@ export default function CreateExamPage() {
                         selectedClassId: slot.selectedClassId || null,
                     })));
                 } else {
-                    setAssignedClassSlots([]); 
+                    setAssignedClassSlots([]); // If saved as empty array, respect it
                 }
             } else {
                  setAssignedClassSlots([{ key: generateId('default-class-slot-no-saved'), selectedClassId: null }]);
@@ -446,7 +448,8 @@ export default function CreateExamPage() {
             }
           } catch (error) {
             console.error("Error parsing exam data from localStorage:", error);
-            localStorage.removeItem(LOCAL_STORAGE_KEY);
+            localStorage.removeItem(LOCAL_STORAGE_KEY); // Clear corrupted data
+            // Reset to defaults on error
             setSelectedSubjectIdForFilter(null);
             setAssignedClassSlots([{ key: generateId('error-reset-class-slot'), selectedClassId: null }]);
           }
@@ -466,8 +469,11 @@ export default function CreateExamPage() {
 
   // Effect for fetching an existing exam for editing
   useEffect(() => {
+    // Exit if not editing, no user, already loading, or prerequisite data not ready
     if (!editingExamId || !user || isLoadingExamData || isLoadingUserClasses || isLoadingUserSubjectsForDropdown) {
-      return; // Exit if not editing, no user, already loading, or prerequisite data not ready
+      // If we're supposed to be loading (editingExamId is set) but pre-reqs aren't ready,
+      // we don't set isInitialLoadComplete to true yet. It will be set in fetchExamForEditing's finally block.
+      return;
     }
     
     const fetchExamForEditing = async () => {
@@ -475,7 +481,7 @@ export default function CreateExamPage() {
       setExamTitle("");
       setExamDescription("");
       setSelectedSubjectIdForFilter(null);
-      setAssignedClassSlots([]);
+      setAssignedClassSlots([]); // Start with empty, will be populated
       setExamBlocks([]);
       setAiFeedbackList([]);
       
@@ -507,9 +513,10 @@ export default function CreateExamPage() {
                     examData.classIds.map((id: string) => ({ key: generateId('loaded-slot'), selectedClassId: id }))
                  );
             } else {
-                setAssignedClassSlots([]); 
+                setAssignedClassSlots([]); // If classIds is an empty array
             }
         } else {
+          // Default if classIds is missing or not an array
           setAssignedClassSlots([{ key: generateId('default-fetch-slot'), selectedClassId: null }]);
         }
 
@@ -590,7 +597,7 @@ export default function CreateExamPage() {
         router.push('/exams');
       } finally {
         setIsLoadingExamData(false); 
-        setIsInitialLoadComplete(true); // Crucial: set true after DB load is complete
+        setIsInitialLoadComplete(true); // Crucial: set true after DB load is complete or attempt fails
       }
     };
 
@@ -605,6 +612,11 @@ export default function CreateExamPage() {
 
   // Effect for saving to localStorage (for new exams only)
   useEffect(() => {
+    // Only save to local storage if:
+    // 1. We are NOT editing an existing exam (editingExamId is null).
+    // 2. Initial load from local storage (or defaults) is complete (isInitialLoadComplete is true).
+    // 3. It's running on the client-side (typeof window !== 'undefined').
+    // 4. We are not currently in the process of loading data from Firestore for editing (isLoadingExamData is false).
     if (editingExamId || !isInitialLoadComplete || typeof window === 'undefined' || isLoadingExamData) {
       return;
     }
@@ -743,7 +755,7 @@ export default function CreateExamPage() {
     // Reset isInitialLoadComplete only if we are navigating away from an edited exam to a new one
     // Or if explicitly creating a new exam after editing one.
     // If simply resetting a new exam form, isInitialLoadComplete should remain true.
-    // isInitialClientLoadRef.current = true; // Allow localStorage to be read again if form is "truly" new
+    isInitialClientLoadRef.current = true; // Allow localStorage to be read again if form is "truly" new
 
     if (searchParams.get('examId')) router.push('/create-exam'); 
     // else {

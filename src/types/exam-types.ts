@@ -92,3 +92,9 @@ export interface ClassInfoForDropdown {
   yearGrade: string;
   code: string; // class code (specific to the class instance)
 }
+
+export interface FetchedSubjectInfo {
+  id: string;
+  name: string;
+  code: string;
+}

@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { useState, type FormEvent, useEffect, useCallback, useMemo } from "react";
-import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair, PooledChoicesQuestion, PoolOption, ClassInfoForDropdown } from "@/types/exam-types";
+import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair, PooledChoicesQuestion, PoolOption, ClassInfoForDropdown, FetchedSubjectInfo } from "@/types/exam-types";
 import { generateId, debounce } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
 import { TotalPointsDisplay } from "@/components/exam/TotalPointsDisplay";
@@ -101,7 +101,11 @@ export default function CreateExamPage() {
   const [isAnalyzingWithAI, setIsAnalyzingWithAI] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  // Class association state
+  // Class and Subject association state
+  const [userSubjectsForDropdown, setUserSubjectsForDropdown] = useState<FetchedSubjectInfo[]>([]);
+  const [isLoadingUserSubjectsForDropdown, setIsLoadingUserSubjectsForDropdown] = useState(true);
+  const [selectedSubjectIdForFilter, setSelectedSubjectIdForFilter] = useState<string | null>(null);
+  
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [allUserClasses, setAllUserClasses] = useState<ClassInfoForDropdown[]>([]);
   const [isLoadingUserClasses, setIsLoadingUserClasses] = useState(true);
@@ -113,9 +117,37 @@ export default function CreateExamPage() {
     }, 0);
   }, [examBlocks]);
 
-  // Fetch user's classes for the dropdown
+  // Fetch user's subjects for the "Select Subject" dropdown
   useEffect(() => {
-    const fetchUserClasses = async () => {
+    const fetchSubjectsForDropdown = async () => {
+      if (!user) {
+        setUserSubjectsForDropdown([]);
+        setIsLoadingUserSubjectsForDropdown(false);
+        return;
+      }
+      setIsLoadingUserSubjectsForDropdown(true);
+      try {
+        const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
+        const q = query(subjectsCollectionRef, where("userId", "==", user.uid), orderBy("name", "asc"));
+        const querySnapshot = await getDocs(q);
+        const fetchedSubjects: FetchedSubjectInfo[] = [];
+        querySnapshot.forEach((doc) => {
+          fetchedSubjects.push({ id: doc.id, ...doc.data() } as FetchedSubjectInfo);
+        });
+        setUserSubjectsForDropdown(fetchedSubjects);
+      } catch (error) {
+        console.error("Error fetching subjects for dropdown:", error);
+        toast({ title: "Error", description: "Could not fetch your subjects.", variant: "destructive" });
+      } finally {
+        setIsLoadingUserSubjectsForDropdown(false);
+      }
+    };
+    if (user) fetchSubjectsForDropdown();
+  }, [user, toast]);
+
+  // Fetch all user's classes for the "Select Class" dropdown source
+  useEffect(() => {
+    const fetchAllUserClasses = async () => {
       if (!user) {
         setAllUserClasses([]);
         setIsLoadingUserClasses(false);
@@ -124,12 +156,10 @@ export default function CreateExamPage() {
       setIsLoadingUserClasses(true);
       const fetchedClasses: ClassInfoForDropdown[] = [];
       try {
-        // 1. Fetch subjects for the user
         const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
         const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid));
         const subjectsSnapshot = await getDocs(subjectsQuery);
 
-        // 2. For each subject, fetch its classes
         for (const subjectDoc of subjectsSnapshot.docs) {
           const subjectData = subjectDoc.data();
           const classesSubCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME, subjectDoc.id, "classes");
@@ -145,23 +175,37 @@ export default function CreateExamPage() {
               subjectCode: subjectData.code,
               sectionName: classData.sectionName,
               yearGrade: classData.yearGrade,
-              code: classData.code, // This is the class-specific code
+              code: classData.code,
             });
           });
         }
         setAllUserClasses(fetchedClasses);
       } catch (error) {
-        console.error("Error fetching user classes for dropdown:", error);
-        toast({ title: "Error", description: "Could not fetch your classes for association.", variant: "destructive" });
+        console.error("Error fetching all user classes:", error);
+        toast({ title: "Error", description: "Could not fetch your classes list.", variant: "destructive" });
       } finally {
         setIsLoadingUserClasses(false);
       }
     };
 
     if (user) {
-      fetchUserClasses();
+      fetchAllUserClasses();
     }
   }, [user, toast]);
+
+  const filteredClassesForDropdown = useMemo(() => {
+    if (!selectedSubjectIdForFilter) {
+      return [];
+    }
+    return allUserClasses.filter(cls => cls.subjectId === selectedSubjectIdForFilter);
+  }, [selectedSubjectIdForFilter, allUserClasses]);
+
+  const handleSubjectFilterChange = (subjectIdValue: string) => {
+    const newSubjectId = subjectIdValue === "none" ? null : subjectIdValue;
+    setSelectedSubjectIdForFilter(newSubjectId);
+    setSelectedClassId(null); // Reset class selection when subject changes
+  };
+
 
   const performAIAnalysis = useCallback(async () => {
     if (!aiSuggestionsEnabled || !user || isSaving || isLoadingExamData) {
@@ -327,6 +371,7 @@ export default function CreateExamPage() {
             const parsedData = JSON.parse(savedData);
             if (parsedData.title) setExamTitle(parsedData.title);
             if (parsedData.description) setExamDescription(parsedData.description);
+            if (parsedData.selectedSubjectIdForFilter) setSelectedSubjectIdForFilter(parsedData.selectedSubjectIdForFilter);
             if (parsedData.selectedClassId) setSelectedClassId(parsedData.selectedClassId);
             if (parsedData.blocks && Array.isArray(parsedData.blocks)) {
               const validatedBlocks = parsedData.blocks.map((block: ExamBlock) => ({
@@ -377,9 +422,9 @@ export default function CreateExamPage() {
 
 
   useEffect(() => {
-    if (!editingExamId || !user || !isInitialLoadComplete || !isLoadingExamData ) { 
+    if (!editingExamId || !user || !isInitialLoadComplete || !isLoadingExamData || isLoadingUserClasses || isLoadingUserSubjectsForDropdown) { 
       if (editingExamId && !isLoadingExamData && isInitialLoadComplete && examBlocks.length === 0 && examTitle === "") {
-          // This case might mean fetch failed or exam was empty, but we should not re-trigger loading unless intended.
+          // This case might mean fetch failed or exam was empty
       }
       return;
     }
@@ -387,6 +432,7 @@ export default function CreateExamPage() {
     const fetchExamForEditing = async () => {
       setExamTitle("");
       setExamDescription("");
+      setSelectedSubjectIdForFilter(null);
       setSelectedClassId(null);
       setExamBlocks([]);
       setAiFeedbackList([]);
@@ -404,7 +450,26 @@ export default function CreateExamPage() {
         const examData = examSnap.data();
         setExamTitle(examData.title);
         setExamDescription(examData.description || "");
-        setSelectedClassId(examData.classId || null);
+        // setAiSuggestionsEnabled(examData.aiSuggestionsEnabled || false); // If this field exists
+
+        if (examData.classId && allUserClasses.length > 0) {
+            const associatedClass = allUserClasses.find(c => c.id === examData.classId);
+            if (associatedClass) {
+                setSelectedSubjectIdForFilter(associatedClass.subjectId);
+                // setSelectedClassId will be set once filteredClassesForDropdown updates based on selectedSubjectIdForFilter
+                // However, for immediate UI consistency, we can set it here, assuming useMemo updates quickly enough.
+                // A more robust way might be to use a separate useEffect that watches filteredClassesForDropdown.
+                setSelectedClassId(examData.classId);
+            } else {
+                // Class ID exists but class not found (e.g., deleted), clear association
+                setSelectedSubjectIdForFilter(null);
+                setSelectedClassId(null);
+            }
+        } else {
+            setSelectedSubjectIdForFilter(null);
+            setSelectedClassId(null);
+        }
+
 
         const loadedBlocks: ExamBlock[] = [];
         const blocksCollectionRef = collection(db, EXAMS_COLLECTION_NAME, editingExamId, "questionBlocks");
@@ -486,11 +551,11 @@ export default function CreateExamPage() {
       }
     };
 
-    if (isLoadingExamData) { 
+    if (isLoadingExamData && !isLoadingUserClasses && !isLoadingUserSubjectsForDropdown) { 
         fetchExamForEditing();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingExamId, user, router, toast, isInitialLoadComplete, isLoadingExamData]); 
+  }, [editingExamId, user, router, toast, isInitialLoadComplete, isLoadingExamData, allUserClasses, userSubjectsForDropdown]); 
 
 
   useEffect(() => {
@@ -499,11 +564,12 @@ export default function CreateExamPage() {
     const examDataToSave = {
       title: examTitle,
       description: examDescription,
+      selectedSubjectIdForFilter, // Save selected subject for filter
       selectedClassId,
       blocks: examBlocks,
     };
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(examDataToSave));
-  }, [examTitle, examDescription, selectedClassId, examBlocks, editingExamId, isInitialLoadComplete, isLoadingExamData]);
+  }, [examTitle, examDescription, selectedSubjectIdForFilter, selectedClassId, examBlocks, editingExamId, isInitialLoadComplete, isLoadingExamData]);
 
 
   const handleAddExamBlock = () => {
@@ -615,6 +681,7 @@ export default function CreateExamPage() {
   const resetForm = () => {
     setExamTitle("");
     setExamDescription("");
+    setSelectedSubjectIdForFilter(null);
     setSelectedClassId(null);
     setExamBlocks([]);
     setAiSuggestionsEnabled(false);
@@ -660,6 +727,7 @@ export default function CreateExamPage() {
             totalQuestions: calculatedTotalQuestions,
             totalPoints: calculatedTotalPoints,
             classId: selectedClassId || null, // Save classId
+            // aiSuggestionsEnabled: aiSuggestionsEnabled, // If you want to save this preference
         };
 
 
@@ -736,7 +804,7 @@ export default function CreateExamPage() {
   };
 
 
-  if (isLoadingExamData && editingExamId && !isInitialLoadComplete && examBlocks.length === 0) {
+  if (isLoadingExamData && editingExamId && (!isInitialLoadComplete || isLoadingUserClasses || isLoadingUserSubjectsForDropdown) && examBlocks.length === 0) {
     return (
         <div className="space-y-6">
             <Card className="shadow-lg">
@@ -746,6 +814,7 @@ export default function CreateExamPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" /> {/* Placeholder for subject dropdown */}
                     <Skeleton className="h-10 w-full" /> {/* Placeholder for class dropdown */}
                     <Skeleton className="h-20 w-full" />
                 </CardContent>
@@ -930,39 +999,60 @@ export default function CreateExamPage() {
                   className="text-sm sm:text-base"
                 />
               </div>
+
               <div className="space-y-1 sm:space-y-2">
-                <Label htmlFor="examDescription" className="text-sm sm:text-base">Description (Optional)</Label>
-                <Textarea
-                  id="examDescription"
-                  placeholder="A brief description of the exam content or instructions."
-                  className="min-h-[80px] sm:min-h-[100px] text-sm sm:text-base"
-                  value={examDescription}
-                  onChange={(e) => setExamDescription(e.target.value)}
-                  disabled={isSaving || isLoadingExamData}
-                />
+                <Label htmlFor="assignSubject" className="text-sm sm:text-base">Assign to Subject (Optional)</Label>
+                <Select
+                  value={selectedSubjectIdForFilter || ""}
+                  onValueChange={handleSubjectFilterChange}
+                  disabled={isLoadingUserSubjectsForDropdown || isSaving || isLoadingExamData}
+                >
+                  <SelectTrigger id="assignSubject" className="flex-grow text-xs sm:text-sm h-9 sm:h-10">
+                    <SelectValue placeholder={isLoadingUserSubjectsForDropdown ? "Loading subjects..." : "Select a subject"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none" className="text-xs sm:text-sm">No Subject Assigned</SelectItem>
+                    {userSubjectsForDropdown.map((subject) => (
+                      <SelectItem key={subject.id} value={subject.id} className="text-xs sm:text-sm">
+                        {subject.name} ({subject.code})
+                      </SelectItem>
+                    ))}
+                    {!isLoadingUserSubjectsForDropdown && userSubjectsForDropdown.length === 0 && (
+                      <SelectItem value="no-subjects" disabled className="text-xs sm:text-sm">
+                        No subjects found. Create one in 'Subjects' tab.
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
+
               <div className="space-y-1 sm:space-y-2">
                 <Label htmlFor="assignClass" className="text-sm sm:text-base">Assign to Class (Optional)</Label>
                 <div className="flex items-center gap-2">
                   <Select
                     value={selectedClassId || ""}
                     onValueChange={(value) => setSelectedClassId(value === "none" ? null : value)}
-                    disabled={isLoadingUserClasses || isSaving || isLoadingExamData}
+                    disabled={isLoadingUserClasses || isSaving || isLoadingExamData || !selectedSubjectIdForFilter || filteredClassesForDropdown.length === 0}
                   >
                     <SelectTrigger id="assignClass" className="flex-grow text-xs sm:text-sm h-9 sm:h-10">
-                      <SelectValue placeholder={isLoadingUserClasses ? "Loading classes..." : "Select a class"} />
+                      <SelectValue placeholder={
+                        !selectedSubjectIdForFilter ? "Select a subject first" :
+                        isLoadingUserClasses ? "Loading classes..." :
+                        filteredClassesForDropdown.length === 0 ? "No classes for subject" :
+                        "Select a class"
+                      } />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none" className="text-xs sm:text-sm">No Class Assigned</SelectItem>
-                      {allUserClasses.map((cls) => (
+                      {filteredClassesForDropdown.map((cls) => (
                         <SelectItem key={cls.id} value={cls.id} className="text-xs sm:text-sm">
-                          {cls.subjectName} ({cls.subjectCode}) - {cls.sectionName} ({cls.yearGrade}) - Code: {cls.code}
+                          {cls.sectionName} ({cls.yearGrade}) - Code: {cls.code}
                         </SelectItem>
                       ))}
-                      {!isLoadingUserClasses && allUserClasses.length === 0 && (
-                        <SelectItem value="no-classes" disabled className="text-xs sm:text-sm">
-                          No classes found. Create one in 'Students' tab.
-                        </SelectItem>
+                      {selectedSubjectIdForFilter && !isLoadingUserClasses && filteredClassesForDropdown.length === 0 && (
+                         <SelectItem value="no-classes-for-subject" disabled className="text-xs sm:text-sm">
+                           No classes found for selected subject.
+                         </SelectItem>
                       )}
                     </SelectContent>
                   </Select>
@@ -981,6 +1071,19 @@ export default function CreateExamPage() {
                   )}
                 </div>
               </div>
+
+              <div className="space-y-1 sm:space-y-2">
+                <Label htmlFor="examDescription" className="text-sm sm:text-base">Description (Optional)</Label>
+                <Textarea
+                  id="examDescription"
+                  placeholder="A brief description of the exam content or instructions."
+                  className="min-h-[80px] sm:min-h-[100px] text-sm sm:text-base"
+                  value={examDescription}
+                  onChange={(e) => setExamDescription(e.target.value)}
+                  disabled={isSaving || isLoadingExamData}
+                />
+              </div>
+              
               <div className="flex items-center space-x-2 pt-1 sm:pt-2">
                 <Switch
                     id="ai-suggestions-toggle"

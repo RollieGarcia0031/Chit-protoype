@@ -31,12 +31,19 @@ import type { ExamSummaryData, FetchedSubjectInfo, ClassInfoForDropdown } from "
 
 type DisplayMode = 'all' | 'bySubject' | 'byClass';
 
-interface GroupedExams<T extends string | number | symbol> {
-  [key: string]: {
+interface GroupedExamsBySubject {
+  [subjectId: string]: {
     groupTitle: string;
-    groupSubTitle?: string; // Kept for flexibility, but won't be used for section/year grouping
     exams: ExamSummaryData[];
   };
+}
+
+interface ClassGroup {
+  groupKey: string; // e.g., "SectionA-Grade10"
+  groupTitle: string; // e.g., "Section A (Grade 10)"
+  exams: ExamSummaryData[];
+  parsedYear: number;
+  sectionName: string;
 }
 
 
@@ -158,7 +165,7 @@ export default function ViewExamsPage() {
 
   const groupedExamsBySubject = useMemo(() => {
     if (displayMode !== 'bySubject') return {};
-    const grouped: GroupedExams<string> = {};
+    const grouped: GroupedExamsBySubject = {};
     allUserSubjects.forEach(subject => {
         grouped[subject.id] = { 
             groupTitle: `${subject.name} (${subject.code})`, 
@@ -174,57 +181,84 @@ export default function ViewExamsPage() {
     return grouped;
   }, [displayMode, exams, allUserSubjects]);
 
-  const groupedExamsByClass = useMemo(() => {
-    if (displayMode !== 'byClass' || isLoadingClasses || isLoadingExams || allUserClasses.length === 0) return {};
+  const groupedExamsByClass: ClassGroup[] = useMemo(() => {
+    if (displayMode !== 'byClass' || isLoadingClasses || isLoadingExams || allUserClasses.length === 0) return [];
 
-    const grouped: GroupedExams<string> = {}; // Key will be "SectionName-YearGrade"
-
-    // First, identify all unique "SectionName (YearGrade)" combinations from allUserClasses
-    const uniqueSectionYearGroups: { [key: string]: { groupTitle: string; classIdsInGroup: string[] } } = {};
-    allUserClasses.forEach(cls => {
-        const groupKey = `${cls.sectionName}-${cls.yearGrade}`; // Consistent key for grouping
-        const groupTitle = `${cls.sectionName} (${cls.yearGrade})`;
-        if (!uniqueSectionYearGroups[groupKey]) {
-            uniqueSectionYearGroups[groupKey] = { groupTitle, classIdsInGroup: [] };
+    const extractNumericYear = (yearGradeStr: string): number => {
+        const numericMatch = yearGradeStr.match(/\d+/);
+        if (numericMatch) {
+            return parseInt(numericMatch[0], 10);
         }
-        uniqueSectionYearGroups[groupKey].classIdsInGroup.push(cls.id);
-    });
-    
-    // Now, populate these groups with exams
-    Object.entries(uniqueSectionYearGroups).forEach(([groupKey, groupData]) => {
-        const examsInGroup = exams
-            .filter(exam =>
-                exam.classIds && exam.classIds.some(assignedClassId => groupData.classIdsInGroup.includes(assignedClassId))
-            )
-            .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+        const lowerYearGrade = yearGradeStr.toLowerCase();
+        if (lowerYearGrade.includes('k') || lowerYearGrade.includes('kinder')) return -1;
+        if (lowerYearGrade.includes('pre-k') || lowerYearGrade.includes('pre k')) return -2;
+        return Infinity; 
+    };
 
-        // Add group even if no exams yet, but classes matching this section/year exist
-        if (groupData.classIdsInGroup.length > 0) {
-             if (!grouped[groupKey]) { // Initialize if not present
-                grouped[groupKey] = {
-                    groupTitle: groupData.groupTitle,
+    // Step 1: Create temporary group data with sorting fields
+    interface TempClassGroupData {
+      groupTitle: string;
+      classIdsInGroup: string[];
+      sectionName: string;
+      parsedYear: number;
+    }
+    const tempGroupData: { [key: string]: TempClassGroupData } = {};
+
+    allUserClasses.forEach(cls => {
+        const groupKey = `${cls.sectionName}-${cls.yearGrade}`; // Unique key for section-year combo
+        const parsedYear = extractNumericYear(cls.yearGrade);
+
+        if (!tempGroupData[groupKey]) {
+            tempGroupData[groupKey] = {
+                groupTitle: `${cls.sectionName} (${cls.yearGrade})`,
+                classIdsInGroup: [],
+                sectionName: cls.sectionName,
+                parsedYear: parsedYear
+            };
+        }
+        tempGroupData[groupKey].classIdsInGroup.push(cls.id);
+    });
+
+    // Step 2: Populate groups with exams
+    const classGroupMap: { [key: string]: ClassGroup } = {};
+
+    Object.entries(tempGroupData).forEach(([groupKey, groupInfo]) => {
+        const examsInGroup = exams.filter(exam =>
+            exam.classIds && exam.classIds.some(assignedClassId => groupInfo.classIdsInGroup.includes(assignedClassId))
+        ).sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()); // Sort exams within group by date
+
+        if (groupInfo.classIdsInGroup.length > 0 || examsInGroup.length > 0) {
+            if (!classGroupMap[groupKey]) {
+                 classGroupMap[groupKey] = {
+                    groupKey: groupKey,
+                    groupTitle: groupInfo.groupTitle,
                     exams: [],
+                    sectionName: groupInfo.sectionName,
+                    parsedYear: groupInfo.parsedYear,
                 };
             }
-            grouped[groupKey].exams.push(...examsInGroup);
-            // Ensure unique exams in case an exam is linked to multiple classes in the same section/year group
-            grouped[groupKey].exams = Array.from(new Set(grouped[groupKey].exams.map(e => e.id))).map(id => grouped[groupKey].exams.find(e => e.id === id)!);
-
-             if (grouped[groupKey].exams.length === 0 && !examsInGroup.length) {
-                // Keep the group if classes exist, even with 0 exams for it yet
-            }
+            // Deduplicate exams before pushing (in case an exam is assigned to multiple classes in the same section/year group via different subject routes)
+            const existingExamIds = new Set(classGroupMap[groupKey].exams.map(e => e.id));
+            examsInGroup.forEach(exam => {
+                if (!existingExamIds.has(exam.id)) {
+                    classGroupMap[groupKey].exams.push(exam);
+                    existingExamIds.add(exam.id);
+                }
+            });
         }
     });
 
-    // Sort the groups by title
-    const sortedGroupedExams: GroupedExams<string> = {};
-    Object.keys(grouped)
-      .sort((a,b) => grouped[a].groupTitle.localeCompare(grouped[b].groupTitle))
-      .forEach(key => {
-        sortedGroupedExams[key] = grouped[key];
-      });
+    // Step 3: Convert to array and sort
+    const finalGroupArray: ClassGroup[] = Object.values(classGroupMap);
 
-    return sortedGroupedExams;
+    finalGroupArray.sort((groupA, groupB) => {
+        if (groupA.parsedYear !== groupB.parsedYear) {
+            return groupA.parsedYear - groupB.parsedYear; // Sort by numeric year first
+        }
+        return groupA.sectionName.localeCompare(groupB.sectionName); // Then by section name
+    });
+
+    return finalGroupArray;
   }, [displayMode, exams, allUserClasses, isLoadingClasses, isLoadingExams]);
 
 
@@ -447,14 +481,13 @@ export default function ViewExamsPage() {
     )}
     
     {displayMode === 'byClass' && (
-        Object.keys(groupedExamsByClass).length > 0 ? (
-            Object.entries(groupedExamsByClass).map(([groupKey, group]) => ( // groupKey is "SectionName-YearGrade"
-                <Card key={groupKey} className="shadow-lg">
+        groupedExamsByClass.length > 0 ? (
+            groupedExamsByClass.map((group) => (
+                <Card key={group.groupKey} className="shadow-lg">
                     <CardHeader>
                         <CardTitle className="text-lg sm:text-xl flex items-center">
-                            <Users2Icon className="mr-2 h-5 w-5 text-primary"/> {group.groupTitle} {/* This is "Section Name (Year/Grade)" */}
+                            <Users2Icon className="mr-2 h-5 w-5 text-primary"/> {group.groupTitle}
                         </CardTitle>
-                        {/* Removed groupSubTitle as it's not relevant for this grouping */}
                     </CardHeader>
                     <CardContent>
                         {renderExamTable(group.exams, "class section/year")}
@@ -481,7 +514,7 @@ export default function ViewExamsPage() {
     {/* Fallback for exams not fitting into current grouped views if needed */}
     {displayMode !== 'all' && 
         ( (displayMode === 'bySubject' && Object.keys(groupedExamsBySubject).length === 0 && !isLoadingSubjects && exams.length > 0) ||
-          (displayMode === 'byClass' && Object.keys(groupedExamsByClass).length === 0 && !isLoadingClasses && !isLoadingSubjects && exams.length > 0)
+          (displayMode === 'byClass' && groupedExamsByClass.length === 0 && !isLoadingClasses && !isLoadingSubjects && exams.length > 0)
         ) && (
         <Card className="shadow-lg">
             <CardHeader>

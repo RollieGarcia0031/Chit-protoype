@@ -74,12 +74,12 @@ export interface ExamSummaryData {
   totalQuestions: number;
   totalPoints: number;
   status: "Draft" | "Published" | "Archived";
-  classId?: string; // ID of the class this exam is associated with
+  classIds: string[]; // Changed from classId: string
 }
 
 export interface FullExamData extends ExamSummaryData {
     examBlocks: ExamBlock[];
-    // classId is inherited from ExamSummaryData
+    // classIds is inherited from ExamSummaryData
 }
 
 // This type is used in student/page.tsx and will be used in create-exam/page.tsx
@@ -98,3 +98,4 @@ export interface FetchedSubjectInfo {
   name: string;
   code: string;
 }
+

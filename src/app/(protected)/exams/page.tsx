@@ -38,12 +38,13 @@ interface GroupedExamsBySubject {
   };
 }
 
+// Interface specifically for the "Group by Class" view to aid sorting
 interface ClassGroup {
   groupKey: string; // e.g., "SectionA-Grade10"
   groupTitle: string; // e.g., "Section A (Grade 10)"
   exams: ExamSummaryData[];
-  parsedYear: number;
-  sectionName: string;
+  parsedYear: number; // For sorting by year
+  sectionName: string; // For secondary sorting by section name
 }
 
 
@@ -185,14 +186,15 @@ export default function ViewExamsPage() {
     if (displayMode !== 'byClass' || isLoadingClasses || isLoadingExams || allUserClasses.length === 0) return [];
 
     const extractNumericYear = (yearGradeStr: string): number => {
+        if (!yearGradeStr) return Infinity;
         const numericMatch = yearGradeStr.match(/\d+/);
         if (numericMatch) {
             return parseInt(numericMatch[0], 10);
         }
         const lowerYearGrade = yearGradeStr.toLowerCase();
-        if (lowerYearGrade.includes('k') || lowerYearGrade.includes('kinder')) return -1;
-        if (lowerYearGrade.includes('pre-k') || lowerYearGrade.includes('pre k')) return -2;
-        return Infinity; 
+        if (lowerYearGrade.includes('k') || lowerYearGrade.includes('kinder')) return -1; // Kindergarten sorts before Grade 1
+        if (lowerYearGrade.includes('pre-k') || lowerYearGrade.includes('pre k')) return -2; // Pre-K sorts before Kindergarten
+        return Infinity; // Non-numeric grades without specific handling sort last
     };
 
     // Step 1: Create temporary group data with sorting fields
@@ -227,7 +229,7 @@ export default function ViewExamsPage() {
             exam.classIds && exam.classIds.some(assignedClassId => groupInfo.classIdsInGroup.includes(assignedClassId))
         ).sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()); // Sort exams within group by date
 
-        if (groupInfo.classIdsInGroup.length > 0 || examsInGroup.length > 0) {
+        if (groupInfo.classIdsInGroup.length > 0 || examsInGroup.length > 0) { // Only create group if classes exist or exams are assigned
             if (!classGroupMap[groupKey]) {
                  classGroupMap[groupKey] = {
                     groupKey: groupKey,
@@ -237,7 +239,7 @@ export default function ViewExamsPage() {
                     parsedYear: groupInfo.parsedYear,
                 };
             }
-            // Deduplicate exams before pushing (in case an exam is assigned to multiple classes in the same section/year group via different subject routes)
+            // Deduplicate exams before pushing
             const existingExamIds = new Set(classGroupMap[groupKey].exams.map(e => e.id));
             examsInGroup.forEach(exam => {
                 if (!existingExamIds.has(exam.id)) {
@@ -249,7 +251,7 @@ export default function ViewExamsPage() {
     });
 
     // Step 3: Convert to array and sort
-    const finalGroupArray: ClassGroup[] = Object.values(classGroupMap);
+    let finalGroupArray: ClassGroup[] = Object.values(classGroupMap);
 
     finalGroupArray.sort((groupA, groupB) => {
         if (groupA.parsedYear !== groupB.parsedYear) {
@@ -482,7 +484,7 @@ export default function ViewExamsPage() {
     
     {displayMode === 'byClass' && (
         groupedExamsByClass.length > 0 ? (
-            groupedExamsByClass.map((group) => (
+            groupedExamsByClass.map((group) => ( // Iterate over the sorted array
                 <Card key={group.groupKey} className="shadow-lg">
                     <CardHeader>
                         <CardTitle className="text-lg sm:text-xl flex items-center">

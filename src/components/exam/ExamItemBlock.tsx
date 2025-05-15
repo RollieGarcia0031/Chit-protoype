@@ -175,7 +175,7 @@ export function ExamItemBlock({
         <CardTitle className="text-xs sm:text-sm md:text-base font-medium flex-shrink-0 mr-auto order-first">Question {itemIndex + 1}</CardTitle>
         <div className="flex items-center gap-1 sm:gap-2 w-full justify-between sm:w-auto sm:ml-auto sm:order-none">
             <div className="flex items-center gap-1 sm:gap-1.5">
-                <Label htmlFor={`points-${item.id}-q${itemIndex}`} className="text-2xs sm:text-xs whitespace-nowrap">Points:</Label>
+                <Label htmlFor={`points-${item.id}-q${itemIndex}`} className="text-xs sm:text-sm whitespace-nowrap">Points:</Label>
                 <Input
                     id={`points-${item.id}-q${itemIndex}`}
                     type="number"
@@ -183,7 +183,7 @@ export function ExamItemBlock({
                     onChange={handlePointsChange}
                     min="0"
                     placeholder="Pts"
-                    className="h-7 w-10 text-2xs text-center sm:h-8 sm:w-14 sm:text-xs"
+                    className="h-7 w-10 text-xs text-center sm:h-8 sm:w-14 sm:text-xs"
                     disabled={disabled}
                 />
             </div>
@@ -214,43 +214,46 @@ export function ExamItemBlock({
 
         {/* Specific UI for Pooled Choices */}
         {questionType === 'pooled-choices' && item.type === 'pooled-choices' && (
-          <div className="space-y-1.5 sm:space-y-2">
-            <Label htmlFor={`questionText-${item.id}`} className="block text-xs sm:text-sm font-medium">
-              Question Text (Select correct answer from pool on the left)
-            </Label>
-            <div className="flex items-start gap-2">
-              <Select
-                value={getSelectedLetterFromPool()}
-                onValueChange={handlePooledChoiceAnswerChange}
-                disabled={disabled || !choicePool || choicePool.length === 0}
-              >
-                <SelectTrigger
-                  id={`pooled-choice-answer-trigger-${item.id}`}
-                  className="h-9 w-16 text-xs sm:text-sm px-2 flex-shrink-0 mt-0.5" // mt-0.5 to align better with textarea if font sizes differ
-                  aria-label="Select correct answer from pool"
+          <div className="space-y-2">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <div className="flex-shrink-0 w-20 sm:w-24">
+                <Label htmlFor={`pooled-choice-answer-trigger-${item.id}`} className="block text-xs sm:text-sm font-medium mb-1">Answer</Label>
+                <Select
+                  value={getSelectedLetterFromPool()}
+                  onValueChange={handlePooledChoiceAnswerChange}
+                  disabled={disabled || !choicePool || choicePool.length === 0}
                 >
-                  <SelectValue placeholder="Ans." />
-                </SelectTrigger>
-                <SelectContent>
-                  {(choicePool || []).map((poolOpt, poolOptIndex) => (
-                    <SelectItem key={poolOpt.id} value={getAlphabetLetter(poolOptIndex)} className="text-xs sm:text-sm">
-                      {getAlphabetLetter(poolOptIndex)}. {poolOpt.text}
-                    </SelectItem>
-                  ))}
-                   {(!choicePool || choicePool.length === 0) && (
-                    <SelectItem value="no-options" disabled className="text-xs sm:text-sm">No choices in pool</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+                  <SelectTrigger
+                    id={`pooled-choice-answer-trigger-${item.id}`}
+                    className="h-9 w-full text-xs sm:text-sm px-2"
+                    aria-label="Select correct answer from pool"
+                  >
+                    <SelectValue placeholder="Ans." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(choicePool || []).map((poolOpt, poolOptIndex) => (
+                      <SelectItem key={poolOpt.id} value={getAlphabetLetter(poolOptIndex)} className="text-xs sm:text-sm">
+                        {getAlphabetLetter(poolOptIndex)}. {poolOpt.text}
+                      </SelectItem>
+                    ))}
+                    {(!choicePool || choicePool.length === 0) && (
+                      <SelectItem value="no-options" disabled className="text-xs sm:text-sm">No choices in pool</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
 
-              <Textarea
-                id={`questionText-${item.id}`}
-                value={item.questionText}
-                onChange={handleQuestionTextChange}
-                placeholder="e.g., Which of the following is a primary color?"
-                className="min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm flex-grow"
-                disabled={disabled}
-              />
+              <div className="flex-grow">
+                <Label htmlFor={`questionText-${item.id}`} className="block text-xs sm:text-sm font-medium mb-1">Question Text</Label>
+                <Textarea
+                  id={`questionText-${item.id}`}
+                  value={item.questionText}
+                  onChange={handleQuestionTextChange}
+                  placeholder="e.g., Which of the following is a primary color?"
+                  className="min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm"
+                  disabled={disabled}
+                />
+              </div>
             </div>
             {!choicePool || choicePool.length === 0 && (
                 <p className="text-2xs sm:text-xs text-muted-foreground">No choices in the pool. Add choices in the block settings above.</p>
@@ -289,7 +292,7 @@ export function ExamItemBlock({
                 )}
               </div>
             ))}
-            <Button type="button" variant="outline" onClick={handleAddOption} size="sm" className="text-2xs sm:text-xs h-7 sm:h-8 px-2 sm:px-3" disabled={disabled}>
+            <Button type="button" variant="outline" onClick={handleAddOption} size="sm" className="text-xs sm:text-xs h-7 sm:h-8 px-2 sm:px-3" disabled={disabled}>
               <PlusCircle className="mr-1 sm:mr-1.5 h-3 w-3 sm:h-3.5 sm:w-3.5" /> Add Option
             </Button>
           </div>
@@ -368,3 +371,4 @@ export function ExamItemBlock({
     </Card>
   );
 }
+

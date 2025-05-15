@@ -5,3 +5,4 @@
  */
 
 export const EXAMS_COLLECTION_NAME = 'chit1';
+export const SUBJECTS_COLLECTION_NAME = 'chit1_subjects';

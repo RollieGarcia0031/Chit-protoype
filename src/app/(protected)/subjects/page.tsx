@@ -1,55 +1,124 @@
-
 // src/app/(protected)/subjects/page.tsx
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BookOpen, PlusCircle, Edit3, Trash2, List } from "lucide-react";
+import { BookOpen, PlusCircle, Edit3, Trash2, List, Loader2, AlertTriangle } from "lucide-react";
 import { generateId } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useAuth } from '@/contexts/auth-context';
+import { db } from '@/lib/firebase/config';
+import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, orderBy, doc, updateDoc, deleteDoc, Timestamp } from "firebase/firestore";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface SubjectInfo {
   id: string;
   name: string;
-  code: string; // Added subject code
+  code: string;
+  userId?: string; // For Firestore query
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export default function SubjectsPage() {
+  const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const [subjects, setSubjects] = useState<SubjectInfo[]>([]);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(true);
+  const [isSavingSubject, setIsSavingSubject] = useState(false);
+  const [deletingSubjectId, setDeletingSubjectId] = useState<string | null>(null);
+  
   const [isAddSubjectDialogOpen, setIsAddSubjectDialogOpen] = useState(false);
-  
   const [newSubjectName, setNewSubjectName] = useState('');
-  const [newSubjectCode, setNewSubjectCode] = useState(''); // State for subject code
-  
+  const [newSubjectCode, setNewSubjectCode] = useState('');
   const [editingSubject, setEditingSubject] = useState<SubjectInfo | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const handleAddOrUpdateSubject = (event: FormEvent) => {
+  const fetchSubjects = async () => {
+    if (!user) {
+      setSubjects([]);
+      setIsLoadingSubjects(false);
+      return;
+    }
+    setIsLoadingSubjects(true);
+    setFetchError(null);
+    try {
+      const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
+      const q = query(subjectsCollectionRef, where("userId", "==", user.uid), orderBy("name", "asc"));
+      const querySnapshot = await getDocs(q);
+      const fetchedSubjects: SubjectInfo[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedSubjects.push({ id: doc.id, ...doc.data() } as SubjectInfo);
+      });
+      setSubjects(fetchedSubjects);
+    } catch (e) {
+      console.error("Error fetching subjects: ", e);
+      setFetchError("Failed to load subjects. Please try again.");
+      toast({
+        title: "Error",
+        description: "Could not fetch subjects.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingSubjects(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      fetchSubjects();
+    } else if (!authLoading && !user) {
+      setIsLoadingSubjects(false);
+      setSubjects([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading]);
+
+  const handleAddOrUpdateSubject = async (event: FormEvent) => {
     event.preventDefault();
+    if (!user) {
+      toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
+      return;
+    }
     if (!newSubjectName.trim() || !newSubjectCode.trim()) {
-      alert("Subject Name and Subject Code are required.");
+      toast({ title: "Validation Error", description: "Subject Name and Code are required.", variant: "destructive" });
       return;
     }
 
-    if (editingSubject) {
-      setSubjects(subjects.map(s => s.id === editingSubject.id ? { 
-        ...s, 
-        name: newSubjectName,
-        code: newSubjectCode.toUpperCase(), // Store code in uppercase
-      } : s));
-    } else {
-      const newSubject: SubjectInfo = {
-        id: generateId('subject'),
-        name: newSubjectName,
-        code: newSubjectCode.toUpperCase(), // Store code in uppercase
-      };
-      setSubjects([...subjects, newSubject]);
+    setIsSavingSubject(true);
+    const subjectData = {
+      name: newSubjectName,
+      code: newSubjectCode.toUpperCase(),
+      userId: user.uid,
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      if (editingSubject) {
+        const subjectDocRef = doc(db, SUBJECTS_COLLECTION_NAME, editingSubject.id);
+        await updateDoc(subjectDocRef, subjectData);
+        toast({ title: "Subject Updated", description: `"${newSubjectName}" updated successfully.` });
+      } else {
+        await addDoc(collection(db, SUBJECTS_COLLECTION_NAME), {
+          ...subjectData,
+          createdAt: serverTimestamp(),
+        });
+        toast({ title: "Subject Added", description: `"${newSubjectName}" added successfully.` });
+      }
+      closeDialog();
+      await fetchSubjects(); // Refetch to update list
+    } catch (e) {
+      console.error("Error saving subject: ", e);
+      toast({ title: "Error Saving Subject", description: "There was an issue. Please try again.", variant: "destructive" });
+    } finally {
+      setIsSavingSubject(false);
     }
-    
-    closeDialog();
   };
 
   const openEditDialog = (subjectInfo: SubjectInfo) => {
@@ -59,15 +128,69 @@ export default function SubjectsPage() {
     setIsAddSubjectDialogOpen(true);
   };
 
-  const handleDeleteSubject = (subjectId: string) => {
-    setSubjects(subjects.filter(s => s.id !== subjectId));
+  const handleDeleteSubject = async (subjectId: string, subjectName: string) => {
+    if (!user) return;
+    setDeletingSubjectId(subjectId);
+    try {
+      await deleteDoc(doc(db, SUBJECTS_COLLECTION_NAME, subjectId));
+      toast({ title: "Subject Deleted", description: `Subject "${subjectName}" deleted.` });
+      setSubjects(prevSubjects => prevSubjects.filter(s => s.id !== subjectId));
+    } catch (e) {
+      console.error("Error deleting subject: ", e);
+      toast({ title: "Error Deleting Subject", description: "Could not delete subject.", variant: "destructive" });
+    } finally {
+      setDeletingSubjectId(null);
+    }
   };
   
   const closeDialog = () => {
     setIsAddSubjectDialogOpen(false);
     setNewSubjectName('');
-    setNewSubjectCode(''); // Reset subject code state
+    setNewSubjectCode('');
     setEditingSubject(null);
+  };
+
+  if (authLoading || isLoadingSubjects) {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <Card className="shadow-lg">
+          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div>
+              <Skeleton className="h-7 w-40 mb-1 sm:h-8 sm:w-48" />
+              <Skeleton className="h-4 w-64 sm:h-5 sm:w-80" />
+            </div>
+            <Skeleton className="h-9 w-36 sm:h-10 sm:w-40" />
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[...Array(3)].map((_, i) => (
+                <Card key={i} className="shadow-md">
+                  <CardHeader className="pb-2 sm:pb-3">
+                    <Skeleton className="h-6 w-3/4 mb-1" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </CardHeader>
+                  <CardFooter className="flex justify-end gap-2 pt-0 pb-3 sm:pb-4">
+                    <Skeleton className="h-7 w-7 sm:h-8 sm:w-8 rounded-md" />
+                    <Skeleton className="h-7 w-7 sm:h-8 sm:w-8 rounded-md" />
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4">
+        <AlertTriangle className="h-12 w-12 sm:h-16 sm:w-16 text-destructive mb-4" />
+        <h2 className="text-xl sm:text-2xl font-semibold mb-2">Oops! Something went wrong.</h2>
+        <p className="text-sm sm:text-base text-muted-foreground mb-4">{fetchError}</p>
+        <Button onClick={fetchSubjects} size="sm" className="text-xs sm:text-sm">Try Again</Button>
+      </div>
+    );
   }
 
   return (
@@ -88,7 +211,7 @@ export default function SubjectsPage() {
             else setIsAddSubjectDialogOpen(true);
           }}>
             <DialogTrigger asChild>
-              <Button size="sm" className="text-xs sm:text-sm w-full sm:w-auto">
+              <Button size="sm" className="text-xs sm:text-sm w-full sm:w-auto" disabled={isSavingSubject}>
                 <PlusCircle className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 Add New Subject
               </Button>
@@ -112,6 +235,7 @@ export default function SubjectsPage() {
                     placeholder="e.g., Mathematics 101"
                     className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
                     required
+                    disabled={isSavingSubject}
                   />
                 </div>
                 <div className="grid grid-cols-4 items-center gap-2 sm:gap-4">
@@ -124,15 +248,19 @@ export default function SubjectsPage() {
                     onChange={(e) => setNewSubjectCode(e.target.value.toUpperCase())}
                     placeholder="e.g., MATH101"
                     className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
-                    maxLength={10} // Optional: limit code length
+                    maxLength={10}
                     required
+                    disabled={isSavingSubject}
                   />
                 </div>
                 <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 mt-2">
                   <DialogClose asChild>
-                     <Button type="button" variant="outline" size="sm" className="text-xs sm:text-sm">Cancel</Button>
+                     <Button type="button" variant="outline" size="sm" className="text-xs sm:text-sm" disabled={isSavingSubject}>Cancel</Button>
                   </DialogClose>
-                  <Button type="submit" size="sm" className="text-xs sm:text-sm">{editingSubject ? "Save Changes" : "Add Subject"}</Button>
+                  <Button type="submit" size="sm" className="text-xs sm:text-sm" disabled={isSavingSubject}>
+                    {isSavingSubject && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {editingSubject ? "Save Changes" : "Add Subject"}
+                  </Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -161,12 +289,12 @@ export default function SubjectsPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardFooter className="flex justify-end gap-2 pt-0 pb-3 sm:pb-4">
-                        <Button variant="outline" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" onClick={() => openEditDialog(sub)}>
+                        <Button variant="outline" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" onClick={() => openEditDialog(sub)} disabled={deletingSubjectId === sub.id || isSavingSubject}>
                             <Edit3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             <span className="sr-only">Edit Subject</span>
                         </Button>
-                        <Button variant="destructive" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" onClick={() => handleDeleteSubject(sub.id)}>
-                            <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                        <Button variant="destructive" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" onClick={() => handleDeleteSubject(sub.id, sub.name)} disabled={deletingSubjectId === sub.id || isSavingSubject}>
+                            {deletingSubjectId === sub.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
                             <span className="sr-only">Delete Subject</span>
                         </Button>
                     </CardFooter>
@@ -185,4 +313,3 @@ export default function SubjectsPage() {
     </div>
   );
 }
-

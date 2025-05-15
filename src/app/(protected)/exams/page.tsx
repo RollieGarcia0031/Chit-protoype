@@ -23,7 +23,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from "@/config/firebase-constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -34,7 +34,7 @@ type DisplayMode = 'all' | 'bySubject' | 'byClass';
 interface GroupedExams<T extends string | number | symbol> {
   [key: string]: {
     groupTitle: string;
-    groupSubTitle?: string;
+    groupSubTitle?: string; // Kept for flexibility, but won't be used for section/year grouping
     exams: ExamSummaryData[];
   };
 }
@@ -118,7 +118,6 @@ export default function ViewExamsPage() {
   }, [user, authLoading]);
 
   useEffect(() => {
-    // Fetch classes only after subjects are loaded
     if (user && !isLoadingSubjects && allUserSubjects.length > 0) {
         const fetchUserClasses = async () => {
             setIsLoadingClasses(true);
@@ -151,7 +150,7 @@ export default function ViewExamsPage() {
         };
         fetchUserClasses();
     } else if (user && !isLoadingSubjects && allUserSubjects.length === 0) {
-        setAllUserClasses([]); // No subjects, so no classes
+        setAllUserClasses([]); 
         setIsLoadingClasses(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -176,18 +175,57 @@ export default function ViewExamsPage() {
   }, [displayMode, exams, allUserSubjects]);
 
   const groupedExamsByClass = useMemo(() => {
-    if (displayMode !== 'byClass') return {};
-    const grouped: GroupedExams<string> = {};
+    if (displayMode !== 'byClass' || isLoadingClasses || isLoadingExams || allUserClasses.length === 0) return {};
+
+    const grouped: GroupedExams<string> = {}; // Key will be "SectionName-YearGrade"
+
+    // First, identify all unique "SectionName (YearGrade)" combinations from allUserClasses
+    const uniqueSectionYearGroups: { [key: string]: { groupTitle: string; classIdsInGroup: string[] } } = {};
     allUserClasses.forEach(cls => {
-        grouped[cls.id] = { 
-            groupTitle: `${cls.subjectName} (${cls.subjectCode}) - ${cls.sectionName} (${cls.yearGrade})`, 
-            groupSubTitle: `Class Code: ${cls.code}`,
-            exams: exams.filter(exam => exam.classIds && exam.classIds.includes(cls.id))
-                        .sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis())
-        };
+        const groupKey = `${cls.sectionName}-${cls.yearGrade}`; // Consistent key for grouping
+        const groupTitle = `${cls.sectionName} (${cls.yearGrade})`;
+        if (!uniqueSectionYearGroups[groupKey]) {
+            uniqueSectionYearGroups[groupKey] = { groupTitle, classIdsInGroup: [] };
+        }
+        uniqueSectionYearGroups[groupKey].classIdsInGroup.push(cls.id);
     });
-    return grouped;
-  }, [displayMode, exams, allUserClasses]);
+    
+    // Now, populate these groups with exams
+    Object.entries(uniqueSectionYearGroups).forEach(([groupKey, groupData]) => {
+        const examsInGroup = exams
+            .filter(exam =>
+                exam.classIds && exam.classIds.some(assignedClassId => groupData.classIdsInGroup.includes(assignedClassId))
+            )
+            .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+
+        // Add group even if no exams yet, but classes matching this section/year exist
+        if (groupData.classIdsInGroup.length > 0) {
+             if (!grouped[groupKey]) { // Initialize if not present
+                grouped[groupKey] = {
+                    groupTitle: groupData.groupTitle,
+                    exams: [],
+                };
+            }
+            grouped[groupKey].exams.push(...examsInGroup);
+            // Ensure unique exams in case an exam is linked to multiple classes in the same section/year group
+            grouped[groupKey].exams = Array.from(new Set(grouped[groupKey].exams.map(e => e.id))).map(id => grouped[groupKey].exams.find(e => e.id === id)!);
+
+             if (grouped[groupKey].exams.length === 0 && !examsInGroup.length) {
+                // Keep the group if classes exist, even with 0 exams for it yet
+            }
+        }
+    });
+
+    // Sort the groups by title
+    const sortedGroupedExams: GroupedExams<string> = {};
+    Object.keys(grouped)
+      .sort((a,b) => grouped[a].groupTitle.localeCompare(grouped[b].groupTitle))
+      .forEach(key => {
+        sortedGroupedExams[key] = grouped[key];
+      });
+
+    return sortedGroupedExams;
+  }, [displayMode, exams, allUserClasses, isLoadingClasses, isLoadingExams]);
 
 
   const handleDeleteExam = async (examId: string) => {
@@ -410,20 +448,20 @@ export default function ViewExamsPage() {
     
     {displayMode === 'byClass' && (
         Object.keys(groupedExamsByClass).length > 0 ? (
-            Object.entries(groupedExamsByClass).map(([classId, group]) => (
-                <Card key={classId} className="shadow-lg">
+            Object.entries(groupedExamsByClass).map(([groupKey, group]) => ( // groupKey is "SectionName-YearGrade"
+                <Card key={groupKey} className="shadow-lg">
                     <CardHeader>
                         <CardTitle className="text-lg sm:text-xl flex items-center">
-                            <Users2Icon className="mr-2 h-5 w-5 text-primary"/> {group.groupTitle}
+                            <Users2Icon className="mr-2 h-5 w-5 text-primary"/> {group.groupTitle} {/* This is "Section Name (Year/Grade)" */}
                         </CardTitle>
-                        {group.groupSubTitle && <CardDescription className="text-xs sm:text-sm">{group.groupSubTitle}</CardDescription>}
+                        {/* Removed groupSubTitle as it's not relevant for this grouping */}
                     </CardHeader>
                     <CardContent>
-                        {renderExamTable(group.exams, "class")}
+                        {renderExamTable(group.exams, "class section/year")}
                     </CardContent>
                      {group.exams.length > 0 && (
                         <CardFooter className="text-xs sm:text-sm text-muted-foreground">
-                            Showing {group.exams.length} exam{group.exams.length === 1 ? '' : 's'} for this class.
+                            Showing {group.exams.length} exam{group.exams.length === 1 ? '' : 's'} for this section/year.
                         </CardFooter>
                     )}
                 </Card>
@@ -440,22 +478,20 @@ export default function ViewExamsPage() {
         )
     )}
 
+    {/* Fallback for exams not fitting into current grouped views if needed */}
     {displayMode !== 'all' && 
-        ( (displayMode === 'bySubject' && Object.keys(groupedExamsBySubject).length === 0 && !isLoadingSubjects) ||
-          (displayMode === 'byClass' && Object.keys(groupedExamsByClass).length === 0 && !isLoadingClasses && !isLoadingSubjects)
-        ) && exams.length > 0 && (
+        ( (displayMode === 'bySubject' && Object.keys(groupedExamsBySubject).length === 0 && !isLoadingSubjects && exams.length > 0) ||
+          (displayMode === 'byClass' && Object.keys(groupedExamsByClass).length === 0 && !isLoadingClasses && !isLoadingSubjects && exams.length > 0)
+        ) && (
         <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle className="text-lg sm:text-xl flex items-center">
                     <Layers className="mr-2 h-5 w-5 text-primary"/> Other Exams
                 </CardTitle>
-                <CardDescription className="text-xs sm:text-sm">Exams not matching the current grouping criteria.</CardDescription>
+                <CardDescription className="text-xs sm:text-sm">Exams not matching the current grouping criteria or no groups defined.</CardDescription>
             </CardHeader>
             <CardContent>
-                {renderExamTable(exams.filter(ex => 
-                    (displayMode === 'bySubject' && (!ex.subjectId || !allUserSubjects.find(s => s.id === ex.subjectId))) ||
-                    (displayMode === 'byClass' && !allUserClasses.some(c => ex.classIds.includes(c.id)))
-                ), "grouping")}
+                {renderExamTable(exams, "other criteria")}
             </CardContent>
         </Card>
     )}
@@ -463,3 +499,4 @@ export default function ViewExamsPage() {
     </div>
   );
 }
+

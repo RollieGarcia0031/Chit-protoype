@@ -16,7 +16,7 @@ import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuest
 import { generateId, debounce } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
 import { TotalPointsDisplay } from "@/components/exam/TotalPointsDisplay";
-import { PlusCircle, Loader2, Sparkles, AlertTriangle, Info, Trash2, XIcon } from "lucide-react";
+import { PlusCircle, Loader2, Sparkles, AlertTriangle, Info, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from '@/lib/firebase/config';
@@ -27,10 +27,14 @@ import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from "@/config/fireba
 import { analyzeExamFlow, type AnalyzeExamInput, type AnalyzeExamOutput } from "@/ai/flows/analyze-exam-flow";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-
 const LOCAL_STORAGE_KEY = 'pendingExamData';
 
 type AISuggestion = AnalyzeExamOutput['suggestions'][0];
+
+interface AssignedClassSlot {
+  key: string; // For React list key
+  selectedClassId: string | null;
+}
 
 const createDefaultQuestion = (type: QuestionType, idPrefix: string = 'question'): ExamQuestion => {
   const baseQuestionProps = {
@@ -94,20 +98,17 @@ export default function CreateExamPage() {
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
   const [isLoadingExamData, setIsLoadingExamData] = useState(false);
 
-  // AI Feature States
   const [aiSuggestionsEnabled, setAiSuggestionsEnabled] = useState(false);
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
   const [aiFeedbackList, setAiFeedbackList] = useState<AISuggestion[]>([]);
   const [isAnalyzingWithAI, setIsAnalyzingWithAI] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  // Class and Subject association state
   const [userSubjectsForDropdown, setUserSubjectsForDropdown] = useState<FetchedSubjectInfo[]>([]);
   const [isLoadingUserSubjectsForDropdown, setIsLoadingUserSubjectsForDropdown] = useState(true);
   const [selectedSubjectIdForFilter, setSelectedSubjectIdForFilter] = useState<string | null>(null);
   
-  const [currentClassSelectionInDropdown, setCurrentClassSelectionInDropdown] = useState<string | null>(null);
-  const [assignedClassIds, setAssignedClassIds] = useState<string[]>([]);
+  const [assignedClassSlots, setAssignedClassSlots] = useState<AssignedClassSlot[]>([]);
   const [allUserClasses, setAllUserClasses] = useState<ClassInfoForDropdown[]>([]);
   const [isLoadingUserClasses, setIsLoadingUserClasses] = useState(true);
 
@@ -118,7 +119,6 @@ export default function CreateExamPage() {
     }, 0);
   }, [examBlocks]);
 
-  // Fetch user's subjects for the "Select Subject" dropdown
   useEffect(() => {
     const fetchSubjectsForDropdown = async () => {
       if (!user) {
@@ -146,7 +146,6 @@ export default function CreateExamPage() {
     if (user) fetchSubjectsForDropdown();
   }, [user, toast]);
 
-  // Fetch all user's classes for the "Select Class" dropdown source
   useEffect(() => {
     const fetchAllUserClasses = async () => {
       if (!user) {
@@ -204,19 +203,23 @@ export default function CreateExamPage() {
   const handleSubjectFilterChange = (subjectIdValue: string) => {
     const newSubjectId = subjectIdValue === "none" ? null : subjectIdValue;
     setSelectedSubjectIdForFilter(newSubjectId);
-    setCurrentClassSelectionInDropdown(null); // Reset current class selection
-    setAssignedClassIds([]); // Also reset assigned classes when subject changes, or decide if they should persist
+    setAssignedClassSlots([]); // Reset assigned class slots when subject changes
   };
   
-  const handleAddClassToExam = () => {
-    if (currentClassSelectionInDropdown && !assignedClassIds.includes(currentClassSelectionInDropdown)) {
-      setAssignedClassIds([...assignedClassIds, currentClassSelectionInDropdown]);
-    }
-    setCurrentClassSelectionInDropdown(null); // Clear dropdown selection
+  const handleAddClassAssignmentSlot = () => {
+    setAssignedClassSlots(prev => [...prev, { key: generateId('class-slot'), selectedClassId: null }]);
   };
 
-  const handleRemoveClassFromExam = (classIdToRemove: string) => {
-    setAssignedClassIds(assignedClassIds.filter(id => id !== classIdToRemove));
+  const handleRemoveClassAssignmentSlot = (keyToRemove: string) => {
+    setAssignedClassSlots(prev => prev.filter(slot => slot.key !== keyToRemove));
+  };
+
+  const handleAssignedClassChange = (keyToUpdate: string, newClassId: string | null) => {
+    setAssignedClassSlots(prev => 
+      prev.map(slot => 
+        slot.key === keyToUpdate ? { ...slot, selectedClassId: newClassId } : slot
+      )
+    );
   };
 
 
@@ -367,7 +370,7 @@ export default function CreateExamPage() {
     if (aiSuggestionsEnabled && isInitialLoadComplete && !isLoadingExamData && !isSaving) {
       debouncedAIAnalysis();
     }
-  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, assignedClassIds, isInitialLoadComplete, isLoadingExamData, isSaving, debouncedAIAnalysis]);
+  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, assignedClassSlots, isInitialLoadComplete, isLoadingExamData, isSaving, debouncedAIAnalysis]);
 
 
   useEffect(() => {
@@ -385,8 +388,15 @@ export default function CreateExamPage() {
             if (parsedData.title) setExamTitle(parsedData.title);
             if (parsedData.description) setExamDescription(parsedData.description);
             if (parsedData.selectedSubjectIdForFilter) setSelectedSubjectIdForFilter(parsedData.selectedSubjectIdForFilter);
-            if (parsedData.assignedClassIds && Array.isArray(parsedData.assignedClassIds)) setAssignedClassIds(parsedData.assignedClassIds);
-            if (parsedData.currentClassSelectionInDropdown) setCurrentClassSelectionInDropdown(parsedData.currentClassSelectionInDropdown);
+            if (parsedData.assignedClassSlots && Array.isArray(parsedData.assignedClassSlots)) {
+              setAssignedClassSlots(parsedData.assignedClassSlots.map((slot: any) => ({
+                key: slot.key || generateId('loaded-class-slot'),
+                selectedClassId: slot.selectedClassId || null,
+              })));
+            } else if (parsedData.assignedClassIds && Array.isArray(parsedData.assignedClassIds)) { // Compatibility for old format
+                setAssignedClassSlots(parsedData.assignedClassIds.map((id: string) => ({ key: generateId('compat-slot'), selectedClassId: id })));
+            }
+
 
             if (parsedData.blocks && Array.isArray(parsedData.blocks)) {
               const validatedBlocks = parsedData.blocks.map((block: ExamBlock) => ({
@@ -448,8 +458,7 @@ export default function CreateExamPage() {
       setExamTitle("");
       setExamDescription("");
       setSelectedSubjectIdForFilter(null);
-      setAssignedClassIds([]);
-      setCurrentClassSelectionInDropdown(null);
+      setAssignedClassSlots([]);
       setExamBlocks([]);
       setAiFeedbackList([]);
       
@@ -467,19 +476,18 @@ export default function CreateExamPage() {
         setExamTitle(examData.title);
         setExamDescription(examData.description || "");
 
-        if (examData.classIds && Array.isArray(examData.classIds) && examData.classIds.length > 0 && allUserClasses.length > 0) {
-            setAssignedClassIds(examData.classIds);
-            // Try to set the subject filter based on the first assigned class
-            const firstClassId = examData.classIds[0];
-            const associatedClass = allUserClasses.find(c => c.id === firstClassId);
-            if (associatedClass) {
-                setSelectedSubjectIdForFilter(associatedClass.subjectId);
-            } else {
-                 setSelectedSubjectIdForFilter(null); // Class not found, reset subject
-            }
+        if (examData.subjectId) {
+            setSelectedSubjectIdForFilter(examData.subjectId);
         } else {
             setSelectedSubjectIdForFilter(null);
-            setAssignedClassIds([]);
+        }
+
+        if (examData.classIds && Array.isArray(examData.classIds)) {
+          setAssignedClassSlots(
+            examData.classIds.map((id: string) => ({ key: generateId('loaded-slot'), selectedClassId: id }))
+          );
+        } else {
+          setAssignedClassSlots([]);
         }
 
 
@@ -577,12 +585,11 @@ export default function CreateExamPage() {
       title: examTitle,
       description: examDescription,
       selectedSubjectIdForFilter,
-      assignedClassIds,
-      currentClassSelectionInDropdown,
+      assignedClassSlots,
       blocks: examBlocks,
     };
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(examDataToSave));
-  }, [examTitle, examDescription, selectedSubjectIdForFilter, assignedClassIds, currentClassSelectionInDropdown, examBlocks, editingExamId, isInitialLoadComplete, isLoadingExamData]);
+  }, [examTitle, examDescription, selectedSubjectIdForFilter, assignedClassSlots, examBlocks, editingExamId, isInitialLoadComplete, isLoadingExamData]);
 
 
   const handleAddExamBlock = () => {
@@ -695,8 +702,7 @@ export default function CreateExamPage() {
     setExamTitle("");
     setExamDescription("");
     setSelectedSubjectIdForFilter(null);
-    setAssignedClassIds([]);
-    setCurrentClassSelectionInDropdown(null);
+    setAssignedClassSlots([]);
     setExamBlocks([]);
     setAiSuggestionsEnabled(false);
     setAiFeedbackList([]);
@@ -723,7 +729,8 @@ export default function CreateExamPage() {
       toast({ title: "Validation Error", description: "Please assign a subject to this exam.", variant: "destructive" });
       return;
     }
-    if (assignedClassIds.length === 0) {
+    const validAssignedClassIds = assignedClassSlots.map(slot => slot.selectedClassId).filter(id => id !== null) as string[];
+    if (validAssignedClassIds.length === 0) {
       toast({ title: "Validation Error", description: "Please assign at least one class to this exam.", variant: "destructive" });
       return;
     }
@@ -752,8 +759,8 @@ export default function CreateExamPage() {
             updatedAt: serverTimestamp(),
             totalQuestions: calculatedTotalQuestions,
             totalPoints: calculatedTotalPoints,
-            classIds: assignedClassIds, // Save array of class IDs
-            subjectId: selectedSubjectIdForFilter, // Save the subject ID for easier querying if needed
+            classIds: validAssignedClassIds, 
+            subjectId: selectedSubjectIdForFilter, 
         };
 
 
@@ -840,8 +847,8 @@ export default function CreateExamPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-10 w-full" /> {/* Placeholder for subject dropdown */}
-                    <Skeleton className="h-10 w-full" /> {/* Placeholder for class dropdown */}
+                    <Skeleton className="h-10 w-full" /> 
+                    <Skeleton className="h-10 w-full" /> 
                     <Skeleton className="h-20 w-full" />
                 </CardContent>
             </Card>
@@ -869,6 +876,11 @@ export default function CreateExamPage() {
         </div>
     );
   }
+
+  const isClassAddButtonDisabled = !selectedSubjectIdForFilter || 
+                                 isLoadingUserClasses || 
+                                 (filteredClassesForDropdown.length === 0) ||
+                                 (assignedClassSlots.filter(slot => slot.selectedClassId !== null).length >= filteredClassesForDropdown.length);
 
   return (
     <div className="space-y-6">
@@ -1038,7 +1050,6 @@ export default function CreateExamPage() {
                     <SelectValue placeholder={isLoadingUserSubjectsForDropdown ? "Loading subjects..." : "Select a subject"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* <SelectItem value="none" className="text-xs sm:text-sm">No Subject Assigned</SelectItem> */}
                     {userSubjectsForDropdown.map((subject) => (
                       <SelectItem key={subject.id} value={subject.id} className="text-xs sm:text-sm">
                         {subject.name} ({subject.code})
@@ -1053,71 +1064,77 @@ export default function CreateExamPage() {
                 </Select>
               </div>
 
-              <div className="space-y-1 sm:space-y-2">
-                 <Label htmlFor="assignClasses" className="text-sm sm:text-base">Assign to Classes</Label>
-                 <div className="flex items-center gap-2">
-                   <Select
-                     value={currentClassSelectionInDropdown || ""}
-                     onValueChange={(value) => setCurrentClassSelectionInDropdown(value === "none" ? null : value)}
-                     disabled={isLoadingUserClasses || isSaving || isLoadingExamData || !selectedSubjectIdForFilter || filteredClassesForDropdown.length === 0}
-                   >
-                     <SelectTrigger id="assignClasses" className="flex-grow text-xs sm:text-sm h-9 sm:h-10">
-                       <SelectValue placeholder={
-                         !selectedSubjectIdForFilter ? "Select a subject first" :
-                         isLoadingUserClasses ? "Loading classes..." :
-                         filteredClassesForDropdown.length === 0 ? "No classes for subject" :
-                         "Select a class to add"
-                       } />
-                     </SelectTrigger>
-                     <SelectContent>
-                       <SelectItem value="none" disabled className="text-xs sm:text-sm">Select a class</SelectItem>
-                       {filteredClassesForDropdown.map((cls) => (
-                         <SelectItem key={cls.id} value={cls.id} className="text-xs sm:text-sm" disabled={assignedClassIds.includes(cls.id)}>
-                           {cls.sectionName} ({cls.yearGrade}) - Code: {cls.code} {assignedClassIds.includes(cls.id) ? "(Assigned)" : ""}
-                         </SelectItem>
-                       ))}
-                       {selectedSubjectIdForFilter && !isLoadingUserClasses && filteredClassesForDropdown.length === 0 && (
-                          <SelectItem value="no-classes-for-subject" disabled className="text-xs sm:text-sm">
-                            No classes found for selected subject.
-                          </SelectItem>
-                       )}
-                     </SelectContent>
-                   </Select>
-                   <Button 
-                     type="button" 
-                     variant="outline" 
-                     size="sm" 
-                     onClick={handleAddClassToExam}
-                     disabled={!currentClassSelectionInDropdown || isSaving || isLoadingExamData}
-                     className="h-9 sm:h-10 text-xs sm:text-sm"
-                   >
-                    <PlusCircle className="mr-1 h-3.5 w-3.5" /> Add
-                   </Button>
-                 </div>
-                 {assignedClassIds.length > 0 && (
-                   <div className="mt-2 space-y-1.5">
-                     <Label className="text-2xs sm:text-xs text-muted-foreground">Assigned Classes:</Label>
-                     <div className="flex flex-wrap gap-1.5">
-                       {assignedClassIds.map(classId => {
-                         const cls = allUserClasses.find(c => c.id === classId);
-                         return cls ? (
-                           <Badge key={classId} variant="secondary" className="py-0.5 px-1.5 text-2xs sm:text-xs">
-                             {cls.subjectCode} - {cls.sectionName} ({cls.yearGrade})
-                             <button 
-                               type="button" 
-                               onClick={() => handleRemoveClassFromExam(classId)} 
-                               className="ml-1.5 p-0.5 rounded-full hover:bg-destructive/20"
-                               aria-label={`Remove class ${cls.sectionName}`}
-                               disabled={isSaving || isLoadingExamData}
-                             >
-                               <XIcon className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                             </button>
-                           </Badge>
-                         ) : null;
-                       })}
-                     </div>
-                   </div>
+              <div className="space-y-2 sm:space-y-3">
+                 <Label className="text-sm sm:text-base">Assign to Classes</Label>
+                 {assignedClassSlots.map((slot, index) => (
+                    <div key={slot.key} className="flex items-center gap-2">
+                        <Select
+                            value={slot.selectedClassId || ""}
+                            onValueChange={(value) => handleAssignedClassChange(slot.key, value === "none" ? null : value)}
+                            disabled={isLoadingUserClasses || isSaving || isLoadingExamData || !selectedSubjectIdForFilter || filteredClassesForDropdown.length === 0}
+                        >
+                            <SelectTrigger className="flex-grow text-xs sm:text-sm h-9 sm:h-10">
+                            <SelectValue placeholder={
+                                !selectedSubjectIdForFilter ? "Select a subject first" :
+                                isLoadingUserClasses ? "Loading classes..." :
+                                filteredClassesForDropdown.length === 0 ? "No classes for subject" :
+                                "Select a class"
+                            } />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none" className="text-xs sm:text-sm">-- Select a class --</SelectItem>
+                                {filteredClassesForDropdown.map((cls) => (
+                                    <SelectItem 
+                                        key={cls.id} 
+                                        value={cls.id} 
+                                        className="text-xs sm:text-sm"
+                                        disabled={assignedClassSlots.some(s => s.selectedClassId === cls.id && s.key !== slot.key)}
+                                    >
+                                        {cls.sectionName} ({cls.yearGrade}) - Code: {cls.code}
+                                        {assignedClassSlots.some(s => s.selectedClassId === cls.id && s.key !== slot.key) ? " (Assigned)" : ""}
+                                    </SelectItem>
+                                ))}
+                                {selectedSubjectIdForFilter && !isLoadingUserClasses && filteredClassesForDropdown.length === 0 && (
+                                    <SelectItem value="no-classes-for-subject" disabled className="text-xs sm:text-sm">
+                                        No classes found for selected subject.
+                                    </SelectItem>
+                                )}
+                            </SelectContent>
+                        </Select>
+                        {assignedClassSlots.length > 1 && (
+                             <Button 
+                                type="button" 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => handleRemoveClassAssignmentSlot(slot.key)}
+                                disabled={isSaving || isLoadingExamData}
+                                className="h-9 sm:h-10 w-9 sm:w-10 flex-shrink-0"
+                                aria-label="Remove this class assignment"
+                            >
+                                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                        )}
+                    </div>
+                 ))}
+                 <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleAddClassAssignmentSlot}
+                    disabled={isClassAddButtonDisabled || isSaving || isLoadingExamData}
+                    className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10"
+                >
+                    <PlusCircle className="mr-1 h-3.5 w-3.5" /> Add Another Class Assignment
+                </Button>
+                 {assignedClassSlots.length === 0 && selectedSubjectIdForFilter && !isLoadingUserClasses && filteredClassesForDropdown.length > 0 && (
+                     <p className="text-xs text-muted-foreground">Click "Add Another Class Assignment" to assign this exam to a class.</p>
                  )}
+                 {assignedClassSlots.length === 0 && (!selectedSubjectIdForFilter || (selectedSubjectIdForFilter && filteredClassesForDropdown.length === 0 && !isLoadingUserClasses)) && (
+                     <p className="text-xs text-muted-foreground">
+                         { !selectedSubjectIdForFilter ? "Select a subject above to see available classes." : "No classes available for the selected subject."}
+                     </p>
+                 )}
+
               </div>
 
 
@@ -1201,7 +1218,7 @@ export default function CreateExamPage() {
                 isLoadingExamData || 
                 !examTitle.trim() || 
                 !selectedSubjectIdForFilter || 
-                assignedClassIds.length === 0 || 
+                assignedClassSlots.filter(slot => slot.selectedClassId !== null).length === 0 || 
                 examBlocks.length === 0 || 
                 examBlocks.some(b => b.questions.length === 0)
             }
@@ -1214,4 +1231,4 @@ export default function CreateExamPage() {
     </div>
   );
 }
-
+    

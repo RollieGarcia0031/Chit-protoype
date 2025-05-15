@@ -1,3 +1,4 @@
+
 // src/app/(protected)/students/page.tsx
 'use client';
 
@@ -28,7 +29,7 @@ import {
   AlertDialogTrigger as RadixAlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import type { Student, ClassInfoForDropdown as OriginalClassInfoForDropdown } from '@/types/exam-types';
-import { cn } from '@/lib/utils';
+import { cn, generateId } from '@/lib/utils';
 
 interface FetchedSubjectInfo {
   id: string;
@@ -78,7 +79,9 @@ export default function StudentsPage() {
   const [managingStudentsForClass, setManagingStudentsForClass] = useState<ClassInfo | null>(null);
   const [studentsForSelectedClass, setStudentsForSelectedClass] = useState<Student[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
-  const [isSavingStudent, setIsSavingStudent] = useState(false);
+  // isSavingStudent (for the main button) can be removed or kept if you want to disable the main "Add" button during any save.
+  // For per-item saving, student.isSaving will be used.
+  // const [isSavingStudent, setIsSavingStudent] = useState(false); 
   const [deletingStudentId, setDeletingStudentId] = useState<string | null>(null);
 
   const [newStudentFirstName, setNewStudentFirstName] = useState('');
@@ -123,7 +126,6 @@ export default function StudentsPage() {
                 studentCount = studentCountSnapshot.data().count;
             } catch (countError) {
                 console.warn(`Could not fetch student count for class ${classDoc.id}:`, countError);
-                // studentCount remains 0 or you can set it to undefined/null
             }
 
             allClasses.push({
@@ -335,46 +337,78 @@ export default function StudentsPage() {
       toast({ title: "Validation Error", description: "First Name and Last Name are required.", variant: "destructive" });
       return;
     }
-    setIsSavingStudent(true);
+
+    const tempId = generateId('student-optimistic');
+    const optimisticStudent: Student = {
+      id: tempId, // Use tempId as id for UI key during saving
+      tempId: tempId,
+      firstName: newStudentFirstName.trim(),
+      lastName: newStudentLastName.trim(),
+      middleName: newStudentMiddleName.trim() || "",
+      userId: user.uid,
+      classId: managingStudentsForClass.id,
+      subjectId: managingStudentsForClass.subjectId,
+      isOptimistic: true,
+      isSaving: true,
+    };
+
+    setStudentsForSelectedClass(prevStudents => [...prevStudents, optimisticStudent]);
+
+    const currentFirstNameForToast = newStudentFirstName;
+    const currentLastNameForToast = newStudentLastName;
+    setNewStudentFirstName('');
+    setNewStudentLastName('');
+    setNewStudentMiddleName('');
+
     try {
       const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, managingStudentsForClass.subjectId, "classes", managingStudentsForClass.id, "students");
-      await addDoc(studentsRef, {
-        firstName: newStudentFirstName.trim(),
-        lastName: newStudentLastName.trim(),
-        middleName: newStudentMiddleName.trim() || "",
-        userId: user.uid, 
+      const studentDataForFirestore = {
+        firstName: optimisticStudent.firstName,
+        lastName: optimisticStudent.lastName,
+        middleName: optimisticStudent.middleName,
+        userId: user.uid,
         classId: managingStudentsForClass.id,
         subjectId: managingStudentsForClass.subjectId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
-      toast({ title: "Student Added", description: `${newStudentFirstName} ${newStudentLastName} added.` });
-      setNewStudentFirstName(''); setNewStudentLastName(''); setNewStudentMiddleName('');
-      await fetchStudentsForClass(managingStudentsForClass); // Refresh list
-      // Also refresh student count on the managingStudentsForClass object to update the button if it's shown there
+      };
+      const docRef = await addDoc(studentsRef, studentDataForFirestore);
+
+      setStudentsForSelectedClass(prevStudents =>
+        prevStudents.map(student =>
+          student.tempId === tempId
+            ? { ...student, id: docRef.id, isOptimistic: false, isSaving: false, tempId: undefined }
+            : student
+        )
+      );
+
+      toast({ title: "Student Added", description: `${currentFirstNameForToast} ${currentLastNameForToast} added.` });
+
       if (managingStudentsForClass) {
-        const updatedClassInfo = {...managingStudentsForClass, studentCount: (managingStudentsForClass.studentCount || 0) + 1};
+        const updatedClassInfo = { ...managingStudentsForClass, studentCount: (managingStudentsForClass.studentCount || 0) + 1 };
         setManagingStudentsForClass(updatedClassInfo);
-        // And update the main classes list
         setClasses(prev => prev.map(c => c.id === updatedClassInfo.id ? updatedClassInfo : c));
       }
 
     } catch (error) {
       console.error("Error adding student:", error);
       toast({ title: "Error Adding Student", description: "Could not add student.", variant: "destructive" });
-    } finally {
-      setIsSavingStudent(false);
+      setStudentsForSelectedClass(prevStudents => prevStudents.filter(student => student.tempId !== tempId));
     }
   };
 
-  const handleDeleteStudent = async (student: Student) => {
-    if (!user || !managingStudentsForClass || !student) return;
-    setDeletingStudentId(student.id);
+
+  const handleDeleteStudent = async (studentToDelete: Student) => {
+    if (!user || !managingStudentsForClass || !studentToDelete) return;
+    setDeletingStudentId(studentToDelete.id);
     try {
-      const studentDocRef = doc(db, SUBJECTS_COLLECTION_NAME, managingStudentsForClass.subjectId, "classes", managingStudentsForClass.id, "students", student.id);
+      const studentDocRef = doc(db, SUBJECTS_COLLECTION_NAME, managingStudentsForClass.subjectId, "classes", managingStudentsForClass.id, "students", studentToDelete.id);
       await deleteDoc(studentDocRef);
-      toast({ title: "Student Removed", description: `${student.firstName} ${student.lastName} removed.` });
-      await fetchStudentsForClass(managingStudentsForClass); // Refresh list
+      toast({ title: "Student Removed", description: `${studentToDelete.firstName} ${studentToDelete.lastName} removed.` });
+      
+      // Optimistically remove or refetch
+      setStudentsForSelectedClass(prev => prev.filter(s => s.id !== studentToDelete.id));
+      
       if (managingStudentsForClass) {
         const updatedClassInfo = {...managingStudentsForClass, studentCount: Math.max(0, (managingStudentsForClass.studentCount || 0) - 1)};
         setManagingStudentsForClass(updatedClassInfo);
@@ -469,26 +503,27 @@ export default function StudentsPage() {
             <form onSubmit={handleAddStudent} className="space-y-3 sm:space-y-4">
               <div>
                 <Label htmlFor="studentFirstName" className="text-xs sm:text-sm">First Name</Label>
-                <Input id="studentFirstName" value={newStudentFirstName} onChange={(e) => setNewStudentFirstName(e.target.value)} required disabled={isSavingStudent} className="h-8 sm:h-9 text-xs sm:text-sm"/>
+                <Input id="studentFirstName" value={newStudentFirstName} onChange={(e) => setNewStudentFirstName(e.target.value)} required className="h-8 sm:h-9 text-xs sm:text-sm"/>
               </div>
               <div>
                 <Label htmlFor="studentLastName" className="text-xs sm:text-sm">Last Name</Label>
-                <Input id="studentLastName" value={newStudentLastName} onChange={(e) => setNewStudentLastName(e.target.value)} required disabled={isSavingStudent} className="h-8 sm:h-9 text-xs sm:text-sm"/>
+                <Input id="studentLastName" value={newStudentLastName} onChange={(e) => setNewStudentLastName(e.target.value)} required className="h-8 sm:h-9 text-xs sm:text-sm"/>
               </div>
               <div>
                 <Label htmlFor="studentMiddleName" className="text-xs sm:text-sm">Middle Name (Optional)</Label>
-                <Input id="studentMiddleName" value={newStudentMiddleName} onChange={(e) => setNewStudentMiddleName(e.target.value)} disabled={isSavingStudent} className="h-8 sm:h-9 text-xs sm:text-sm"/>
+                <Input id="studentMiddleName" value={newStudentMiddleName} onChange={(e) => setNewStudentMiddleName(e.target.value)} className="h-8 sm:h-9 text-xs sm:text-sm"/>
               </div>
-              <Button type="submit" disabled={isSavingStudent || isLoadingStudents} size="sm" className="w-full text-xs sm:text-sm">
-                {isSavingStudent ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} Add Student
+              <Button type="submit" disabled={isLoadingStudents || studentsForSelectedClass.some(s => s.isSaving)} size="sm" className="w-full text-xs sm:text-sm">
+                {studentsForSelectedClass.some(s => s.isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} 
+                Add Student
               </Button>
             </form>
           </div>
           <div className="md:col-span-2 flex flex-col">
             <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4 border-b pb-2 shrink-0">
-              Enrolled Students ({studentsForSelectedClass.length})
+              Enrolled Students ({studentsForSelectedClass.filter(s => !s.isOptimistic || (s.isOptimistic && !s.isSaving)).length})
             </h3>
-            {isLoadingStudents ? (
+            {isLoadingStudents && studentsForSelectedClass.length === 0 ? ( // Show main loader only if list is empty and loading
               <div className="flex-grow flex items-center justify-center py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
@@ -499,14 +534,27 @@ export default function StudentsPage() {
             ) : (
               <ul className="space-y-2 overflow-y-auto pr-2 flex-grow">
                 {studentsForSelectedClass.map(student => (
-                  <li key={student.id} className="flex items-center justify-between p-2.5 sm:p-3 bg-background border rounded-md shadow-sm">
-                    <span className="text-xs sm:text-sm">
+                  <li 
+                    key={student.id} 
+                    className={cn(
+                        "flex items-center justify-between p-2.5 sm:p-3 bg-background border rounded-md shadow-sm",
+                        student.isSaving && "opacity-60 bg-muted pointer-events-none",
+                        student.isOptimistic && !student.isSaving && "border-dashed border-primary/50"
+                    )}
+                  >
+                    <span className="text-xs sm:text-sm flex items-center">
+                      {student.isSaving && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
                       {student.lastName}, {student.firstName} {student.middleName && ` ${student.middleName.charAt(0)}.`}
                     </span>
                     <AlertDialog>
                       <RadixAlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" disabled={deletingStudentId === student.id}>
-                          {deletingStudentId === student.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive" 
+                            disabled={deletingStudentId === student.id || student.isSaving}
+                        >
+                          {deletingStudentId === student.id && !student.isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                         </Button>
                       </RadixAlertDialogTrigger>
                       <AlertDialogContent>

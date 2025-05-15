@@ -65,6 +65,11 @@ export interface ExamBlock {
   choicePool?: PoolOption[];
 }
 
+export interface AssignedClassSlot { // Used in create-exam page for UI state
+  key: string; 
+  selectedClassId: string | null;
+}
+
 export interface ExamSummaryData {
   id: string;
   title: string;
@@ -100,7 +105,7 @@ export interface FetchedSubjectInfo {
 }
 
 export interface Student {
-  id: string;
+  id: string; // Firestore document ID or temporary client-side ID
   firstName: string;
   lastName: string;
   middleName?: string;
@@ -109,4 +114,8 @@ export interface Student {
   subjectId?: string; // The ID of the subject this student's class belongs to
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+  tempId?: string; // Used for optimistic updates to match the student before it gets a real ID
+  isOptimistic?: boolean; // True if added to UI before DB confirmation
+  isSaving?: boolean; // True while the student data is being saved to DB
 }
+

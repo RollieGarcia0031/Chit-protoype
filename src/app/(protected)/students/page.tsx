@@ -22,20 +22,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 interface ClassInfo {
   id: string;
-  subjectName: string;
+  subjectName: string; // This will store the name of the subject
   sectionName: string;
   yearGrade: string;
   code: string;
 }
 
-// Interface for subjects fetched from Firestore for the dropdown
 interface FetchedSubjectInfo {
   id: string;
   name: string;
   code: string;
-  // userId?: string; // Not strictly needed for dropdown but good for full type
-  // createdAt?: Timestamp;
-  // updatedAt?: Timestamp;
 }
 
 export default function StudentsPage() {
@@ -45,19 +41,17 @@ export default function StudentsPage() {
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [isAddClassDialogOpen, setIsAddClassDialogOpen] = useState(false);
   
-  const [newSubjectName, setNewSubjectName] = useState('');
+  const [newSubjectName, setNewSubjectName] = useState(''); // Stores the NAME of the selected subject
   const [newSectionName, setNewSectionName] = useState('');
   const [newYearGrade, setNewYearGrade] = useState('');
   const [newClassCode, setNewClassCode] = useState('');
   
   const [editingClass, setEditingClass] = useState<ClassInfo | null>(null);
 
-  // State for user's subjects
   const [userSubjects, setUserSubjects] = useState<FetchedSubjectInfo[]>([]);
   const [isLoadingUserSubjects, setIsLoadingUserSubjects] = useState(false);
   const [userSubjectsError, setUserSubjectsError] = useState<string | null>(null);
 
-  // Fetch user's subjects for the dropdown
   useEffect(() => {
     const fetchUserSubjects = async () => {
       if (!user) {
@@ -98,8 +92,8 @@ export default function StudentsPage() {
   }, [user, authLoading, toast]);
 
 
-  const generateClassCode = (subject: string, section: string, year: string) => {
-    const subjectPart = subject.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase();
+  const generateClassCode = (subjectCodePart: string, section: string, year: string) => {
+    const subjectPart = subjectCodePart.replace(/[^a-zA-Z0-9]/g, '').substring(0, 5).toUpperCase(); // Use more of subject code
     const sectionPart = section.replace(/[^a-zA-Z0-9]/g, '').substring(0, 2).toUpperCase();
     const yearPart = year.replace(/[^a-zA-Z0-9]/g, '').substring(0, 2).toUpperCase();
     const randomPart = Math.random().toString(36).substring(2, 5).toUpperCase();
@@ -107,10 +101,17 @@ export default function StudentsPage() {
   };
 
   useEffect(() => {
-    if (!editingClass) { 
-      setNewClassCode(generateClassCode(newSubjectName, newSectionName, newYearGrade));
+    if (!editingClass) {
+      let subjectCodeForGeneration = "";
+      if (newSubjectName && userSubjects.length > 0) {
+        const selectedSubject = userSubjects.find(sub => sub.name === newSubjectName);
+        if (selectedSubject) {
+          subjectCodeForGeneration = selectedSubject.code;
+        }
+      }
+      setNewClassCode(generateClassCode(subjectCodeForGeneration, newSectionName, newYearGrade));
     }
-  }, [newSubjectName, newSectionName, newYearGrade, editingClass]);
+  }, [newSubjectName, newSectionName, newYearGrade, editingClass, userSubjects]);
 
 
   const handleAddOrUpdateClass = (event: FormEvent) => {
@@ -146,7 +147,7 @@ export default function StudentsPage() {
 
   const openEditDialog = (classInfo: ClassInfo) => {
     setEditingClass(classInfo);
-    setNewSubjectName(classInfo.subjectName);
+    setNewSubjectName(classInfo.subjectName); // This is the subject NAME
     setNewSectionName(classInfo.sectionName);
     setNewYearGrade(classInfo.yearGrade);
     setNewClassCode(classInfo.code);
@@ -154,7 +155,6 @@ export default function StudentsPage() {
   };
 
   const handleDeleteClass = (classId: string) => {
-    // TODO: Add confirmation dialog before deleting
     setClasses(classes.filter(c => c.id !== classId));
     toast({ title: "Class Deleted", description: "The class has been removed (locally).", variant: "destructive" });
   };
@@ -228,7 +228,7 @@ export default function StudentsPage() {
                     Subject
                   </Label>
                   <Select
-                    value={newSubjectName}
+                    value={newSubjectName} // This stores the subject NAME
                     onValueChange={(value) => setNewSubjectName(value)}
                     required
                     disabled={isLoadingUserSubjects}
@@ -356,5 +356,4 @@ export default function StudentsPage() {
     </div>
   );
 }
-
     

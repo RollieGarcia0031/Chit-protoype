@@ -27,7 +27,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
 interface FetchedSubjectInfo {
@@ -553,55 +553,53 @@ export default function StudentsPage() {
               </p>
             </div>
           ) : (
-            <ScrollArea className="h-[calc(100vh-340px)] sm:h-[calc(100vh-360px)] pr-1 sm:pr-3">
-              <div className="space-y-4">
-                {displayMode === 'bySubject' && userSubjects.map(subject => {
-                    const subjectClasses = classes.filter(c => c.subjectId === subject.id);
-                    if (subjectClasses.length === 0 && userSubjects.length > 1) return null; 
-                    if (subjectClasses.length === 0 && userSubjects.length === 1 && classes.length > 0) return null; 
+            <div className="space-y-4 pr-1 sm:pr-3"> {/* Replaced ScrollArea with a div */}
+              {displayMode === 'bySubject' && userSubjects.map(subject => {
+                  const subjectClasses = classes.filter(c => c.subjectId === subject.id);
+                  if (subjectClasses.length === 0 && userSubjects.length > 1) return null; 
+                  if (subjectClasses.length === 0 && userSubjects.length === 1 && classes.length > 0) return null; 
 
-                    return (
-                        <Card key={subject.id} className="shadow-md">
-                            <CardHeader className="pt-3 pb-2 sm:pt-4 sm:pb-3">
-                                <CardTitle className="text-base sm:text-lg font-semibold flex items-center">
-                                    <BookOpen className="mr-2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground"/>
-                                    {subject.name} <span className="text-xs sm:text-sm font-normal text-muted-foreground ml-1">({subject.code})</span>
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                {subjectClasses.length === 0 ? (
-                                    <p className="text-xs sm:text-sm text-muted-foreground py-2 text-center">No classes in this subject.</p>
-                                ) : (
-                                    <div className="grid gap-2 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                        {subjectClasses.map(cls => renderClassItem(cls))}
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    );
-                })}
+                  return (
+                      <Card key={subject.id} className="shadow-md">
+                          <CardHeader className="pt-3 pb-2 sm:pt-4 sm:pb-3">
+                              <CardTitle className="text-base sm:text-lg font-semibold flex items-center">
+                                  <BookOpen className="mr-2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground"/>
+                                  {subject.name} <span className="text-xs sm:text-sm font-normal text-muted-foreground ml-1">({subject.code})</span>
+                              </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                              {subjectClasses.length === 0 ? (
+                                  <p className="text-xs sm:text-sm text-muted-foreground py-2 text-center">No classes in this subject.</p>
+                              ) : (
+                                  <div className="grid gap-2 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                      {subjectClasses.map(cls => renderClassItem(cls))}
+                                  </div>
+                              )}
+                          </CardContent>
+                      </Card>
+                  );
+              })}
 
-                {displayMode === 'bySectionYear' && groupedClassesBySectionYear.map(group => (
-                    <Card key={group.groupTitle} className="shadow-md">
-                         <CardHeader className="pt-3 pb-2 sm:pt-4 sm:pb-3">
-                            <CardTitle className="text-base sm:text-lg font-semibold flex items-center">
-                                <LayoutGrid className="mr-2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground"/>
-                                {group.groupTitle}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {group.classes.length === 0 ? (
-                                 <p className="text-xs sm:text-sm text-muted-foreground py-2 text-center">No classes in this section/year.</p>
-                            ) : (
-                                <div className="grid gap-2 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                    {group.classes.map(cls => renderClassItem(cls))}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                ))}
-              </div>
-            </ScrollArea>
+              {displayMode === 'bySectionYear' && groupedClassesBySectionYear.map(group => (
+                  <Card key={group.groupTitle} className="shadow-md">
+                       <CardHeader className="pt-3 pb-2 sm:pt-4 sm:pb-3">
+                          <CardTitle className="text-base sm:text-lg font-semibold flex items-center">
+                              <LayoutGrid className="mr-2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground"/>
+                              {group.groupTitle}
+                          </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                          {group.classes.length === 0 ? (
+                               <p className="text-xs sm:text-sm text-muted-foreground py-2 text-center">No classes in this section/year.</p>
+                          ) : (
+                              <div className="grid gap-2 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                  {group.classes.map(cls => renderClassItem(cls))}
+                              </div>
+                          )}
+                      </CardContent>
+                  </Card>
+              ))}
+            </div>
           )}
         </CardContent>
          {(classes.length > 0 || userSubjects.length > 0) && !isLoadingData && (
@@ -616,4 +614,6 @@ export default function StudentsPage() {
     </div>
   );
 }
+    
+
     

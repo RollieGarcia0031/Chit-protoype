@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table as ShadcnTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star, FileType2, ArrowLeft, Info } from "lucide-react";
+import { FileText, Loader2, AlertTriangle, DownloadCloud, CalendarDays, HelpCircle, Star, FileType2, ArrowLeft, Info, KeyRound } from "lucide-react";
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from "@/lib/firebase/config";
@@ -61,13 +61,17 @@ const getQuestionTypeLabel = (type: QuestionType): string => {
 function ExamPreviewPlaceholder({
     exam,
     onBack,
-    onDownloadDocx,
-    isDownloadingDocxFile
+    onDownloadExamDocx,
+    isDownloadingExamDocx,
+    onDownloadAnswerKeyDocx,
+    isDownloadingAnswerKey,
 }: {
     exam: FullExamData;
     onBack: () => void;
-    onDownloadDocx: () => Promise<void>;
-    isDownloadingDocxFile: boolean;
+    onDownloadExamDocx: () => Promise<void>;
+    isDownloadingExamDocx: boolean;
+    onDownloadAnswerKeyDocx: () => Promise<void>;
+    isDownloadingAnswerKey: boolean;
 }) {
   let currentDisplayNumber = 1;
   return (
@@ -77,18 +81,26 @@ function ExamPreviewPlaceholder({
           <CardTitle className="text-lg sm:text-xl font-semibold text-black">Exam Preview: {exam.title}</CardTitle>
           <CardDescription className="text-xs sm:text-sm text-black">This area shows a simplified preview. The full exam can be downloaded as a DOCX file.</CardDescription>
         </div>
-        <div className="flex gap-2 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Button variant="outline" onClick={onBack} size="sm" className="text-xs sm:text-sm flex-grow sm:flex-grow-0">
                 <ArrowLeft className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 Back
             </Button>
-            <Button onClick={onDownloadDocx} disabled={isDownloadingDocxFile} size="sm" className="text-xs sm:text-sm flex-grow sm:flex-grow-0">
-                {isDownloadingDocxFile ? (
+            <Button onClick={onDownloadExamDocx} disabled={isDownloadingExamDocx || isDownloadingAnswerKey} size="sm" className="text-xs sm:text-sm flex-grow sm:flex-grow-0">
+                {isDownloadingExamDocx ? (
                     <Loader2 className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
                 ) : (
                     <DownloadCloud className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 )}
-                Download DOCX
+                Download Exam
+            </Button>
+             <Button onClick={onDownloadAnswerKeyDocx} disabled={isDownloadingAnswerKey || isDownloadingExamDocx} size="sm" variant="secondary" className="text-xs sm:text-sm flex-grow sm:flex-grow-0">
+                {isDownloadingAnswerKey ? (
+                    <Loader2 className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                ) : (
+                    <KeyRound className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                )}
+                Answer Key
             </Button>
         </div>
       </CardHeader>
@@ -129,7 +141,7 @@ function ExamPreviewPlaceholder({
                         const endNum = currentDisplayNumber + question.points - 1;
                         const displayQuestionLabel = question.points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
                         currentDisplayNumber += question.points;
-                        const answerPrefix = question.type === 'true-false' || question.type === 'pooled-choices' ? '____ ' : '';
+                        const answerPrefix = (question.type === 'true-false' || question.type === 'pooled-choices') ? '____ ' : '';
 
                         return (
                             <div key={question.id} className="mb-2 sm:mb-3 pl-2 sm:pl-4">
@@ -155,9 +167,8 @@ function ExamPreviewPlaceholder({
                                    const premisesForTable: Array<{ text: string; displayLabel: string }> = [];
                                    const responsesForTable: Array<{ text: string; letter: string }> = [];
 
-                                   block.questions.forEach((q, qIdx) => {
-                                       const matchQ = q as MatchingTypeQuestion;
-                                       if (matchQ.pairs && matchQ.pairs.length > 0) {
+                                   (block.questions as MatchingTypeQuestion[]).forEach((q, qIdx) => {
+                                       if (q.pairs && q.pairs.length > 0) {
                                            const points = q.points;
                                            const startNum = currentDisplayNumber;
                                            const endNum = currentDisplayNumber + points - 1;
@@ -165,12 +176,12 @@ function ExamPreviewPlaceholder({
                                            currentDisplayNumber += points;
 
                                            premisesForTable.push({
-                                               text: String(matchQ.pairs[0]?.premise || ''),
+                                               text: String(q.pairs[0]?.premise || ''),
                                                displayLabel: premiseDisplayLabel,
                                            });
                                            responsesForTable.push({
-                                               text: String(matchQ.pairs[0]?.response || ''),
-                                               letter: matchQ.pairs[0]?.responseLetter || getAlphabetLetter(qIdx),
+                                               text: String(q.pairs[0]?.response || ''),
+                                               letter: q.pairs[0]?.responseLetter || getAlphabetLetter(qIdx),
                                            });
                                        }
                                    });
@@ -178,7 +189,7 @@ function ExamPreviewPlaceholder({
                                    const numRows = Math.max(premisesForTable.length, responsesForTable.length);
                                    const rows = [];
                                    for (let i = 0; i < numRows; i++) {
-                                       const premiseText = premisesForTable[i] ? `${premisesForTable[i].displayLabel}. ${premisesForTable[i].text}` : "";
+                                       const premiseText = premisesForTable[i] ? `____ ${premisesForTable[i].displayLabel}. ${premisesForTable[i].text}` : "";
                                        const responseText = responsesForTable[i] ? `${responsesForTable[i].letter}. ${responsesForTable[i].text}` : "";
                                        rows.push(
                                            <tr key={`match-row-${block.id}-${i}`}>
@@ -212,7 +223,8 @@ export default function RenderExamPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [isLoadingPreviewData, setIsLoadingPreviewData] = useState<string | null>(null);
-  const [isDownloadingDocxFile, setIsDownloadingDocxFile] = useState(false);
+  const [isDownloadingExamDocx, setIsDownloadingExamDocx] = useState(false);
+  const [isDownloadingAnswerKey, setIsDownloadingAnswerKey] = useState(false);
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [selectedExamForDialog, setSelectedExamForDialog] = useState<ExamSummaryData | null>(null);
 
@@ -408,12 +420,12 @@ export default function RenderExamPage() {
   };
 
 
-  const generateAndDownloadActualDocx = async () => {
+  const generateAndDownloadExamDocx = async () => {
     if (!examForPreview) {
         toast({ title: "Error", description: "No exam data available for download.", variant: "destructive" });
         return;
     }
-    setIsDownloadingDocxFile(true);
+    setIsDownloadingExamDocx(true);
     try {
         let currentDocxDisplayNumber = 1;
         const noBorders = {
@@ -438,7 +450,7 @@ export default function RenderExamPage() {
                     new Tab(),
                     new TextRun({text: "Score: ____________", size: 24, color: "000000", font: "Calibri"}),
                 ],
-                tabStops: [ { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 1.5 }, ], // Adjusted tab stop
+                tabStops: [ { type: TabStopType.RIGHT, position: TabStopPosition.MAX / 1.5 }, ], 
                 spacing: { after: 200 }
             }),
         ];
@@ -496,20 +508,20 @@ export default function RenderExamPage() {
                     }
                     choiceTable = new Table({
                         rows: [new DocxTableRow({ children: cellsRow1 }), new DocxTableRow({ children: cellsRow2 })],
-                        columnWidths: Array(numCols).fill(Math.floor(9000 / Math.max(1, numCols))), // Ensure numCols is at least 1
+                        columnWidths: Array(numCols).fill(Math.floor(9000 / Math.max(1, numCols))),
                         borders: noBorders,
                     });
-                } else { // Two-column layout
+                } else { 
                     const numRows = Math.ceil(choicePool.length / 2);
                     const tableRows: DocxTableRow[] = [];
                     for (let i = 0; i < numRows; i++) {
-                        const cell1Children: Paragraph[] = [new Paragraph("")]; // Default to empty
+                        const cell1Children: Paragraph[] = [new Paragraph("")]; 
                         if (i < choicePool.length) {
                              const choice1 = choicePool[i];
                              cell1Children[0] = new Paragraph({ children: [new TextRun({ text: `${getAlphabetLetter(i)}. ${choice1.text}`, size: 24, color: "000000", font: "Calibri" })] });
                         }
 
-                        const cell2Children: Paragraph[] = [new Paragraph("")]; // Default to empty
+                        const cell2Children: Paragraph[] = [new Paragraph("")]; 
                         const choice2Index = i + numRows;
                         if (choice2Index < choicePool.length) {
                             const choice2 = choicePool[choice2Index];
@@ -539,9 +551,8 @@ export default function RenderExamPage() {
                 const premisesForTable: Array<{ text: string; displayLabel: string }> = [];
                 const responsesForTable: Array<{ text: string; letter: string }> = [];
 
-                (block.questions).forEach((question, qIdx) => {
-                    const matchQ = question as MatchingTypeQuestion;
-                    if (matchQ.pairs && matchQ.pairs.length > 0) {
+                (block.questions as MatchingTypeQuestion[]).forEach((question, qIdx) => {
+                    if (question.pairs && question.pairs.length > 0) {
                         const points = question.points;
                         const startNum = currentDocxDisplayNumber;
                         const endNum = currentDocxDisplayNumber + points - 1;
@@ -549,12 +560,12 @@ export default function RenderExamPage() {
                         currentDocxDisplayNumber += points;
 
                         premisesForTable.push({
-                            text: String(matchQ.pairs[0]?.premise || ''),
+                            text: String(question.pairs[0]?.premise || ''),
                             displayLabel: premiseDisplayLabel,
                         });
                         responsesForTable.push({
-                            text: String(matchQ.pairs[0]?.response || ''),
-                            letter: matchQ.pairs[0]?.responseLetter || getAlphabetLetter(qIdx),
+                            text: String(question.pairs[0]?.response || ''),
+                            letter: question.pairs[0]?.responseLetter || getAlphabetLetter(qIdx),
                         });
                     }
                 });
@@ -566,7 +577,7 @@ export default function RenderExamPage() {
 
                 for (let i = 0; i < numRows; i++) {
                     const premiseText = premisesForTable[i]
-                        ? `${premisesForTable[i].displayLabel}. ${premisesForTable[i].text}`
+                        ? `____ ${premisesForTable[i].displayLabel}. ${premisesForTable[i].text}`
                         : "";
                     const responseText = responsesForTable[i]
                         ? `${responsesForTable[i].letter}. ${responsesForTable[i].text}`
@@ -640,7 +651,6 @@ export default function RenderExamPage() {
                     } else if (question.type === 'true-false') {
                          children.push(new Paragraph({ text: "", spacing: {after: 80}})); 
                     }
-                    // No extra empty paragraph for 'pooled-choices' questions here.
                 });
             }
         });
@@ -681,7 +691,100 @@ export default function RenderExamPage() {
         console.error("Error generating DOCX:", error);
         toast({ title: "DOCX Generation Failed", description: "Could not generate the DOCX file.", variant: "destructive" });
     } finally {
-        setIsDownloadingDocxFile(false);
+        setIsDownloadingExamDocx(false);
+    }
+  };
+
+  const generateAndDownloadAnswerKeyDocx = async () => {
+    if (!examForPreview) {
+        toast({ title: "Error", description: "No exam data available for answer key.", variant: "destructive" });
+        return;
+    }
+    setIsDownloadingAnswerKey(true);
+    try {
+        let currentDisplayNumber = 1;
+        const answerKeyParagraphs: Paragraph[] = [
+            new Paragraph({
+                children: [new TextRun({ text: `Answer Key for: ${examForPreview.title}`, bold: true, size: 32, font: "Calibri" })],
+                heading: HeadingLevel.HEADING_1,
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 400 }
+            })
+        ];
+
+        examForPreview.examBlocks.forEach(block => {
+             answerKeyParagraphs.push(new Paragraph({
+                children: [new TextRun({ text: `${toRoman(examForPreview.examBlocks.indexOf(block) + 1)}. ${getQuestionTypeLabel(block.blockType)}`, bold: true, underline: {}, size: 28, font: "Calibri" })],
+                spacing: { before: 200, after: 100 }
+            }));
+
+            block.questions.forEach(question => {
+                const startNum = currentDisplayNumber;
+                const endNum = currentDisplayNumber + question.points - 1;
+                const displayQuestionLabel = question.points > 1 ? `${startNum}-${endNum}` : `${startNum}`;
+                currentDisplayNumber += question.points;
+
+                let answerText = "";
+                switch (question.type) {
+                    case 'multiple-choice':
+                        const mcq = question as MultipleChoiceQuestion;
+                        const correctOption = mcq.options.find(opt => opt.isCorrect);
+                        if (correctOption) {
+                            answerText = getAlphabetLetter(mcq.options.indexOf(correctOption));
+                        } else {
+                            answerText = "N/A (No correct option marked)";
+                        }
+                        break;
+                    case 'true-false':
+                        const tfq = question as TrueFalseQuestion;
+                        answerText = tfq.correctAnswer === null ? "N/A" : (tfq.correctAnswer ? "True" : "False");
+                        break;
+                    case 'matching':
+                        const matq = question as MatchingTypeQuestion;
+                        answerText = matq.pairs[0]?.responseLetter || "N/A";
+                        break;
+                    case 'pooled-choices':
+                        const pcq = question as PooledChoicesQuestion;
+                        if (pcq.correctAnswersFromPool.length > 0 && block.choicePool) {
+                            const correctChoiceText = pcq.correctAnswersFromPool[0];
+                            const choiceIndex = block.choicePool.findIndex(opt => opt.text === correctChoiceText);
+                            answerText = choiceIndex !== -1 ? getAlphabetLetter(choiceIndex) : "N/A (Choice not found in pool)";
+                        } else {
+                            answerText = "N/A";
+                        }
+                        break;
+                }
+                answerKeyParagraphs.push(new Paragraph({
+                    children: [new TextRun({ text: `${displayQuestionLabel}. ${answerText}`, size: 24, font: "Calibri" })],
+                    indent: { left: 360 }, // Indent answers
+                    spacing: { after: 80 }
+                }));
+            });
+        });
+
+        const answerKeyDocument = new DocxDocument({
+            sections: [{ children: answerKeyParagraphs }],
+            styles: {
+                paragraphStyles: [
+                    {
+                        id: "Normal",
+                        name: "Normal",
+                        run: { font: "Calibri", size: 24, color: "000000" },
+                        paragraph: { spacing: { after: 0, line: 240 } },
+                    },
+                ],
+            }
+        });
+
+        const blob = await Packer.toBlob(answerKeyDocument);
+        saveAs(blob, `${String(examForPreview.title).replace(/[^a-z0-9]/gi, '_').toLowerCase()}_answer_key.docx`);
+        toast({ title: "Download Started", description: `"${String(examForPreview.title)}_answer_key.docx" is downloading.` });
+
+    } catch (error) {
+        console.error("Error generating Answer Key DOCX:", error);
+        toast({ title: "Answer Key DOCX Generation Failed", description: "Could not generate the answer key.", variant: "destructive" });
+    } finally {
+        setIsDownloadingAnswerKey(false);
     }
   };
 
@@ -710,10 +813,10 @@ export default function RenderExamPage() {
             <ShadcnTable>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[40%] px-1.5 sm:px-4"><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
-                  <TableHead className="px-1.5 sm:px-4"><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
-                  <TableHead className="text-center px-1 sm:px-4"><Skeleton className="h-5 w-12 sm:w-16" /></TableHead>
-                  <TableHead className="text-right px-1.5 sm:px-4"><Skeleton className="h-5 w-20 sm:w-28" /></TableHead>
+                  <TableHead className="w-[40%] px-1.5 sm:px-4 text-xs sm:text-sm"><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
+                  <TableHead className="px-1.5 sm:px-4 text-xs sm:text-sm"><Skeleton className="h-5 w-20 sm:w-24" /></TableHead>
+                  <TableHead className="text-center px-1 sm:px-4 text-xs sm:text-sm"><Skeleton className="h-5 w-12 sm:w-16" /></TableHead>
+                  <TableHead className="text-right px-1.5 sm:px-4 text-xs sm:text-sm"><Skeleton className="h-5 w-20 sm:w-28" /></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -751,8 +854,10 @@ export default function RenderExamPage() {
         <ExamPreviewPlaceholder
             exam={examForPreview}
             onBack={handleBackToList}
-            onDownloadDocx={generateAndDownloadActualDocx}
-            isDownloadingDocxFile={isDownloadingDocxFile}
+            onDownloadExamDocx={generateAndDownloadExamDocx}
+            isDownloadingExamDocx={isDownloadingExamDocx}
+            onDownloadAnswerKeyDocx={generateAndDownloadAnswerKeyDocx}
+            isDownloadingAnswerKey={isDownloadingAnswerKey}
         />
     );
   }
@@ -896,6 +1001,3 @@ export default function RenderExamPage() {
     </div>
   );
 }
-
-
-    

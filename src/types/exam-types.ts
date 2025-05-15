@@ -7,6 +7,11 @@ export interface Option {
   isCorrect: boolean; // Used for multiple choice to indicate the correct answer
 }
 
+export interface PoolOption { // Specifically for choice pools, no 'isCorrect' here
+  id: string;
+  text: string;
+}
+
 export interface BaseQuestion {
   id: string; // Unique ID for each question
   questionText: string;
@@ -27,15 +32,22 @@ export interface MatchingPair {
   id: string;
   premise: string;
   response: string;
-  responseLetter?: string; // New: Letter assigned to this response
+  responseLetter?: string;
 }
 
 export interface MatchingTypeQuestion extends BaseQuestion {
-  type: 'matching'; // questionText can be an overall instruction for the matching block
-  pairs: MatchingPair[]; // In the UI, typically one pair per "question item" for matching
+  type: 'matching';
+  pairs: MatchingPair[];
 }
 
-export type ExamQuestion = MultipleChoiceQuestion | TrueFalseQuestion | MatchingTypeQuestion;
+export interface PooledChoicesQuestion extends BaseQuestion {
+  type: 'pooled-choices';
+  // Stores the TEXT of the choices selected from the pool as correct for THIS question.
+  // Assumes choice texts within a pool are unique for simplicity when checking answers.
+  correctAnswersFromPool: string[]; // Array of choice texts that are correct for this question
+}
+
+export type ExamQuestion = MultipleChoiceQuestion | TrueFalseQuestion | MatchingTypeQuestion | PooledChoicesQuestion;
 
 export type QuestionType = ExamQuestion['type'];
 
@@ -43,14 +55,16 @@ export const QUESTION_TYPES: { value: QuestionType; label: string }[] = [
   { value: 'multiple-choice', label: 'Multiple Choice' },
   { value: 'true-false', label: 'True/False' },
   { value: 'matching', label: 'Matching Type' },
+  { value: 'pooled-choices', label: 'Pooled Choices' },
 ];
 
-// New interface for a block of questions
+// Interface for a block of questions
 export interface ExamBlock {
   id: string;
   blockType: QuestionType;
   questions: ExamQuestion[];
   blockTitle?: string; // Optional title/instructions for the entire block
+  choicePool?: PoolOption[]; // Used for 'pooled-choices' blockType
 }
 
 // Interface for summary data shown in lists

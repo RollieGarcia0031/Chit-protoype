@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview An AI agent for analyzing exam content and providing suggestions.
@@ -17,26 +18,34 @@ const OptionSchema = z.object({
   isCorrect: z.boolean().describe("Indicates if this option is the correct answer."),
 });
 
+const PoolOptionSchema = z.object({ // For choice pools in PooledChoices blocks
+  id: z.string(),
+  text: z.string().describe("The text content of an option in the choice pool."),
+});
+
 const PairSchema = z.object({
   id: z.string(),
   premise: z.string().describe("The premise part of a matching pair."),
   response: z.string().describe("The response part of a matching pair."),
+  responseLetter: z.string().optional().describe("The letter assigned to the response for matching."),
 });
 
 const ExamQuestionSchema = z.object({
   id: z.string().describe("Unique identifier for the question."),
   questionText: z.string().describe("The main text or instruction for the question."),
   points: z.number().describe("Points awarded for this question."),
-  type: z.enum(['multiple-choice', 'true-false', 'matching']).describe("The type of the question."),
+  type: z.enum(['multiple-choice', 'true-false', 'matching', 'pooled-choices']).describe("The type of the question."),
   options: z.array(OptionSchema).optional().describe("List of options for multiple-choice questions. Required if type is 'multiple-choice'."),
   correctAnswer: z.boolean().nullable().optional().describe("The correct answer for true/false questions (true or false). Null if not set. Required if type is 'true-false'."),
   pairs: z.array(PairSchema).optional().describe("List of premise-response pairs for matching questions. Required if type is 'matching'."),
+  correctAnswersFromPool: z.array(z.string()).optional().describe("For 'pooled-choices' questions, an array of strings representing the text of the correct answers selected from the block's choice pool. Required if type is 'pooled-choices'."),
 });
 
 const ExamBlockSchema = z.object({
   id: z.string().describe("Unique identifier for the block."),
-  blockType: z.enum(['multiple-choice', 'true-false', 'matching']).describe("The type of questions in this block."),
+  blockType: z.enum(['multiple-choice', 'true-false', 'matching', 'pooled-choices']).describe("The type of questions in this block."),
   blockTitle: z.string().optional().describe("Optional title or instructions for the entire block."),
+  choicePool: z.array(PoolOptionSchema).optional().describe("For 'pooled-choices' blocks, this is the shared list of answer options available to all questions in this block. Required if blockType is 'pooled-choices'."),
   questions: z.array(ExamQuestionSchema).describe("List of questions within this block."),
 });
 
@@ -52,7 +61,7 @@ const SuggestionSchema = z.object({
   questionId: z.string().optional().describe("The ID of the question this suggestion pertains to, if applicable."),
   suggestionText: z.string().describe("The detailed suggestion or feedback provided by the AI. Should refer to items by their 1-based number (e.g., 'Block 1, Question 2')."),
   severity: z.enum(['error', 'warning', 'info']).default('info').optional().describe("Severity of the suggestion (e.g., error, warning, info)."),
-  elementPath: z.string().optional().describe("A dot-notation path to the specific element the suggestion refers to (e.g., 'examTitle', 'examBlocks[0].blockTitle', 'examBlocks[0].questions[1].questionText', 'examBlocks[0].questions[1].options[0].text', 'examBlocks[0].questions[1].correctAnswer', 'examBlocks[0].questions[1].pairs[0].premise'). Uses zero-based indexing."),
+  elementPath: z.string().optional().describe("A dot-notation path to the specific element the suggestion refers to (e.g., 'examTitle', 'examBlocks[0].blockTitle', 'examBlocks[0].questions[1].questionText', 'examBlocks[0].questions[1].options[0].text', 'examBlocks[0].questions[1].correctAnswer', 'examBlocks[0].questions[1].pairs[0].premise', 'examBlocks[0].choicePool[0].text', 'examBlocks[0].questions[0].correctAnswersFromPool[0]'). Uses zero-based indexing."),
 });
 
 const AnalyzeExamOutputSchema = z.object({
@@ -74,7 +83,8 @@ Focus on identifying potential issues such as:
 - Problems with the structure or format of questions.
 - For multiple-choice questions: Plausibility of distractors, clarity of the correct answer, presence of exactly one correct answer. Ensure options are distinct and not too similar or tricky.
 - For true-false questions: Unambiguous statements that are clearly true or false. Avoid double negatives or overly complex sentences. The 'correctAnswer' field in the input data (true, false, or null if not set) indicates the intended answer for true/false questions.
-- For matching questions: Clear and distinct premises and responses. Ensure a logical and fair matching is possible.
+- For matching questions: Clear and distinct premises and responses. Ensure a logical and fair matching is possible. Check for unique response letters within a block.
+- For pooled-choices questions: Clarity and distinctness of options in the 'choicePool'. Ensure 'correctAnswersFromPool' for each question accurately reference items from the 'choicePool'. Check if questions make sense given they select from a fixed pool.
 
 Exam Details:
 Title: {{{examTitle}}}
@@ -84,6 +94,12 @@ Exam Blocks:
 {{#each examBlocks as |block blockIndex|}}
 Block (Index: {{blockIndex}}) - ID: {{block.id}}, Type: {{block.blockType}}
 {{#if block.blockTitle}}Block Instructions: {{{block.blockTitle}}}{{/if}}
+{{#if block.choicePool}}
+  Choice Pool for Block {{blockIndex}} (ID: {{block.id}}):
+  {{#each block.choicePool as |poolOpt poolOptIndex|}}
+  - Pool Option (Index: {{poolOptIndex}}) ID {{poolOpt.id}}: "{{poolOpt.text}}"
+  {{/each}}
+{{/if}}
   Questions:
   {{#each block.questions as |question questionIndex|}}
   - Question (Index: {{questionIndex}} in Block {{blockIndex}}) - ID: {{question.id}}, Type: {{question.type}}, Points: {{question.points}}
@@ -98,7 +114,13 @@ Block (Index: {{blockIndex}}) - ID: {{block.id}}, Type: {{block.blockType}}
     {{#if question.pairs}}
     Matching Pairs (for Question at index {{questionIndex}} in Block {{blockIndex}}):
       {{#each question.pairs as |pair pairIndex|}}
-      - Pair (Index: {{pairIndex}}) ID {{pair.id}}: Premise: "{{pair.premise}}" --- Response: "{{pair.response}}"
+      - Pair (Index: {{pairIndex}}) ID {{pair.id}}: Premise: "{{pair.premise}}" --- Response: "{{pair.response}}" (Letter: {{pair.responseLetter}})
+      {{/each}}
+    {{/if}}
+    {{#if question.correctAnswersFromPool}}
+    Correct Answers from Pool (for Question at index {{questionIndex}} in Block {{blockIndex}}):
+      {{#each question.correctAnswersFromPool as |ans answerIndex|}}
+      - Answer {{answerIndex}}: "{{ans}}"
       {{/each}}
     {{/if}}
   {{/each}}
@@ -114,10 +136,12 @@ For each suggestion:
 - Optionally include 'elementPath' to pinpoint the exact field using zero-based indices for programmatic use. Examples:
   - 'examTitle'
   - 'examBlocks[0].blockTitle'
+  - 'examBlocks[0].choicePool[1].text'
   - 'examBlocks[0].questions[1].questionText'
   - 'examBlocks[0].questions[1].options[0].text'
   - 'examBlocks[0].questions[1].correctAnswer'
   - 'examBlocks[0].questions[1].pairs[0].premise'
+  - 'examBlocks[0].questions[1].correctAnswersFromPool[0]'
   (Replace INDEX with the actual zero-based index from the input, e.g., if input says "Block (Index: 2)", the path uses \`examBlocks[2]\`).
 
 Return your entire response as a single, valid JSON object matching the specified output schema. If no suggestions, return an empty "suggestions" array.
@@ -131,8 +155,6 @@ config: {
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
     ],
   },
-  // Custom Handlebars helpers like 'eq', 'isTruthy', 'isFalsey' are not standard and should be avoided.
-  // The AI is instructed to interpret the 'type' and 'correctAnswer' fields directly based on the schema.
 });
 
 const analyzeExamFlowInstance = ai.defineFlow(
@@ -160,4 +182,3 @@ const analyzeExamFlowInstance = ai.defineFlow(
 export async function analyzeExamFlow(input: AnalyzeExamInput): Promise<AnalyzeExamOutput> {
   return analyzeExamFlowInstance(input);
 }
-

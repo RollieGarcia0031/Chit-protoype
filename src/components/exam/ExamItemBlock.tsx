@@ -22,14 +22,13 @@ interface ExamItemBlockProps {
   onItemRemove: () => void;
   itemIndex: number;
   disabled?: boolean;
-  totalQuestionsInBlock?: number; // For matching type letter generation
-  lettersUsedByOtherItemsInBlock?: string[]; // For matching type letter validation
-  choicePool?: PoolOption[]; // For pooled-choices type
+  totalQuestionsInBlock?: number; 
+  lettersUsedByOtherItemsInBlock?: string[]; 
+  choicePool?: PoolOption[]; 
 }
 
-// Helper function to get alphabet letter
 const getAlphabetLetter = (index: number): string => {
-  return String.fromCharCode(65 + index); // 65 is ASCII for 'A'
+  return String.fromCharCode(65 + index); 
 };
 
 export function ExamItemBlock({
@@ -56,7 +55,6 @@ export function ExamItemBlock({
     }
   };
 
-  // --- Multiple Choice Specific Handlers ---
   const handleOptionTextChange = (optionIndex: number, text: string) => {
     if (item.type === 'multiple-choice') {
       const newOptions = [...(item as MultipleChoiceQuestion).options];
@@ -100,18 +98,16 @@ export function ExamItemBlock({
     }
   };
 
-  // --- True/False Specific Handlers ---
   const handleTrueFalseChange = (value: string) => {
     if (item.type === 'true-false') {
       onItemChange({ ...item, correctAnswer: value === 'true' } as TrueFalseQuestion);
     }
   };
 
-  // --- Matching Type Specific Handlers ---
   const handleMatchingPremiseChange = (text: string) => { 
     if (item.type === 'matching') {
       const currentPairs = (item as MatchingTypeQuestion).pairs;
-      const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "" }];
+      const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "", responseLetter: "" }];
       updatedPairs[0].premise = text;
       onItemChange({ ...item, pairs: updatedPairs } as MatchingTypeQuestion);
     }
@@ -120,7 +116,7 @@ export function ExamItemBlock({
   const handleMatchingResponseChange = (text: string) => { 
     if (item.type === 'matching') {
       const currentPairs = (item as MatchingTypeQuestion).pairs;
-      const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "" }];
+      const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "", responseLetter: "" }];
       updatedPairs[0].response = text;
       onItemChange({ ...item, pairs: updatedPairs } as MatchingTypeQuestion);
     }
@@ -129,7 +125,7 @@ export function ExamItemBlock({
   const handleMatchingResponseLetterChange = (letter: string) => {
     if (item.type === 'matching') {
       const currentPairs = (item as MatchingTypeQuestion).pairs;
-      const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "" }];
+      const updatedPairs: MatchingPair[] = currentPairs.length > 0 ? [...currentPairs] : [{ id: generateId('pair'), premise: "", response: "", responseLetter: "" }];
       updatedPairs[0].responseLetter = letter;
       onItemChange({ ...item, pairs: updatedPairs } as MatchingTypeQuestion);
     }
@@ -141,42 +137,59 @@ export function ExamItemBlock({
     const allPossibleLetters = Array.from({ length: totalQuestionsInBlock }, (_, i) => getAlphabetLetter(i));
     
     return allPossibleLetters.filter(possibleLetter => {
-      if (possibleLetter === currentAssignedLetter) return true; // Always allow the current item's letter
-      if (lettersUsedByOtherItemsInBlock && lettersUsedByOtherItemsInBlock.includes(possibleLetter)) return false; // Used by another
-      return true; // Available
+      if (possibleLetter === currentAssignedLetter) return true; 
+      if (lettersUsedByOtherItemsInBlock && lettersUsedByOtherItemsInBlock.includes(possibleLetter)) return false; 
+      return true; 
     });
   };
 
-  // --- Pooled Choices Specific Handlers ---
-  const handlePooledChoiceAnswerChange = (selectedChoiceText: string) => {
-    if (item.type === 'pooled-choices') {
-      onItemChange({ ...item, correctAnswersFromPool: [selectedChoiceText] } as PooledChoicesQuestion);
+  const getSelectedLetterFromPool = () => {
+    if (item.type === 'pooled-choices' && choicePool && choicePool.length > 0) {
+      const selectedText = (item as PooledChoicesQuestion).correctAnswersFromPool[0];
+      if (selectedText) {
+        const selectedOptionIndex = choicePool.findIndex(opt => opt.text === selectedText);
+        if (selectedOptionIndex !== -1) {
+          return getAlphabetLetter(selectedOptionIndex);
+        }
+      }
+    }
+    return ""; 
+  };
+
+  const handlePooledChoiceAnswerChange = (selectedLetter: string) => {
+    if (item.type === 'pooled-choices' && choicePool) {
+      const selectedOptionIndex = choicePool.findIndex((opt, index) => getAlphabetLetter(index) === selectedLetter);
+      if (selectedOptionIndex !== -1) {
+        const selectedText = choicePool[selectedOptionIndex].text;
+        onItemChange({ ...item, correctAnswersFromPool: [selectedText] } as PooledChoicesQuestion);
+      } else {
+        onItemChange({ ...item, correctAnswersFromPool: [] } as PooledChoicesQuestion);
+      }
     }
   };
 
 
   return (
     <Card className="border-border shadow-sm bg-card/50">
-      <CardHeader className="flex flex-row items-center justify-between py-2 px-3 sm:py-3 sm:px-4 gap-2">
-        <CardTitle className="text-xs sm:text-sm md:text-base font-medium flex-shrink-0">Question {itemIndex + 1}</CardTitle>
-        <div className="flex items-center gap-1 sm:gap-2 ml-auto"> 
-            <div className="space-y-0"> 
-                <Label htmlFor={`points-${item.id}-mobile`} className="sr-only">Points</Label>
-                <Input
-                id={`points-${item.id}-mobile`}
-                type="number"
-                value={item.points}
-                onChange={handlePointsChange}
-                min="0"
-                placeholder="Pts"
-                className="h-8 w-14 text-xs text-center"
-                disabled={disabled}
-                />
-            </div>
-            <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block" disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
-                <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground hover:text-destructive" />
-            </Button>
+      <CardHeader className="flex flex-row items-center justify-between py-2 px-3 sm:py-3 sm:px-4 gap-1 sm:gap-2">
+        <CardTitle className="text-xs sm:text-sm md:text-base font-medium flex-shrink-0 mr-auto">Question {itemIndex + 1}</CardTitle>
+        
+        <div className="flex items-center gap-1 sm:gap-2 ml-auto sm:ml-0 order-first sm:order-none"> 
+            <Label htmlFor={`points-${item.id}-q${itemIndex}`} className="sr-only sm:not-sr-only text-xs sm:text-sm whitespace-nowrap">Points:</Label>
+            <Input
+            id={`points-${item.id}-q${itemIndex}`}
+            type="number"
+            value={item.points}
+            onChange={handlePointsChange}
+            min="0"
+            placeholder="Pts"
+            className="h-7 w-12 text-xs text-center sm:h-8 sm:w-14"
+            disabled={disabled}
+            />
         </div>
+        <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block" disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
+            <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground hover:text-destructive" />
+        </Button>
       </CardHeader>
       <CardContent className="space-y-3 sm:space-y-4 px-3 pb-3 sm:px-4 sm:pb-4">
         {questionType !== 'matching' && (
@@ -308,7 +321,7 @@ export function ExamItemBlock({
           <div className="space-y-1.5 sm:space-y-2">
             <Label htmlFor={`pooled-choice-answer-${item.id}`} className="block text-xs sm:text-sm font-medium">Correct Answer from Pool</Label>
             <Select
-              value={(item as PooledChoicesQuestion).correctAnswersFromPool[0] || ""}
+              value={getSelectedLetterFromPool()}
               onValueChange={handlePooledChoiceAnswerChange}
               disabled={disabled || !choicePool || choicePool.length === 0}
             >
@@ -317,7 +330,7 @@ export function ExamItemBlock({
               </SelectTrigger>
               <SelectContent>
                 {(choicePool || []).map((poolOpt, poolOptIndex) => (
-                  <SelectItem key={poolOpt.id} value={poolOpt.text} className="text-xs sm:text-sm">
+                  <SelectItem key={poolOpt.id} value={getAlphabetLetter(poolOptIndex)} className="text-xs sm:text-sm">
                     {getAlphabetLetter(poolOptIndex)}. {poolOpt.text}
                   </SelectItem>
                 ))}
@@ -333,3 +346,4 @@ export function ExamItemBlock({
     </Card>
   );
 }
+

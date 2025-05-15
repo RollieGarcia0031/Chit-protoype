@@ -382,106 +382,102 @@ export default function CreateExamPage() {
 
     if (examIdFromUrl) {
       setEditingExamId(examIdFromUrl);
-      setIsLoadingExamData(true); 
+      setIsLoadingExamData(true);
       // Note: fetchExamForEditing will set isInitialLoadComplete to true in its finally block
     } else {
       // This is the path for new exams / loading from localStorage
-      if (typeof window !== 'undefined' && isInitialClientLoadRef.current) {
-        const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (savedData) {
-          try {
-            const parsedData = JSON.parse(savedData);
-            if (parsedData.title) setExamTitle(parsedData.title);
-            if (parsedData.description) setExamDescription(parsedData.description);
-            
-            // More robust loading for selectedSubjectIdForFilter
-            setSelectedSubjectIdForFilter(
-              parsedData.hasOwnProperty('selectedSubjectIdForFilter') ? parsedData.selectedSubjectIdForFilter : null
-            );
+      if (typeof window !== 'undefined') { // Ensure client-side
+        if (isInitialClientLoadRef.current) { // Only run localStorage logic once on initial client load
+          const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+          if (savedData) {
+            try {
+              const parsedData = JSON.parse(savedData);
+              if (parsedData.title) setExamTitle(parsedData.title);
+              if (parsedData.description) setExamDescription(parsedData.description);
+              
+              setSelectedSubjectIdForFilter(
+                parsedData.hasOwnProperty('selectedSubjectIdForFilter') ? parsedData.selectedSubjectIdForFilter : null
+              );
 
-            // More robust loading for assignedClassSlots
-            if (parsedData.assignedClassSlots && Array.isArray(parsedData.assignedClassSlots)) {
-                if (parsedData.assignedClassSlots.length > 0) {
-                    setAssignedClassSlots(parsedData.assignedClassSlots.map((slot: any) => ({
-                        key: slot.key || generateId('loaded-class-slot'),
-                        selectedClassId: slot.selectedClassId || null,
-                    })));
-                } else {
-                    setAssignedClassSlots([]); // If saved as empty array, respect it
-                }
-            } else {
-                 setAssignedClassSlots([{ key: generateId('default-class-slot-no-saved'), selectedClassId: null }]);
-            }
+              if (parsedData.assignedClassSlots && Array.isArray(parsedData.assignedClassSlots)) {
+                  if (parsedData.assignedClassSlots.length > 0) {
+                      setAssignedClassSlots(parsedData.assignedClassSlots.map((slot: any) => ({
+                          key: slot.key || generateId('loaded-class-slot'),
+                          selectedClassId: slot.selectedClassId || null,
+                      })));
+                  } else {
+                      setAssignedClassSlots([]);
+                  }
+              } else {
+                   setAssignedClassSlots([{ key: generateId('default-class-slot-no-saved'), selectedClassId: null }]);
+              }
 
-            if (parsedData.blocks && Array.isArray(parsedData.blocks)) {
-              const validatedBlocks = parsedData.blocks.map((block: ExamBlock) => ({
-                ...block,
-                id: block.id || generateId('block'),
-                ...(block.blockType === 'pooled-choices' && {
-                    choicePool: (block.choicePool || []).map((pOpt: PoolOption) => ({
-                        ...pOpt,
-                        id: pOpt.id || generateId('pool-opt'),
-                    }))
-                }),
-                questions: block.questions.map((q: ExamQuestion) => ({
-                  ...q,
-                  id: q.id || generateId('question'),
-                  ...(q.type === 'multiple-choice' && {
-                    options: (q as MultipleChoiceQuestion).options?.map((opt: Option) => ({
-                      ...opt,
-                      id: opt.id || generateId('option'),
-                    })) || [],
+              if (parsedData.blocks && Array.isArray(parsedData.blocks)) {
+                const validatedBlocks = parsedData.blocks.map((block: ExamBlock) => ({
+                  ...block,
+                  id: block.id || generateId('block'),
+                  ...(block.blockType === 'pooled-choices' && {
+                      choicePool: (block.choicePool || []).map((pOpt: PoolOption) => ({
+                          ...pOpt,
+                          id: pOpt.id || generateId('pool-opt'),
+                      }))
                   }),
-                  ...(q.type === 'matching' && {
-                    pairs: (q as MatchingTypeQuestion).pairs?.map((p: MatchingPair) => ({
-                      ...p,
-                      id: p.id || generateId('pair'),
-                      responseLetter: p.responseLetter || "",
-                    })) || [],
-                  }),
-                  ...(q.type === 'pooled-choices' && {
-                    correctAnswersFromPool: (q as PooledChoicesQuestion).correctAnswersFromPool || [],
-                  }),
-                })),
-              }));
-              setExamBlocks(validatedBlocks);
+                  questions: block.questions.map((q: ExamQuestion) => ({
+                    ...q,
+                    id: q.id || generateId('question'),
+                    ...(q.type === 'multiple-choice' && {
+                      options: (q as MultipleChoiceQuestion).options?.map((opt: Option) => ({
+                        ...opt,
+                        id: opt.id || generateId('option'),
+                      })) || [],
+                    }),
+                    ...(q.type === 'matching' && {
+                      pairs: (q as MatchingTypeQuestion).pairs?.map((p: MatchingPair) => ({
+                        ...p,
+                        id: p.id || generateId('pair'),
+                        responseLetter: p.responseLetter || "",
+                      })) || [],
+                    }),
+                    ...(q.type === 'pooled-choices' && {
+                      correctAnswersFromPool: (q as PooledChoicesQuestion).correctAnswersFromPool || [],
+                    }),
+                  })),
+                }));
+                setExamBlocks(validatedBlocks);
+              }
+            } catch (error) {
+              console.error("Error parsing exam data from localStorage:", error);
+              localStorage.removeItem(LOCAL_STORAGE_KEY); 
+              setSelectedSubjectIdForFilter(null);
+              setAssignedClassSlots([{ key: generateId('error-reset-class-slot'), selectedClassId: null }]);
             }
-          } catch (error) {
-            console.error("Error parsing exam data from localStorage:", error);
-            localStorage.removeItem(LOCAL_STORAGE_KEY); // Clear corrupted data
-            // Reset to defaults on error
-            setSelectedSubjectIdForFilter(null);
-            setAssignedClassSlots([{ key: generateId('error-reset-class-slot'), selectedClassId: null }]);
+          } else {
+              // No saved data in local storage, initialize with defaults
+              setSelectedSubjectIdForFilter(null);
+              setAssignedClassSlots([{ key: generateId('init-class-slot-no-data'), selectedClassId: null }]);
           }
-        } else {
-            // No saved data in local storage, initialize with defaults
-            setSelectedSubjectIdForFilter(null);
-            setAssignedClassSlots([{ key: generateId('init-class-slot-no-data'), selectedClassId: null }]);
+          isInitialClientLoadRef.current = false; // Mark initial load from localStorage as done
         }
-        isInitialClientLoadRef.current = false; // Mark that initial client load from localStorage has occurred
+        // For new exams, once the above block has run (or was skipped if not initial client load),
+        // and we are not editing, set initial load complete.
+        setIsInitialLoadComplete(true); 
       }
-      setIsLoadingExamData(false); 
-      setIsInitialLoadComplete(true); // For new/localStorage exams, initial load is complete here
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, user]); // Added user dependency as data fetching for dropdowns depends on it.
+  }, [searchParams, user]);
 
 
   // Effect for fetching an existing exam for editing
   useEffect(() => {
-    // Exit if not editing, no user, already loading, or prerequisite data not ready
     if (!editingExamId || !user || isLoadingExamData || isLoadingUserClasses || isLoadingUserSubjectsForDropdown) {
-      // If we're supposed to be loading (editingExamId is set) but pre-reqs aren't ready,
-      // we don't set isInitialLoadComplete to true yet. It will be set in fetchExamForEditing's finally block.
       return;
     }
     
     const fetchExamForEditing = async () => {
-      // Reset form fields before loading new data
       setExamTitle("");
       setExamDescription("");
       setSelectedSubjectIdForFilter(null);
-      setAssignedClassSlots([]); // Start with empty, will be populated
+      setAssignedClassSlots([]); 
       setExamBlocks([]);
       setAiFeedbackList([]);
       
@@ -499,24 +495,21 @@ export default function CreateExamPage() {
         setExamTitle(examData.title);
         setExamDescription(examData.description || "");
 
-        // Set subject filter first, which will then allow class dropdown to populate correctly
         if (examData.subjectId) {
             setSelectedSubjectIdForFilter(examData.subjectId);
         } else {
             setSelectedSubjectIdForFilter(null); 
         }
         
-        // Set assigned class slots after subject is potentially set
         if (examData.classIds && Array.isArray(examData.classIds)) {
             if (examData.classIds.length > 0) {
                  setAssignedClassSlots(
                     examData.classIds.map((id: string) => ({ key: generateId('loaded-slot'), selectedClassId: id }))
                  );
             } else {
-                setAssignedClassSlots([]); // If classIds is an empty array
+                setAssignedClassSlots([]); 
             }
         } else {
-          // Default if classIds is missing or not an array
           setAssignedClassSlots([{ key: generateId('default-fetch-slot'), selectedClassId: null }]);
         }
 
@@ -597,26 +590,20 @@ export default function CreateExamPage() {
         router.push('/exams');
       } finally {
         setIsLoadingExamData(false); 
-        setIsInitialLoadComplete(true); // Crucial: set true after DB load is complete or attempt fails
+        setIsInitialLoadComplete(true); 
       }
     };
 
-    // Fetch only if all conditions are met (editing exam and pre-requisite data is loaded)
     if (editingExamId && user && !isLoadingExamData && !isLoadingUserClasses && !isLoadingUserSubjectsForDropdown) {
       fetchExamForEditing();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingExamId, user, router, toast, /* Dependencies that trigger the fetch itself */
-      isLoadingUserClasses, isLoadingUserSubjectsForDropdown]); // isLoadingExamData removed, managed internally
+  }, [editingExamId, user, router, toast, 
+      isLoadingUserClasses, isLoadingUserSubjectsForDropdown]); 
 
 
   // Effect for saving to localStorage (for new exams only)
   useEffect(() => {
-    // Only save to local storage if:
-    // 1. We are NOT editing an existing exam (editingExamId is null).
-    // 2. Initial load from local storage (or defaults) is complete (isInitialLoadComplete is true).
-    // 3. It's running on the client-side (typeof window !== 'undefined').
-    // 4. We are not currently in the process of loading data from Firestore for editing (isLoadingExamData is false).
     if (editingExamId || !isInitialLoadComplete || typeof window === 'undefined' || isLoadingExamData) {
       return;
     }
@@ -752,17 +739,9 @@ export default function CreateExamPage() {
     }
     setEditingExamId(null); 
     setIsLoadingExamData(false); 
-    // Reset isInitialLoadComplete only if we are navigating away from an edited exam to a new one
-    // Or if explicitly creating a new exam after editing one.
-    // If simply resetting a new exam form, isInitialLoadComplete should remain true.
-    isInitialClientLoadRef.current = true; // Allow localStorage to be read again if form is "truly" new
+    isInitialClientLoadRef.current = true; 
 
     if (searchParams.get('examId')) router.push('/create-exam'); 
-    // else {
-    //    // If already on /create-exam (no examId), resetting the form
-    //    // we might want to re-initialize from localStorage if user expects that,
-    //    // or clear localStorage and start fresh. Current behavior clears localStorage (if !editingExamId).
-    // }
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -1281,4 +1260,6 @@ export default function CreateExamPage() {
     </div>
   );
 }
+    
+
     

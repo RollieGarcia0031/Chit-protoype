@@ -15,6 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 interface SubjectInfo {
   id: string;
   name: string;
+  code: string; // Added subject code
 }
 
 export default function SubjectsPage() {
@@ -22,25 +23,28 @@ export default function SubjectsPage() {
   const [isAddSubjectDialogOpen, setIsAddSubjectDialogOpen] = useState(false);
   
   const [newSubjectName, setNewSubjectName] = useState('');
+  const [newSubjectCode, setNewSubjectCode] = useState(''); // State for subject code
   
   const [editingSubject, setEditingSubject] = useState<SubjectInfo | null>(null);
 
   const handleAddOrUpdateSubject = (event: FormEvent) => {
     event.preventDefault();
-    if (!newSubjectName.trim()) {
-      alert("Subject Name is required.");
+    if (!newSubjectName.trim() || !newSubjectCode.trim()) {
+      alert("Subject Name and Subject Code are required.");
       return;
     }
 
     if (editingSubject) {
       setSubjects(subjects.map(s => s.id === editingSubject.id ? { 
         ...s, 
-        name: newSubjectName, 
+        name: newSubjectName,
+        code: newSubjectCode.toUpperCase(), // Store code in uppercase
       } : s));
     } else {
       const newSubject: SubjectInfo = {
         id: generateId('subject'),
         name: newSubjectName,
+        code: newSubjectCode.toUpperCase(), // Store code in uppercase
       };
       setSubjects([...subjects, newSubject]);
     }
@@ -51,6 +55,7 @@ export default function SubjectsPage() {
   const openEditDialog = (subjectInfo: SubjectInfo) => {
     setEditingSubject(subjectInfo);
     setNewSubjectName(subjectInfo.name);
+    setNewSubjectCode(subjectInfo.code);
     setIsAddSubjectDialogOpen(true);
   };
 
@@ -61,6 +66,7 @@ export default function SubjectsPage() {
   const closeDialog = () => {
     setIsAddSubjectDialogOpen(false);
     setNewSubjectName('');
+    setNewSubjectCode(''); // Reset subject code state
     setEditingSubject(null);
   }
 
@@ -74,7 +80,7 @@ export default function SubjectsPage() {
               Your Subjects
             </CardTitle>
             <CardDescription className="text-xs sm:text-sm">
-              Manage your subjects here.
+              Manage your subjects here. Each subject has a name and a unique code.
             </CardDescription>
           </div>
           <Dialog open={isAddSubjectDialogOpen} onOpenChange={(isOpen) => {
@@ -91,7 +97,7 @@ export default function SubjectsPage() {
               <DialogHeader>
                 <DialogTitle className="text-base sm:text-lg">{editingSubject ? "Edit Subject" : "Add New Subject"}</DialogTitle>
                 <DialogDescription className="text-xs sm:text-sm">
-                  {editingSubject ? "Update the name for this subject." : "Enter the name for your new subject below."}
+                  {editingSubject ? "Update the details for this subject." : "Enter the details for your new subject below."}
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleAddOrUpdateSubject} className="grid gap-3 sm:gap-4 py-2 sm:py-4">
@@ -105,6 +111,20 @@ export default function SubjectsPage() {
                     onChange={(e) => setNewSubjectName(e.target.value)}
                     placeholder="e.g., Mathematics 101"
                     className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-2 sm:gap-4">
+                  <Label htmlFor="subjectCode" className="text-right text-xs sm:text-sm col-span-1">
+                    Code
+                  </Label>
+                  <Input
+                    id="subjectCode"
+                    value={newSubjectCode}
+                    onChange={(e) => setNewSubjectCode(e.target.value.toUpperCase())}
+                    placeholder="e.g., MATH101"
+                    className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
+                    maxLength={10} // Optional: limit code length
                     required
                   />
                 </div>
@@ -134,8 +154,11 @@ export default function SubjectsPage() {
               <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {subjects.map((sub) => (
                   <Card key={sub.id} className="shadow-md">
-                    <CardHeader className="pb-3 sm:pb-4">
+                    <CardHeader className="pb-2 sm:pb-3">
                       <CardTitle className="text-md sm:text-lg font-semibold">{sub.name}</CardTitle>
+                      <CardDescription className="text-xs sm:text-sm pt-1">
+                        Code: <span className="font-mono text-primary">{sub.code}</span>
+                      </CardDescription>
                     </CardHeader>
                     <CardFooter className="flex justify-end gap-2 pt-0 pb-3 sm:pb-4">
                         <Button variant="outline" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" onClick={() => openEditDialog(sub)}>
@@ -162,3 +185,4 @@ export default function SubjectsPage() {
     </div>
   );
 }
+

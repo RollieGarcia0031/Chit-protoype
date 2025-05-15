@@ -534,4 +534,3 @@ export default function ViewExamsPage() {
     </div>
   );
 }
-

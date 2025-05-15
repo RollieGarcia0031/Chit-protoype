@@ -117,5 +117,6 @@ export interface Student {
   tempId?: string; // Used for optimistic updates to match the student before it gets a real ID
   isOptimistic?: boolean; // True if added to UI before DB confirmation
   isSaving?: boolean; // True while the student data is being saved to DB
+  score?: number | string; // For exam results page
 }
 

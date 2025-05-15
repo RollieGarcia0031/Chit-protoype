@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { ChitLogo } from '@/components/icons/logo';
 import { Button } from '@/components/ui/button';
-import { HelpCircle, LogIn, UserPlus, LogOut, FilePlus2, ListChecks, ClipboardCheck, Users } from 'lucide-react'; // Added Users
+import { HelpCircle, LogIn, UserPlus, LogOut, FilePlus2, ListChecks, ClipboardCheck, Users, BookOpen } from 'lucide-react'; // Added BookOpen
 import { useAuth } from '@/contexts/auth-context';
 import {
   DropdownMenu,
@@ -108,6 +108,19 @@ export function AppSidebar() {
                   <Link href="/render-exam" className="flex items-center">
                     <ClipboardCheck />
                     {isExpanded && <span>Generate DOCX</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === '/subjects'}
+                  tooltip={isExpanded ? undefined : "Subjects"}
+                  className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                >
+                  <Link href="/subjects" className="flex items-center">
+                    <BookOpen />
+                    {isExpanded && <span>Subjects</span>}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

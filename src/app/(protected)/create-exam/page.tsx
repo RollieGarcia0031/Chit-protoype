@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { useState, type FormEvent, useEffect, useCallback, useMemo } from "react";
+import { useState, type FormEvent, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair, PooledChoicesQuestion, PoolOption, ClassInfoForDropdown, FetchedSubjectInfo } from "@/types/exam-types";
 import { generateId, debounce } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
@@ -96,7 +96,7 @@ export default function CreateExamPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
-  const [isLoadingExamData, setIsLoadingExamData] = useState(false);
+  const [isLoadingExamData, setIsLoadingExamData] = useState(false); // True when loading an exam for editing from DB
 
   const [aiSuggestionsEnabled, setAiSuggestionsEnabled] = useState(false);
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
@@ -111,6 +111,8 @@ export default function CreateExamPage() {
   const [assignedClassSlots, setAssignedClassSlots] = useState<AssignedClassSlot[]>([{ key: generateId('class-slot'), selectedClassId: null }]);
   const [allUserClasses, setAllUserClasses] = useState<ClassInfoForDropdown[]>([]);
   const [isLoadingUserClasses, setIsLoadingUserClasses] = useState(true);
+
+  const isInitialClientLoadRef = useRef(true); // Ref to track if initial client-side load from localStorage has happened
 
 
   const totalPoints = useMemo(() => {
@@ -203,7 +205,8 @@ export default function CreateExamPage() {
   const handleSubjectFilterChange = (subjectIdValue: string) => {
     const newSubjectId = subjectIdValue === "none" ? null : subjectIdValue;
     setSelectedSubjectIdForFilter(newSubjectId);
-    setAssignedClassSlots([{ key: generateId('class-slot'), selectedClassId: null }]); // Reset assigned class slots when subject changes to one default slot
+    // Reset class assignments when subject changes, as available classes will change.
+    setAssignedClassSlots([{ key: generateId('class-slot-subject-change'), selectedClassId: null }]);
   };
   
   const handleAddClassAssignmentSlot = () => {
@@ -217,7 +220,7 @@ export default function CreateExamPage() {
   const handleAssignedClassChange = (keyToUpdate: string, newClassId: string | null) => {
     setAssignedClassSlots(prev => 
       prev.map(slot => 
-        slot.key === keyToUpdate ? { ...slot, selectedClassId: newClassId } : slot
+        slot.key === keyToUpdate ? { ...slot, selectedClassId: newClassId === "none" ? null : newClassId } : slot
       )
     );
   };
@@ -373,14 +376,17 @@ export default function CreateExamPage() {
   }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, assignedClassSlots, isInitialLoadComplete, isLoadingExamData, isSaving, debouncedAIAnalysis]);
 
 
+  // Effect for loading data from localStorage (for new exams) or triggering DB fetch (for editing exams)
   useEffect(() => {
     const examIdFromUrl = searchParams.get('examId');
 
     if (examIdFromUrl) {
       setEditingExamId(examIdFromUrl);
       setIsLoadingExamData(true); 
+      // Note: fetchExamForEditing will set isInitialLoadComplete to true in its finally block
     } else {
-      if (typeof window !== 'undefined' && !isInitialLoadComplete) {
+      // This is the path for new exams / loading from localStorage
+      if (typeof window !== 'undefined' && isInitialClientLoadRef.current) {
         const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (savedData) {
           try {
@@ -388,19 +394,21 @@ export default function CreateExamPage() {
             if (parsedData.title) setExamTitle(parsedData.title);
             if (parsedData.description) setExamDescription(parsedData.description);
             
-            // Robustly set selectedSubjectIdForFilter, defaulting to null if not present
-            setSelectedSubjectIdForFilter(parsedData.hasOwnProperty('selectedSubjectIdForFilter') ? parsedData.selectedSubjectIdForFilter : null);
+            setSelectedSubjectIdForFilter(
+              parsedData.hasOwnProperty('selectedSubjectIdForFilter') ? parsedData.selectedSubjectIdForFilter : null
+            );
 
-            // Robustly set assignedClassSlots, defaulting to a single empty slot if not found or invalid
-            if (parsedData.assignedClassSlots && Array.isArray(parsedData.assignedClassSlots) && parsedData.assignedClassSlots.length > 0) {
-              setAssignedClassSlots(parsedData.assignedClassSlots.map((slot: any) => ({
-                key: slot.key || generateId('loaded-class-slot'),
-                selectedClassId: slot.selectedClassId || null,
-              })));
-            } else if (parsedData.assignedClassSlots && Array.isArray(parsedData.assignedClassSlots) && parsedData.assignedClassSlots.length === 0){
-                setAssignedClassSlots([]); // If an empty array was saved, restore it as empty.
+            if (parsedData.assignedClassSlots && Array.isArray(parsedData.assignedClassSlots)) {
+                if (parsedData.assignedClassSlots.length > 0) {
+                    setAssignedClassSlots(parsedData.assignedClassSlots.map((slot: any) => ({
+                        key: slot.key || generateId('loaded-class-slot'),
+                        selectedClassId: slot.selectedClassId || null,
+                    })));
+                } else {
+                    setAssignedClassSlots([]); 
+                }
             } else {
-                 setAssignedClassSlots([{ key: generateId('default-class-slot'), selectedClassId: null }]);
+                 setAssignedClassSlots([{ key: generateId('default-class-slot-no-saved'), selectedClassId: null }]);
             }
 
             if (parsedData.blocks && Array.isArray(parsedData.blocks)) {
@@ -445,27 +453,25 @@ export default function CreateExamPage() {
         } else {
             // No saved data in local storage, initialize with defaults
             setSelectedSubjectIdForFilter(null);
-            setAssignedClassSlots([{ key: generateId('init-class-slot'), selectedClassId: null }]);
+            setAssignedClassSlots([{ key: generateId('init-class-slot-no-data'), selectedClassId: null }]);
         }
+        isInitialClientLoadRef.current = false; // Mark that initial client load from localStorage has occurred
       }
       setIsLoadingExamData(false); 
-    }
-     if (!isInitialLoadComplete) {
-        setIsInitialLoadComplete(true);
+      setIsInitialLoadComplete(true); // For new/localStorage exams, initial load is complete here
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, isInitialLoadComplete]); // Ensure isInitialLoadComplete is a dependency
+  }, [searchParams, user]); // Added user dependency as data fetching for dropdowns depends on it.
 
 
+  // Effect for fetching an existing exam for editing
   useEffect(() => {
-    if (!editingExamId || !user || !isInitialLoadComplete || !isLoadingExamData || isLoadingUserClasses || isLoadingUserSubjectsForDropdown) { 
-      if (editingExamId && !isLoadingExamData && isInitialLoadComplete && examBlocks.length === 0 && examTitle === "") {
-          // This case might mean fetch failed or exam was empty
-      }
-      return;
+    if (!editingExamId || !user || isLoadingExamData || isLoadingUserClasses || isLoadingUserSubjectsForDropdown) {
+      return; // Exit if not editing, no user, already loading, or prerequisite data not ready
     }
     
     const fetchExamForEditing = async () => {
+      // Reset form fields before loading new data
       setExamTitle("");
       setExamDescription("");
       setSelectedSubjectIdForFilter(null);
@@ -487,23 +493,25 @@ export default function CreateExamPage() {
         setExamTitle(examData.title);
         setExamDescription(examData.description || "");
 
+        // Set subject filter first, which will then allow class dropdown to populate correctly
         if (examData.subjectId) {
             setSelectedSubjectIdForFilter(examData.subjectId);
         } else {
-            setSelectedSubjectIdForFilter(null);
+            setSelectedSubjectIdForFilter(null); 
         }
-
-        if (examData.classIds && Array.isArray(examData.classIds) && examData.classIds.length > 0) {
-          setAssignedClassSlots(
-            examData.classIds.map((id: string) => ({ key: generateId('loaded-slot'), selectedClassId: id }))
-          );
-        } else if (examData.classIds && Array.isArray(examData.classIds) && examData.classIds.length === 0){
-             setAssignedClassSlots([]); // If an empty array was saved, restore it as empty.
-        }
-        else {
+        
+        // Set assigned class slots after subject is potentially set
+        if (examData.classIds && Array.isArray(examData.classIds)) {
+            if (examData.classIds.length > 0) {
+                 setAssignedClassSlots(
+                    examData.classIds.map((id: string) => ({ key: generateId('loaded-slot'), selectedClassId: id }))
+                 );
+            } else {
+                setAssignedClassSlots([]); 
+            }
+        } else {
           setAssignedClassSlots([{ key: generateId('default-fetch-slot'), selectedClassId: null }]);
         }
-
 
         const loadedBlocks: ExamBlock[] = [];
         const blocksCollectionRef = collection(db, EXAMS_COLLECTION_NAME, editingExamId, "questionBlocks");
@@ -582,18 +590,24 @@ export default function CreateExamPage() {
         router.push('/exams');
       } finally {
         setIsLoadingExamData(false); 
+        setIsInitialLoadComplete(true); // Crucial: set true after DB load is complete
       }
     };
 
-    if (isLoadingExamData && !isLoadingUserClasses && !isLoadingUserSubjectsForDropdown) { 
-        fetchExamForEditing();
+    // Fetch only if all conditions are met (editing exam and pre-requisite data is loaded)
+    if (editingExamId && user && !isLoadingExamData && !isLoadingUserClasses && !isLoadingUserSubjectsForDropdown) {
+      fetchExamForEditing();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingExamId, user, router, toast, isInitialLoadComplete, isLoadingExamData, allUserClasses, userSubjectsForDropdown]); 
+  }, [editingExamId, user, router, toast, /* Dependencies that trigger the fetch itself */
+      isLoadingUserClasses, isLoadingUserSubjectsForDropdown]); // isLoadingExamData removed, managed internally
 
 
+  // Effect for saving to localStorage (for new exams only)
   useEffect(() => {
-    if (editingExamId || !isInitialLoadComplete || typeof window === 'undefined' || isLoadingExamData) return;
+    if (editingExamId || !isInitialLoadComplete || typeof window === 'undefined' || isLoadingExamData) {
+      return;
+    }
 
     const examDataToSave = {
       title: examTitle,
@@ -726,7 +740,17 @@ export default function CreateExamPage() {
     }
     setEditingExamId(null); 
     setIsLoadingExamData(false); 
+    // Reset isInitialLoadComplete only if we are navigating away from an edited exam to a new one
+    // Or if explicitly creating a new exam after editing one.
+    // If simply resetting a new exam form, isInitialLoadComplete should remain true.
+    // isInitialClientLoadRef.current = true; // Allow localStorage to be read again if form is "truly" new
+
     if (searchParams.get('examId')) router.push('/create-exam'); 
+    // else {
+    //    // If already on /create-exam (no examId), resetting the form
+    //    // we might want to re-initialize from localStorage if user expects that,
+    //    // or clear localStorage and start fresh. Current behavior clears localStorage (if !editingExamId).
+    // }
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -1084,7 +1108,7 @@ export default function CreateExamPage() {
                     <div key={slot.key} className="flex items-center gap-2">
                         <Select
                             value={slot.selectedClassId || ""}
-                            onValueChange={(value) => handleAssignedClassChange(slot.key, value === "none" ? null : value)}
+                            onValueChange={(value) => handleAssignedClassChange(slot.key, value)}
                             disabled={isLoadingUserClasses || isSaving || isLoadingExamData || !selectedSubjectIdForFilter || filteredClassesForDropdown.length === 0}
                         >
                             <SelectTrigger className="flex-grow text-xs sm:text-sm h-9 sm:h-10">

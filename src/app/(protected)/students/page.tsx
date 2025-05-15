@@ -75,7 +75,7 @@ export default function StudentsPage() {
   const [isLoadingUserSubjects, setIsLoadingUserSubjects] = useState(true);
   const [displayMode, setDisplayMode] = useState<DisplayMode>('bySubject');
 
-  // State for Student Management (no longer a dialog)
+  // State for Student Management
   const [managingStudentsForClass, setManagingStudentsForClass] = useState<ClassInfo | null>(null);
   const [studentsForSelectedClass, setStudentsForSelectedClass] = useState<Student[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
@@ -458,14 +458,20 @@ export default function StudentsPage() {
               </Button>
             </form>
           </div>
-          <div className="md:col-span-2">
-            <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4 border-b pb-2">Enrolled Students ({studentsForSelectedClass.length})</h3>
+          <div className="md:col-span-2 flex flex-col">
+            <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4 border-b pb-2 shrink-0">
+              Enrolled Students ({studentsForSelectedClass.length})
+            </h3>
             {isLoadingStudents ? (
-              <div className="flex-grow flex items-center justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+              <div className="flex-grow flex items-center justify-center py-10">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
             ) : studentsForSelectedClass.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">No students enrolled in this class yet.</p>
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No students enrolled in this class yet.
+              </p>
             ) : (
-              <ul className="space-y-2 max-h-[calc(100vh-400px)] overflow-y-auto pr-2"> {/* Added max-height and overflow */}
+              <ul className="space-y-2 overflow-y-auto pr-2 flex-grow">
                 {studentsForSelectedClass.map(student => (
                   <li key={student.id} className="flex items-center justify-between p-2.5 sm:p-3 bg-background border rounded-md shadow-sm">
                     <span className="text-xs sm:text-sm">
@@ -515,7 +521,7 @@ export default function StudentsPage() {
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Select value={displayMode} onValueChange={(value) => setDisplayMode(value as DisplayMode)}> <SelectTrigger className="w-full sm:w-[180px] h-9 text-xs sm:text-sm"> <SelectValue placeholder="Display mode" /> </SelectTrigger> <SelectContent> <SelectItem value="bySubject" className="text-xs sm:text-sm">Group by Subject</SelectItem> <SelectItem value="bySectionYear" className="text-xs sm:text-sm">Group by Section/Year</SelectItem> </SelectContent> </Select>
             <Dialog open={isAddClassDialogOpen} onOpenChange={(isOpen) => { if (!isOpen) closeClassDialog(); else setIsAddClassDialogOpen(true); }}> 
-              <DialogTrigger asChild>
+               <DialogTrigger asChild>
                 <button
                   type="button"
                   className={cn(buttonVariants({ size: "sm" }), "text-xs sm:text-sm w-full sm:w-auto h-9")}

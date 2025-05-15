@@ -393,8 +393,6 @@ export default function CreateExamPage() {
                 key: slot.key || generateId('loaded-class-slot'),
                 selectedClassId: slot.selectedClassId || null,
               })));
-            } else if (parsedData.assignedClassIds && Array.isArray(parsedData.assignedClassIds)) { // Compatibility for old format
-                setAssignedClassSlots(parsedData.assignedClassIds.map((id: string) => ({ key: generateId('compat-slot'), selectedClassId: id })));
             }
 
 

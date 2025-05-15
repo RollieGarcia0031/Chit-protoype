@@ -9,9 +9,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, PlusCircle, Edit3, Trash2, List } from "lucide-react";
+import { Users, PlusCircle, Edit3, Trash2, List, Loader2, AlertTriangle } from "lucide-react";
 import { generateId } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useAuth } from '@/contexts/auth-context';
+import { db } from '@/lib/firebase/config';
+import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
+import type { Timestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface ClassInfo {
   id: string;
@@ -21,18 +28,20 @@ interface ClassInfo {
   code: string;
 }
 
-// Placeholder subjects. Ideally, this would come from a shared state or database.
-const placeholderSubjects = [
-  { id: 'subj-math', name: 'Mathematics' },
-  { id: 'subj-sci', name: 'Science' },
-  { id: 'subj-eng', name: 'English' },
-  { id: 'subj-hist', name: 'History' },
-  { id: 'subj-cs', name: 'Computer Science' },
-  { id: 'subj-art', name: 'Arts' },
-  { id: 'subj-pe', name: 'Physical Education' },
-];
+// Interface for subjects fetched from Firestore for the dropdown
+interface FetchedSubjectInfo {
+  id: string;
+  name: string;
+  code: string;
+  // userId?: string; // Not strictly needed for dropdown but good for full type
+  // createdAt?: Timestamp;
+  // updatedAt?: Timestamp;
+}
 
 export default function StudentsPage() {
+  const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
+
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [isAddClassDialogOpen, setIsAddClassDialogOpen] = useState(false);
   
@@ -43,6 +52,52 @@ export default function StudentsPage() {
   
   const [editingClass, setEditingClass] = useState<ClassInfo | null>(null);
 
+  // State for user's subjects
+  const [userSubjects, setUserSubjects] = useState<FetchedSubjectInfo[]>([]);
+  const [isLoadingUserSubjects, setIsLoadingUserSubjects] = useState(false);
+  const [userSubjectsError, setUserSubjectsError] = useState<string | null>(null);
+
+  // Fetch user's subjects for the dropdown
+  useEffect(() => {
+    const fetchUserSubjects = async () => {
+      if (!user) {
+        setUserSubjects([]);
+        setIsLoadingUserSubjects(false);
+        return;
+      }
+      setIsLoadingUserSubjects(true);
+      setUserSubjectsError(null);
+      try {
+        const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
+        const q = query(subjectsCollectionRef, where("userId", "==", user.uid), orderBy("name", "asc"));
+        const querySnapshot = await getDocs(q);
+        const fetchedSubjects: FetchedSubjectInfo[] = [];
+        querySnapshot.forEach((doc) => {
+          fetchedSubjects.push({ id: doc.id, ...doc.data() } as FetchedSubjectInfo);
+        });
+        setUserSubjects(fetchedSubjects);
+      } catch (e) {
+        console.error("Error fetching user subjects: ", e);
+        setUserSubjectsError("Failed to load subjects for dropdown.");
+        toast({
+          title: "Error",
+          description: "Could not fetch your subjects for the class form.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingUserSubjects(false);
+      }
+    };
+
+    if (!authLoading && user) {
+      fetchUserSubjects();
+    } else if (!authLoading && !user) {
+      setIsLoadingUserSubjects(false);
+      setUserSubjects([]);
+    }
+  }, [user, authLoading, toast]);
+
+
   const generateClassCode = (subject: string, section: string, year: string) => {
     const subjectPart = subject.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase();
     const sectionPart = section.replace(/[^a-zA-Z0-9]/g, '').substring(0, 2).toUpperCase();
@@ -51,9 +106,8 @@ export default function StudentsPage() {
     return `${subjectPart}${sectionPart}${yearPart}-${randomPart}`;
   };
 
-  // Effect to auto-generate class code when relevant fields change for a new class
   useEffect(() => {
-    if (!editingClass) { // Only for new classes
+    if (!editingClass) { 
       setNewClassCode(generateClassCode(newSubjectName, newSectionName, newYearGrade));
     }
   }, [newSubjectName, newSectionName, newYearGrade, editingClass]);
@@ -62,8 +116,7 @@ export default function StudentsPage() {
   const handleAddOrUpdateClass = (event: FormEvent) => {
     event.preventDefault();
     if (!newSubjectName.trim() || !newSectionName.trim() || !newYearGrade.trim() || !newClassCode.trim()) {
-      // Basic validation, consider using a toast for user feedback
-      alert("All fields (Subject, Section Name, Year/Grade, and Code) are required.");
+      toast({ title: "Validation Error", description: "All fields are required.", variant: "destructive" });
       return;
     }
 
@@ -75,6 +128,7 @@ export default function StudentsPage() {
         yearGrade: newYearGrade,
         code: newClassCode 
       } : c));
+      toast({ title: "Class Updated", description: `Class "${newSubjectName} - ${newSectionName}" updated.` });
     } else {
       const newClass: ClassInfo = {
         id: generateId('class'),
@@ -84,6 +138,7 @@ export default function StudentsPage() {
         code: newClassCode,
       };
       setClasses([...classes, newClass]);
+      toast({ title: "Class Added", description: `Class "${newSubjectName} - ${newSectionName}" added.` });
     }
     
     closeDialog();
@@ -101,6 +156,7 @@ export default function StudentsPage() {
   const handleDeleteClass = (classId: string) => {
     // TODO: Add confirmation dialog before deleting
     setClasses(classes.filter(c => c.id !== classId));
+    toast({ title: "Class Deleted", description: "The class has been removed (locally).", variant: "destructive" });
   };
   
   const closeDialog = () => {
@@ -112,6 +168,30 @@ export default function StudentsPage() {
     setEditingClass(null);
   }
 
+  if (authLoading) {
+     return (
+      <div className="space-y-4 sm:space-y-6">
+        <Card className="shadow-lg">
+          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div>
+              <Skeleton className="h-7 w-40 mb-1 sm:h-8 sm:w-48" />
+              <Skeleton className="h-4 w-64 sm:h-5 sm:w-80" />
+            </div>
+            <Skeleton className="h-9 w-36 sm:h-10 sm:w-40" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-center py-8 sm:py-10">
+                <Skeleton className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 rounded-full" />
+                <Skeleton className="h-5 w-48 mx-auto mb-2" />
+                <Skeleton className="h-4 w-64 mx-auto" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <Card className="shadow-lg">
@@ -122,7 +202,7 @@ export default function StudentsPage() {
               Your Classes
             </CardTitle>
             <CardDescription className="text-xs sm:text-sm">
-              Manage your classes and student rosters here.
+              Manage your classes and student rosters here. (Class data is currently local)
             </CardDescription>
           </div>
           <Dialog open={isAddClassDialogOpen} onOpenChange={(isOpen) => {
@@ -151,16 +231,25 @@ export default function StudentsPage() {
                     value={newSubjectName}
                     onValueChange={(value) => setNewSubjectName(value)}
                     required
+                    disabled={isLoadingUserSubjects}
                   >
                     <SelectTrigger id="subjectName" className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm">
-                      <SelectValue placeholder="Select a subject" />
+                      <SelectValue placeholder={isLoadingUserSubjects ? "Loading subjects..." : "Select a subject"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {placeholderSubjects.map(subject => (
-                        <SelectItem key={subject.id} value={subject.name} className="text-xs sm:text-sm">
-                          {subject.name}
-                        </SelectItem>
-                      ))}
+                      {isLoadingUserSubjects ? (
+                        <SelectItem value="loading" disabled className="text-xs sm:text-sm">Loading subjects...</SelectItem>
+                      ) : userSubjectsError ? (
+                        <SelectItem value="error" disabled className="text-xs sm:text-sm text-destructive">{userSubjectsError}</SelectItem>
+                      ) : userSubjects.length === 0 ? (
+                        <SelectItem value="no-subjects" disabled className="text-xs sm:text-sm">No subjects found. Create one first.</SelectItem>
+                      ) : (
+                        userSubjects.map(subject => (
+                          <SelectItem key={subject.id} value={subject.name} className="text-xs sm:text-sm">
+                            {subject.name} ({subject.code})
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -201,7 +290,7 @@ export default function StudentsPage() {
                     placeholder="Auto-generated or custom"
                     className="col-span-3 h-8 sm:h-9 text-xs sm:text-sm"
                     required
-                    disabled={!editingClass && (!newSubjectName || !newSectionName || !newYearGrade)} // Disable if auto-generating and fields are empty
+                    disabled={!editingClass && (!newSubjectName || !newSectionName || !newYearGrade)} 
                   />
                 </div>
                 <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 mt-2">

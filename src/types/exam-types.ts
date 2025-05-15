@@ -38,13 +38,12 @@ export interface MatchingPair {
 
 export interface MatchingTypeQuestion extends BaseQuestion {
   type: 'matching';
-  pairs: MatchingPair[]; // Expecting one pair for the simplified UI
+  pairs: MatchingPair[];
 }
 
 export interface PooledChoicesQuestion extends BaseQuestion {
   type: 'pooled-choices';
-  // Stores the TEXT of the single choice selected from the block's pool as correct for THIS question.
-  correctAnswersFromPool: string[]; // Array will contain zero or one string (the text of the selected choice)
+  correctAnswersFromPool: string[];
 }
 
 export type ExamQuestion = MultipleChoiceQuestion | TrueFalseQuestion | MatchingTypeQuestion | PooledChoicesQuestion;
@@ -58,16 +57,14 @@ export const QUESTION_TYPES: { value: QuestionType; label: string }[] = [
   { value: 'pooled-choices', label: 'Pooled Choices' },
 ];
 
-// Interface for a block of questions
 export interface ExamBlock {
   id: string;
   blockType: QuestionType;
   questions: ExamQuestion[];
-  blockTitle?: string; // Optional title/instructions for the entire block
-  choicePool?: PoolOption[]; // Used for 'pooled-choices' blockType. An array of {id: string, text: string}
+  blockTitle?: string;
+  choicePool?: PoolOption[];
 }
 
-// Interface for summary data shown in lists
 export interface ExamSummaryData {
   id: string;
   title: string;
@@ -77,9 +74,21 @@ export interface ExamSummaryData {
   totalQuestions: number;
   totalPoints: number;
   status: "Draft" | "Published" | "Archived";
+  classId?: string; // ID of the class this exam is associated with
 }
 
-// Interface for the full exam data including blocks and questions
 export interface FullExamData extends ExamSummaryData {
     examBlocks: ExamBlock[];
+    // classId is inherited from ExamSummaryData
+}
+
+// This type is used in student/page.tsx and will be used in create-exam/page.tsx
+export interface ClassInfoForDropdown {
+  id: string; // classId from Firestore
+  subjectId: string;
+  subjectName: string;
+  subjectCode: string;
+  sectionName: string;
+  yearGrade: string;
+  code: string; // class code (specific to the class instance)
 }

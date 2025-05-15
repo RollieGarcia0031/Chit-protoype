@@ -12,19 +12,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { useState, type FormEvent, useEffect, useCallback, useMemo } from "react";
-import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair, PooledChoicesQuestion, PoolOption } from "@/types/exam-types";
+import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair, PooledChoicesQuestion, PoolOption, ClassInfoForDropdown } from "@/types/exam-types";
 import { generateId, debounce } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
 import { TotalPointsDisplay } from "@/components/exam/TotalPointsDisplay";
-import { PlusCircle, Loader2, Sparkles, AlertTriangle, Info } from "lucide-react";
+import { PlusCircle, Loader2, Sparkles, AlertTriangle, Info, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from '@/lib/firebase/config';
-import { collection, doc, writeBatch, serverTimestamp, getDoc, getDocs, query, orderBy } from "firebase/firestore";
+import { collection, doc, writeBatch, serverTimestamp, getDoc, getDocs, query, orderBy, where } from "firebase/firestore";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EXAMS_COLLECTION_NAME } from "@/config/firebase-constants";
+import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from "@/config/firebase-constants";
 import { analyzeExamFlow, type AnalyzeExamInput, type AnalyzeExamOutput } from "@/ai/flows/analyze-exam-flow";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 
 const LOCAL_STORAGE_KEY = 'pendingExamData';
 
@@ -99,12 +101,67 @@ export default function CreateExamPage() {
   const [isAnalyzingWithAI, setIsAnalyzingWithAI] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
+  // Class association state
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [allUserClasses, setAllUserClasses] = useState<ClassInfoForDropdown[]>([]);
+  const [isLoadingUserClasses, setIsLoadingUserClasses] = useState(true);
+
 
   const totalPoints = useMemo(() => {
     return examBlocks.reduce((acc, block) => {
       return acc + block.questions.reduce((qAcc, q) => qAcc + q.points, 0);
     }, 0);
   }, [examBlocks]);
+
+  // Fetch user's classes for the dropdown
+  useEffect(() => {
+    const fetchUserClasses = async () => {
+      if (!user) {
+        setAllUserClasses([]);
+        setIsLoadingUserClasses(false);
+        return;
+      }
+      setIsLoadingUserClasses(true);
+      const fetchedClasses: ClassInfoForDropdown[] = [];
+      try {
+        // 1. Fetch subjects for the user
+        const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
+        const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid));
+        const subjectsSnapshot = await getDocs(subjectsQuery);
+
+        // 2. For each subject, fetch its classes
+        for (const subjectDoc of subjectsSnapshot.docs) {
+          const subjectData = subjectDoc.data();
+          const classesSubCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME, subjectDoc.id, "classes");
+          const classesQuery = query(classesSubCollectionRef, where("userId", "==", user.uid), orderBy("sectionName", "asc"));
+          const classesSnapshot = await getDocs(classesQuery);
+          
+          classesSnapshot.forEach((classDoc) => {
+            const classData = classDoc.data();
+            fetchedClasses.push({
+              id: classDoc.id,
+              subjectId: subjectDoc.id,
+              subjectName: subjectData.name,
+              subjectCode: subjectData.code,
+              sectionName: classData.sectionName,
+              yearGrade: classData.yearGrade,
+              code: classData.code, // This is the class-specific code
+            });
+          });
+        }
+        setAllUserClasses(fetchedClasses);
+      } catch (error) {
+        console.error("Error fetching user classes for dropdown:", error);
+        toast({ title: "Error", description: "Could not fetch your classes for association.", variant: "destructive" });
+      } finally {
+        setIsLoadingUserClasses(false);
+      }
+    };
+
+    if (user) {
+      fetchUserClasses();
+    }
+  }, [user, toast]);
 
   const performAIAnalysis = useCallback(async () => {
     if (!aiSuggestionsEnabled || !user || isSaving || isLoadingExamData) {
@@ -203,7 +260,6 @@ export default function CreateExamPage() {
         return;
     }
 
-
     setIsAnalyzingWithAI(true);
     setAiError(null);
 
@@ -254,7 +310,7 @@ export default function CreateExamPage() {
     if (aiSuggestionsEnabled && isInitialLoadComplete && !isLoadingExamData && !isSaving) {
       debouncedAIAnalysis();
     }
-  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, isInitialLoadComplete, isLoadingExamData, isSaving, debouncedAIAnalysis]);
+  }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, selectedClassId, isInitialLoadComplete, isLoadingExamData, isSaving, debouncedAIAnalysis]);
 
 
   useEffect(() => {
@@ -271,6 +327,7 @@ export default function CreateExamPage() {
             const parsedData = JSON.parse(savedData);
             if (parsedData.title) setExamTitle(parsedData.title);
             if (parsedData.description) setExamDescription(parsedData.description);
+            if (parsedData.selectedClassId) setSelectedClassId(parsedData.selectedClassId);
             if (parsedData.blocks && Array.isArray(parsedData.blocks)) {
               const validatedBlocks = parsedData.blocks.map((block: ExamBlock) => ({
                 ...block,
@@ -330,6 +387,7 @@ export default function CreateExamPage() {
     const fetchExamForEditing = async () => {
       setExamTitle("");
       setExamDescription("");
+      setSelectedClassId(null);
       setExamBlocks([]);
       setAiFeedbackList([]);
       
@@ -346,6 +404,7 @@ export default function CreateExamPage() {
         const examData = examSnap.data();
         setExamTitle(examData.title);
         setExamDescription(examData.description || "");
+        setSelectedClassId(examData.classId || null);
 
         const loadedBlocks: ExamBlock[] = [];
         const blocksCollectionRef = collection(db, EXAMS_COLLECTION_NAME, editingExamId, "questionBlocks");
@@ -440,10 +499,11 @@ export default function CreateExamPage() {
     const examDataToSave = {
       title: examTitle,
       description: examDescription,
+      selectedClassId,
       blocks: examBlocks,
     };
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(examDataToSave));
-  }, [examTitle, examDescription, examBlocks, editingExamId, isInitialLoadComplete, isLoadingExamData]);
+  }, [examTitle, examDescription, selectedClassId, examBlocks, editingExamId, isInitialLoadComplete, isLoadingExamData]);
 
 
   const handleAddExamBlock = () => {
@@ -555,6 +615,7 @@ export default function CreateExamPage() {
   const resetForm = () => {
     setExamTitle("");
     setExamDescription("");
+    setSelectedClassId(null);
     setExamBlocks([]);
     setAiSuggestionsEnabled(false);
     setAiFeedbackList([]);
@@ -592,14 +653,18 @@ export default function CreateExamPage() {
         const examDocId = editingExamId || doc(collection(db, EXAMS_COLLECTION_NAME)).id;
         const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examDocId);
 
+        const examCoreData: any = {
+            title: examTitle,
+            description: examDescription,
+            updatedAt: serverTimestamp(),
+            totalQuestions: calculatedTotalQuestions,
+            totalPoints: calculatedTotalPoints,
+            classId: selectedClassId || null, // Save classId
+        };
+
+
         if (editingExamId) {
-            batch.update(examDocRef, {
-                title: examTitle,
-                description: examDescription,
-                updatedAt: serverTimestamp(),
-                totalQuestions: calculatedTotalQuestions,
-                totalPoints: calculatedTotalPoints,
-            });
+            batch.update(examDocRef, examCoreData);
 
             const existingBlocksRef = collection(db, EXAMS_COLLECTION_NAME, editingExamId, "questionBlocks");
             const existingBlocksSnap = await getDocs(existingBlocksRef);
@@ -613,13 +678,9 @@ export default function CreateExamPage() {
             }
         } else {
             batch.set(examDocRef, {
-                title: examTitle,
-                description: examDescription,
+                ...examCoreData,
                 userId: user.uid,
                 createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-                totalQuestions: calculatedTotalQuestions,
-                totalPoints: calculatedTotalPoints,
                 status: "Draft",
             });
         }
@@ -685,6 +746,7 @@ export default function CreateExamPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" /> {/* Placeholder for class dropdown */}
                     <Skeleton className="h-20 w-full" />
                 </CardContent>
             </Card>
@@ -842,7 +904,6 @@ export default function CreateExamPage() {
         </DialogContent>
       </Dialog>
 
-
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="shadow-lg">
           <CardHeader>
@@ -879,6 +940,46 @@ export default function CreateExamPage() {
                   onChange={(e) => setExamDescription(e.target.value)}
                   disabled={isSaving || isLoadingExamData}
                 />
+              </div>
+              <div className="space-y-1 sm:space-y-2">
+                <Label htmlFor="assignClass" className="text-sm sm:text-base">Assign to Class (Optional)</Label>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={selectedClassId || ""}
+                    onValueChange={(value) => setSelectedClassId(value === "none" ? null : value)}
+                    disabled={isLoadingUserClasses || isSaving || isLoadingExamData}
+                  >
+                    <SelectTrigger id="assignClass" className="flex-grow text-xs sm:text-sm h-9 sm:h-10">
+                      <SelectValue placeholder={isLoadingUserClasses ? "Loading classes..." : "Select a class"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none" className="text-xs sm:text-sm">No Class Assigned</SelectItem>
+                      {allUserClasses.map((cls) => (
+                        <SelectItem key={cls.id} value={cls.id} className="text-xs sm:text-sm">
+                          {cls.subjectName} ({cls.subjectCode}) - {cls.sectionName} ({cls.yearGrade}) - Code: {cls.code}
+                        </SelectItem>
+                      ))}
+                      {!isLoadingUserClasses && allUserClasses.length === 0 && (
+                        <SelectItem value="no-classes" disabled className="text-xs sm:text-sm">
+                          No classes found. Create one in 'Students' tab.
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {selectedClassId && (
+                     <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => setSelectedClassId(null)} 
+                        aria-label="Clear class selection"
+                        disabled={isSaving || isLoadingExamData}
+                        className="h-9 w-9 sm:h-10 sm:w-10"
+                      >
+                       <Trash2 className="h-4 w-4 text-muted-foreground" />
+                     </Button>
+                  )}
+                </div>
               </div>
               <div className="flex items-center space-x-2 pt-1 sm:pt-2">
                 <Switch

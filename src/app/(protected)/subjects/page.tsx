@@ -8,7 +8,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BookOpen, PlusCircle, Edit3, Trash2, List, Loader2, AlertTriangle } from "lucide-react";
-import { generateId } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase/config';
@@ -16,6 +15,17 @@ import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, orderBy, doc, updateDoc, deleteDoc, Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface SubjectInfo {
   id: string;
@@ -132,12 +142,13 @@ export default function SubjectsPage() {
     if (!user) return;
     setDeletingSubjectId(subjectId);
     try {
+      // Add deletion of subcollections (classes and students) here if needed in future
       await deleteDoc(doc(db, SUBJECTS_COLLECTION_NAME, subjectId));
       toast({ title: "Subject Deleted", description: `Subject "${subjectName}" deleted.` });
       setSubjects(prevSubjects => prevSubjects.filter(s => s.id !== subjectId));
     } catch (e) {
       console.error("Error deleting subject: ", e);
-      toast({ title: "Error Deleting Subject", description: "Could not delete subject.", variant: "destructive" });
+      toast({ title: "Error Deleting Subject", description: "Could not delete subject. It might have associated classes.", variant: "destructive" });
     } finally {
       setDeletingSubjectId(null);
     }
@@ -293,10 +304,34 @@ export default function SubjectsPage() {
                             <Edit3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             <span className="sr-only">Edit Subject</span>
                         </Button>
-                        <Button variant="destructive" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" onClick={() => handleDeleteSubject(sub.id, sub.name)} disabled={deletingSubjectId === sub.id || isSavingSubject}>
-                            {deletingSubjectId === sub.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
-                            <span className="sr-only">Delete Subject</span>
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" disabled={deletingSubjectId === sub.id || isSavingSubject}>
+                                {deletingSubjectId === sub.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
+                                <span className="sr-only">Delete Subject</span>
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="text-base sm:text-lg">Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription className="text-xs sm:text-sm">
+                                This action cannot be undone. This will permanently delete the subject 
+                                &quot;{sub.name}&quot; and all associated classes and student data.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+                              <AlertDialogCancel disabled={deletingSubjectId === sub.id} className="text-xs sm:text-sm">Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteSubject(sub.id, sub.name)}
+                                disabled={deletingSubjectId === sub.id}
+                                className="bg-destructive hover:bg-destructive/90 text-xs sm:text-sm"
+                              >
+                                {deletingSubjectId === sub.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                                Delete Subject
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                     </CardFooter>
                   </Card>
                 ))}
@@ -313,3 +348,4 @@ export default function SubjectsPage() {
     </div>
   );
 }
+

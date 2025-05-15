@@ -1,4 +1,3 @@
-
 // src/app/(protected)/students/page.tsx
 'use client';
 
@@ -10,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, PlusCircle, Edit3, Trash2, List, Loader2, AlertTriangle } from "lucide-react";
-import { generateId } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase/config';
@@ -19,6 +17,17 @@ import type { Timestamp } from "firebase/firestore";
 import { collection, query, where, getDocs, orderBy, doc, addDoc, updateDoc, deleteDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface FetchedSubjectInfo {
   id: string;
@@ -174,7 +183,7 @@ export default function StudentsPage() {
   };
 
   useEffect(() => {
-    if (!editingClass) { // Only auto-generate for new classes
+    if (!editingClass) { 
       let subjectCodeForGeneration = "";
       if (selectedSubjectId && userSubjects.length > 0) {
         const selectedSubject = userSubjects.find(sub => sub.id === selectedSubjectId);
@@ -252,6 +261,7 @@ export default function StudentsPage() {
     setDeletingClassId(classToDelete.id);
     try {
       const classDocRef = doc(db, SUBJECTS_COLLECTION_NAME, classToDelete.subjectId, "classes", classToDelete.id);
+      // Add deletion of students subcollection if needed in future
       await deleteDoc(classDocRef);
       toast({ title: "Class Deleted", description: `Class "${classToDelete.subjectName} - ${classToDelete.sectionName}" has been removed.` });
       setClasses(prevClasses => prevClasses.filter(c => c.id !== classToDelete.id));
@@ -461,10 +471,34 @@ export default function StudentsPage() {
                             <Edit3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             <span className="sr-only">Edit Class</span>
                         </Button>
-                        <Button variant="destructive" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" onClick={() => handleDeleteClass(cls)} disabled={deletingClassId === cls.id || isSavingClass}>
-                            {deletingClassId === cls.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
-                            <span className="sr-only">Delete Class</span>
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" disabled={deletingClassId === cls.id || isSavingClass}>
+                                {deletingClassId === cls.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
+                                <span className="sr-only">Delete Class</span>
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="text-base sm:text-lg">Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription className="text-xs sm:text-sm">
+                                This action cannot be undone. This will permanently delete the class 
+                                &quot;{cls.subjectName} - {cls.sectionName}&quot; and all its student data.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+                              <AlertDialogCancel disabled={deletingClassId === cls.id} className="text-xs sm:text-sm">Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteClass(cls)}
+                                disabled={deletingClassId === cls.id}
+                                className="bg-destructive hover:bg-destructive/90 text-xs sm:text-sm"
+                              >
+                                {deletingClassId === cls.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                                Delete Class
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                     </CardFooter>
                   </Card>
                 ))}

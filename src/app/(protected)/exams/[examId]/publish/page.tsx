@@ -163,6 +163,7 @@ export default function PublishExamPage() {
   const handleAssignmentModeChange = (mode: AssignmentMode) => {
     setAssignmentMode(mode);
     if (mode === 'individual' && commonDate && commonTime) {
+      // Pre-fill individual schedules if switching from 'all' mode and common schedule was set
       setClassAssignments(prev => prev.map(ca => ({
         ...ca,
         date: commonDate,
@@ -176,8 +177,7 @@ export default function PublishExamPage() {
     setIsSaving(true);
     let successCount = 0;
     let errorCount = 0;
-    let changesMade = false;
-    let examActuallyPublished = false;
+    let changesMade = false; // Tracks if any assignment was new or its date/time changed
 
     if (assignmentMode === 'all') {
       if (!commonDate || !commonTime) {
@@ -202,10 +202,9 @@ export default function PublishExamPage() {
           }
         }
         if (!needsUpdate && ca.existingAssignmentId) {
-           successCount++; continue;
+           successCount++; continue; // No change needed, counts as a success for this assignment
         }
         changesMade = true;
-        examActuallyPublished = true;
         const assignmentData: Omit<ExamAssignment, 'id' | 'createdAt'> = {
           examId: examDetails.id,
           classId: ca.classInfo.id,
@@ -224,7 +223,12 @@ export default function PublishExamPage() {
       }
     } else { 
       for (const ca of classAssignments) {
-        if (!ca.date || !ca.time) continue; 
+        if (!ca.date || !ca.time) { // Skip if no date or time is set for this individual assignment
+             if (ca.existingAssignmentId) { // If it had an existing assignment, consider it processed successfully (no change)
+                successCount++;
+            }
+            continue;
+        }
 
         const [hours, minutes] = ca.time.split(':').map(Number);
         if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
@@ -241,10 +245,9 @@ export default function PublishExamPage() {
           }
         }
          if (!needsUpdate && ca.existingAssignmentId) {
-           successCount++; continue;
+           successCount++; continue; // No change needed, counts as a success for this assignment
         }
         changesMade = true;
-        examActuallyPublished = true;
         const assignmentData: Omit<ExamAssignment, 'id' | 'createdAt'> = {
           examId: examDetails.id,
           classId: ca.classInfo.id,
@@ -263,37 +266,40 @@ export default function PublishExamPage() {
       }
     }
 
-    if (examActuallyPublished && errorCount === 0) {
+    const examHasAtLeastOneValidSchedule = classAssignments.some(ca => {
+        if (assignmentMode === 'all') return commonDate && commonTime;
+        return ca.date && ca.time;
+    });
+
+    if (examHasAtLeastOneValidSchedule && successCount > 0 && errorCount === 0) {
         try {
             const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examDetails.id);
             await updateDoc(examDocRef, { status: "Published", updatedAt: serverTimestamp() });
+            if (examDetails) { // Optimistically update local state for UI consistency
+                setExamDetails(prev => prev ? { ...prev, status: "Published" } : null);
+            }
         } catch (e) {
             console.error("Error updating exam status to Published: ", e);
-            toast({ title: "Status Update Failed", description: "Could not update exam status to Published.", variant: "destructive" });
+            toast({ title: "Status Update Error", description: "Assignments saved, but failed to update exam status.", variant: "destructive" });
         }
     }
 
-
     setIsSaving(false);
 
-    if (successCount > 0 && errorCount === 0) {
-      if (changesMade) {
-        toast({ title: "Assignments Saved & Exam Published", description: `Successfully saved ${successCount} class assignment(s). Exam status updated to Published.` });
-      } else {
-        toast({ title: "No Changes", description: "No changes detected in assignments." });
-      }
-      router.push('/exams');
+    if (examHasAtLeastOneValidSchedule && successCount > 0 && errorCount === 0) {
+        toast({ title: "Exam Published", description: `Successfully processed ${successCount} class assignment(s). Exam status updated to Published.` });
+        router.push('/exams');
     } else if (successCount > 0 && errorCount > 0) {
-      toast({ title: "Partial Success", description: `Saved ${successCount} assignment(s), but ${errorCount} failed. Please review.`, variant: "default" });
+      toast({ title: "Partial Success", description: `Processed ${successCount} assignment(s), but ${errorCount} failed. Please review. Exam status may not be Published.`, variant: "default" });
     } else if (errorCount > 0) {
-      toast({ title: "Saving Failed", description: `Could not save assignments for ${errorCount} class(es). Please try again.`, variant: "destructive" });
-    } else if (successCount === 0 && errorCount === 0 && (assignmentMode === 'all' ? (commonDate && commonTime) : classAssignments.some(ca => ca.date && ca.time))) {
-      if (changesMade) { 
-        toast({ title: "Assignments Saved & Exam Published", description: "All assignments were up to date or successfully saved." });
-      } else {
-        toast({title: "No Changes", description: "No changes detected in assignments."});
-      }
-       router.push('/exams');
+      toast({ title: "Saving Failed", description: `Could not save assignments for ${errorCount} class(es). Exam status not Published.`, variant: "destructive" });
+    } else if (!examHasAtLeastOneValidSchedule && classAssignments.length > 0) {
+      toast({title: "No Schedules Set", description: "Please set a date and time for at least one class to publish."});
+    } else if (classAssignments.length === 0) {
+        toast({title: "No Classes Assigned", description: "This exam is not assigned to any classes. Please assign classes first."});
+    } else {
+        // Fallback for other unhandled scenarios, e.g., all assignments were skipped and no valid schedule was intended
+        toast({title: "Nothing to Publish", description: "No new assignments to save or schedules set."});
     }
   };
 
@@ -359,6 +365,11 @@ export default function PublishExamPage() {
     );
   }
 
+  const disablePublishButton = isSaving || classAssignments.length === 0 || 
+                            (assignmentMode === 'all' && (!commonDate || !commonTime)) ||
+                            (assignmentMode === 'individual' && !classAssignments.some(ca => ca.date && ca.time));
+
+
   return (
     <div className="space-y-6 p-1 sm:p-4">
       <div className="flex items-center justify-between">
@@ -367,7 +378,7 @@ export default function PublishExamPage() {
             Publish Exam: {examDetails.title}
           </h1>
           <CardDescription className="text-xs sm:text-sm mt-1">
-            Assign a date and time for each class this exam is linked to, or set a common schedule.
+            Assign a date and time for each class this exam is linked to, or set a common schedule. Current Status: <span className={cn("font-semibold", examDetails.status === "Published" ? "text-primary" : "text-muted-foreground")}>{examDetails.status}</span>
           </CardDescription>
         </div>
          <div className="flex items-center gap-2 flex-shrink-0">
@@ -482,7 +493,7 @@ export default function PublishExamPage() {
             ))}
           </CardContent>
           <CardFooter>
-            <Button onClick={handleSaveAssignments} disabled={isSaving || classAssignments.length === 0} size="sm" className="text-xs sm:text-sm">
+            <Button onClick={handleSaveAssignments} disabled={disablePublishButton} size="sm" className="text-xs sm:text-sm">
               {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publishing...</> : <><Send className="mr-2 h-4 w-4" /> Publish</>}
             </Button>
           </CardFooter>

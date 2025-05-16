@@ -2,25 +2,33 @@
 // src/app/(protected)/exams/[examId]/publish/page.tsx
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase/config';
-import { doc, getDoc, collection, getDocs, query, where, orderBy, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, where, orderBy, addDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 import type { ExamSummaryData, ClassInfoForDropdown, ExamAssignment } from '@/types/exam-types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, CalendarIcon, Clock, Send, AlertTriangle, Info } from 'lucide-react';
+import { ArrowLeft, CalendarIcon, Send, AlertTriangle, Info, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { format, parse as parseDate, set } from 'date-fns';
+import { format, set } from 'date-fns';
 import { cn } from '@/lib/utils';
+
+interface ClassAssignmentState {
+  classInfo: ClassInfoForDropdown;
+  date?: Date;
+  time?: string; // HH:mm
+  existingAssignmentId?: string;
+  assignmentStatus?: ExamAssignment['status'];
+  initialAssignedDateTime?: Timestamp; // To detect changes
+}
 
 export default function PublishExamPage() {
   const params = useParams();
@@ -30,16 +38,12 @@ export default function PublishExamPage() {
   const { toast } = useToast();
 
   const [examDetails, setExamDetails] = useState<ExamSummaryData | null>(null);
-  const [allUserClasses, setAllUserClasses] = useState<ClassInfoForDropdown[]>([]);
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
-  const [examDate, setExamDate] = useState<Date | undefined>(undefined);
-  const [examTime, setExamTime] = useState<string>(''); // HH:mm format
-
+  const [classAssignments, setClassAssignments] = useState<ClassAssignmentState[]>([]);
+  
   const [isLoading, setIsLoading] = useState(true);
-  const [isPublishing, setIsPublishing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch Exam Details and User Classes
   useEffect(() => {
     if (!user || !examId || authLoading) {
       if (!authLoading && !user) router.push('/login');
@@ -51,19 +55,27 @@ export default function PublishExamPage() {
 
     const fetchData = async () => {
       try {
-        // Fetch exam details
         const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examId);
         const examSnap = await getDoc(examDocRef);
+
         if (!examSnap.exists() || examSnap.data()?.userId !== user.uid) {
           setError("Exam not found or you don't have permission.");
           toast({ title: "Error", description: "Exam not found or access denied.", variant: "destructive" });
           setIsLoading(false);
           return;
         }
-        setExamDetails({ id: examSnap.id, ...examSnap.data() } as ExamSummaryData);
+        const currentExamDetails = { id: examSnap.id, ...examSnap.data() } as ExamSummaryData;
+        setExamDetails(currentExamDetails);
 
-        // Fetch all user classes
-        const fetchedClasses: ClassInfoForDropdown[] = [];
+        if (!currentExamDetails.classIds || currentExamDetails.classIds.length === 0) {
+          setError("This exam is not assigned to any classes. Please assign classes in the 'Edit Exam' screen first.");
+          setClassAssignments([]);
+          setIsLoading(false);
+          return;
+        }
+
+        // Fetch all user classes to get details for assigned ones
+        const allUserClassesMap = new Map<string, ClassInfoForDropdown>();
         const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
         const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid));
         const subjectsSnapshot = await getDocs(subjectsQuery);
@@ -74,14 +86,51 @@ export default function PublishExamPage() {
           const classesQuerySnapshot = await getDocs(query(classesSubCollectionRef, where("userId", "==", user.uid)));
           classesQuerySnapshot.forEach((classDoc) => {
             const classData = classDoc.data();
-            fetchedClasses.push({
+            allUserClassesMap.set(classDoc.id, {
               id: classDoc.id, subjectId: subjectDoc.id, subjectName: subjectData.name,
               subjectCode: subjectData.code, sectionName: classData.sectionName,
               yearGrade: classData.yearGrade, code: classData.code,
             });
           });
         }
-        setAllUserClasses(fetchedClasses);
+
+        const assignedClassDetails: ClassInfoForDropdown[] = currentExamDetails.classIds
+          .map(id => allUserClassesMap.get(id))
+          .filter(Boolean) as ClassInfoForDropdown[];
+
+        if (assignedClassDetails.length === 0 && currentExamDetails.classIds.length > 0) {
+            setError("Could not find details for one or more assigned classes. Please check class assignments.");
+        }
+
+
+        // Fetch existing assignments for this exam
+        const assignmentsRef = collection(db, EXAMS_COLLECTION_NAME, examId, "assignments");
+        const assignmentsSnap = await getDocs(assignmentsRef);
+        const existingAssignmentsMap = new Map<string, ExamAssignment>();
+        assignmentsSnap.forEach(assignDoc => {
+          const data = assignDoc.data() as ExamAssignment;
+          existingAssignmentsMap.set(data.classId, { ...data, id: assignDoc.id });
+        });
+        
+        const initialAssignments = assignedClassDetails.map(classInfo => {
+          const existingAssignment = existingAssignmentsMap.get(classInfo.id);
+          let date: Date | undefined = undefined;
+          let time: string = '';
+          if (existingAssignment?.assignedDateTime) {
+            const tsDate = existingAssignment.assignedDateTime.toDate();
+            date = tsDate;
+            time = format(tsDate, "HH:mm");
+          }
+          return {
+            classInfo,
+            date,
+            time,
+            existingAssignmentId: existingAssignment?.id,
+            assignmentStatus: existingAssignment?.status,
+            initialAssignedDateTime: existingAssignment?.assignedDateTime,
+          };
+        });
+        setClassAssignments(initialAssignments);
 
       } catch (e) {
         console.error("Error fetching data for publish page: ", e);
@@ -95,47 +144,99 @@ export default function PublishExamPage() {
     fetchData();
   }, [examId, user, authLoading, toast, router]);
 
-  const handlePublishExam = async () => {
-    if (!user || !examDetails || !selectedClassId || !examDate || !examTime) {
-      toast({ title: "Missing Information", description: "Please select a class, date, and time.", variant: "destructive" });
+  const handleDateChange = (classId: string, newDate?: Date) => {
+    setClassAssignments(prev => 
+      prev.map(ca => ca.classInfo.id === classId ? { ...ca, date: newDate } : ca)
+    );
+  };
+
+  const handleTimeChange = (classId: string, newTime: string) => {
+    setClassAssignments(prev =>
+      prev.map(ca => ca.classInfo.id === classId ? { ...ca, time: newTime } : ca)
+    );
+  };
+
+  const handleSaveAssignments = async () => {
+    if (!user || !examDetails) return;
+
+    const assignmentsToSave = classAssignments.filter(ca => ca.date && ca.time);
+    if (assignmentsToSave.length === 0) {
+      toast({ title: "No Assignments Set", description: "Please set a date and time for at least one class.", variant: "destructive" });
       return;
     }
 
-    setIsPublishing(true);
-    try {
-      const [hours, minutes] = examTime.split(':').map(Number);
-      if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-        toast({ title: "Invalid Time", description: "Please enter a valid time in HH:mm format.", variant: "destructive" });
-        setIsPublishing(false);
-        return;
-      }
+    setIsSaving(true);
+    let successCount = 0;
+    let errorCount = 0;
 
-      const combinedDateTime = set(examDate, { hours, minutes, seconds: 0, milliseconds: 0 });
+    for (const ca of classAssignments) {
+      if (!ca.date || !ca.time) continue; // Skip if date or time not set
+
+      const [hours, minutes] = ca.time.split(':').map(Number);
+      if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+        toast({ title: "Invalid Time", description: `Invalid time for ${ca.classInfo.sectionName}. Please use HH:mm format.`, variant: "destructive" });
+        errorCount++;
+        continue;
+      }
+      const combinedDateTime = set(ca.date, { hours, minutes, seconds: 0, milliseconds: 0 });
       const assignedDateTime = Timestamp.fromDate(combinedDateTime);
 
-      const assignmentData: Omit<ExamAssignment, 'id'> = {
-        examId: examDetails.id,
-        classId: selectedClassId,
-        assignedDateTime: assignedDateTime,
-        status: 'Scheduled',
-        // className and subjectName can be added here if needed, fetched from allUserClasses
-      };
-      
-      const assignmentsCollectionRef = collection(db, EXAMS_COLLECTION_NAME, examDetails.id, "assignments");
-      await addDoc(assignmentsCollectionRef, assignmentData);
+      // Check if the new date/time is different from the initial one if it exists
+      let needsUpdate = true;
+      if (ca.existingAssignmentId && ca.initialAssignedDateTime) {
+        if (ca.initialAssignedDateTime.isEqual(assignedDateTime)) {
+          needsUpdate = false; // No change in date/time
+        }
+      }
 
-      toast({ title: "Exam Published", description: `Successfully scheduled "${examDetails.title}" for the selected class.` });
-      // Optionally, update the exam document's status to 'Published' if that's part of your model
-      // const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examDetails.id);
-      // await updateDoc(examDocRef, { status: 'Published', updatedAt: serverTimestamp() });
-      router.push('/exams'); // Navigate back to exams list or a confirmation page
-    } catch (e) {
-      console.error("Error publishing exam: ", e);
-      toast({ title: "Publishing Failed", description: "Could not publish the exam. Please try again.", variant: "destructive" });
-    } finally {
-      setIsPublishing(false);
+      if (!needsUpdate && ca.existingAssignmentId) { // No change for an existing assignment
+        successCount++; // Consider it a success as no update was needed
+        continue;
+      }
+      
+      const assignmentData: Omit<ExamAssignment, 'id' | 'createdAt'> = {
+        examId: examDetails.id,
+        classId: ca.classInfo.id,
+        assignedDateTime: assignedDateTime,
+        status: 'Scheduled', 
+        // We can enhance status logic later, e.g., if date is past, set to 'Active' or 'Completed'
+      };
+
+      try {
+        const assignmentsCollectionRef = collection(db, EXAMS_COLLECTION_NAME, examDetails.id, "assignments");
+        if (ca.existingAssignmentId) {
+          const assignmentDocRef = doc(assignmentsCollectionRef, ca.existingAssignmentId);
+          await updateDoc(assignmentDocRef, {
+            ...assignmentData,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          await addDoc(assignmentsCollectionRef, { 
+            ...assignmentData,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+           });
+        }
+        successCount++;
+      } catch (e) {
+        console.error(`Error saving assignment for class ${ca.classInfo.id}: `, e);
+        errorCount++;
+      }
+    }
+    setIsSaving(false);
+
+    if (successCount > 0 && errorCount === 0) {
+      toast({ title: "Assignments Saved", description: `Successfully saved ${successCount} class assignment(s).` });
+      router.push('/exams');
+    } else if (successCount > 0 && errorCount > 0) {
+      toast({ title: "Partial Success", description: `Saved ${successCount} assignment(s), but ${errorCount} failed. Please review.`, variant: "default" });
+    } else if (errorCount > 0) {
+      toast({ title: "Saving Failed", description: `Could not save assignments for ${errorCount} class(es). Please try again.`, variant: "destructive" });
+    } else if (successCount === 0 && errorCount === 0 && assignmentsToSave.length > 0) {
+        toast({title: "No Changes", description: "No changes detected in assignments."});
     }
   };
+
 
   if (isLoading || authLoading) {
     return (
@@ -145,11 +246,17 @@ export default function PublishExamPage() {
         <Card className="shadow-lg">
           <CardHeader><Skeleton className="h-7 w-3/4" /></CardHeader>
           <CardContent className="space-y-4">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
+            {[1, 2].map(i => (
+              <div key={i} className="p-3 border rounded-md space-y-3">
+                <Skeleton className="h-6 w-1/2" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              </div>
+            ))}
           </CardContent>
-          <CardFooter><Skeleton className="h-10 w-24" /></CardFooter>
+          <CardFooter><Skeleton className="h-10 w-32" /></CardFooter>
         </Card>
       </div>
     );
@@ -179,111 +286,111 @@ export default function PublishExamPage() {
       </div>
     );
   }
-
-  const selectedClassDetails = allUserClasses.find(c => c.id === selectedClassId);
+  
+  const allAssignmentsSet = classAssignments.every(ca => ca.date && ca.time);
 
   return (
     <div className="space-y-6 p-1 sm:p-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight">
-          Publish Exam: {examDetails.title}
-        </h1>
-        <Button variant="outline" onClick={() => router.back()} size="sm" className="text-xs sm:text-sm">
+        <div className="flex-grow">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight">
+            Publish Exam: {examDetails.title}
+          </h1>
+          <CardDescription className="text-xs sm:text-sm mt-1">
+            Assign a date and time for each class this exam is linked to.
+          </CardDescription>
+        </div>
+        <Button variant="outline" onClick={() => router.back()} size="sm" className="text-xs sm:text-sm flex-shrink-0">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Options
         </Button>
       </div>
-      <CardDescription className="text-sm sm:text-base">
-        Assign this exam to a class for a specific date and time.
-      </CardDescription>
 
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-lg sm:text-xl">Assignment Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 sm:space-y-6">
-          <div className="space-y-1">
-            <Label htmlFor="assignClass" className="text-sm">Assign to Class</Label>
-            <Select
-              value={selectedClassId || ""}
-              onValueChange={setSelectedClassId}
-              disabled={isPublishing || allUserClasses.length === 0}
-            >
-              <SelectTrigger id="assignClass" className="h-9 text-xs sm:text-sm">
-                <SelectValue placeholder={allUserClasses.length === 0 ? "No classes available" : "Select a class"} />
-              </SelectTrigger>
-              <SelectContent>
-                {allUserClasses.map((cls) => (
-                  <SelectItem key={cls.id} value={cls.id} className="text-xs sm:text-sm">
-                    {cls.subjectName} - {cls.sectionName} ({cls.yearGrade}) - Code: {cls.code}
-                  </SelectItem>
-                ))}
-                {allUserClasses.length === 0 && (
-                  <SelectItem value="no-classes" disabled className="text-xs sm:text-sm">
-                    No classes found. Create one in 'Students' tab.
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-            {selectedClassDetails && (
-                <p className="text-xs text-muted-foreground mt-1">
-                    Selected: {selectedClassDetails.subjectName} - {selectedClassDetails.sectionName} ({selectedClassDetails.yearGrade})
+      {classAssignments.length === 0 && !isLoading && (
+        <Card className="shadow-md">
+            <CardContent className="p-6 text-center">
+                <Info className="mx-auto h-10 w-10 text-muted-foreground mb-2" />
+                <p className="text-muted-foreground text-sm">This exam is not currently assigned to any classes.</p>
+                <p className="text-xs text-muted-foreground mt-1">Please go to "Edit Exam" to assign classes first.</p>
+            </CardContent>
+        </Card>
+      )}
+
+      {classAssignments.length > 0 && (
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-lg sm:text-xl">Set Assignment Schedule</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 sm:space-y-5">
+            {classAssignments.map((ca) => (
+              <div key={ca.classInfo.id} className="p-3 sm:p-4 border rounded-md shadow-sm bg-muted/30">
+                <h3 className="text-sm sm:text-base font-semibold text-foreground mb-0.5">
+                  {ca.classInfo.sectionName} ({ca.classInfo.yearGrade})
+                </h3>
+                <p className="text-2xs sm:text-xs text-muted-foreground mb-2">
+                  Subject: {ca.classInfo.subjectName} ({ca.classInfo.subjectCode}) - Class Code: {ca.classInfo.code}
                 </p>
-            )}
-          </div>
+                {ca.assignmentStatus && ca.initialAssignedDateTime && (
+                     <p className="text-2xs sm:text-xs text-primary mb-1.5">
+                        Currently: {ca.assignmentStatus} on {format(ca.initialAssignedDateTime.toDate(), "PPP 'at' p")}
+                     </p>
+                )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label htmlFor="examDate" className="text-sm">Exam Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className={cn(
-                      "w-full justify-start text-left font-normal h-9 text-xs sm:text-sm",
-                      !examDate && "text-muted-foreground"
-                    )}
-                    disabled={isPublishing}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {examDate ? format(examDate, "PPP") : <span>Pick a date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={examDate}
-                    onSelect={setExamDate}
-                    initialFocus
-                    disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1)) || isPublishing} // Disable past dates
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor={`examDate-${ca.classInfo.id}`} className="text-xs sm:text-sm">Exam Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal h-9 text-xs sm:text-sm",
+                            !ca.date && "text-muted-foreground"
+                          )}
+                          disabled={isSaving}
+                        >
+                          <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                          {ca.date ? format(ca.date, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={ca.date}
+                          onSelect={(newDate) => handleDateChange(ca.classInfo.id, newDate)}
+                          initialFocus
+                          disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1)) || isSaving}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
 
-            <div className="space-y-1">
-              <Label htmlFor="examTime" className="text-sm">Exam Time (HH:mm)</Label>
-              <Input
-                id="examTime"
-                type="time"
-                value={examTime}
-                onChange={(e) => setExamTime(e.target.value)}
-                placeholder="HH:mm"
-                className="h-9 text-xs sm:text-sm"
-                disabled={isPublishing}
-              />
-            </div>
-          </div>
-        </CardContent>
-        <CardFooter>
-          <Button onClick={handlePublishExam} disabled={isPublishing || !selectedClassId || !examDate || !examTime} size="sm" className="text-xs sm:text-sm">
-            {isPublishing ? (
-              <><Send className="mr-2 h-4 w-4 animate-pulse" /> Publishing...</>
-            ) : (
-              <><Send className="mr-2 h-4 w-4" /> Publish Exam</>
-            )}
-          </Button>
-        </CardFooter>
-      </Card>
+                  <div className="space-y-1">
+                    <Label htmlFor={`examTime-${ca.classInfo.id}`} className="text-xs sm:text-sm">Exam Time (HH:mm)</Label>
+                    <Input
+                      id={`examTime-${ca.classInfo.id}`}
+                      type="time"
+                      value={ca.time || ''}
+                      onChange={(e) => handleTimeChange(ca.classInfo.id, e.target.value)}
+                      className="h-9 text-xs sm:text-sm"
+                      disabled={isSaving}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+          <CardFooter>
+            <Button onClick={handleSaveAssignments} disabled={isSaving || classAssignments.length === 0} size="sm" className="text-xs sm:text-sm">
+              {isSaving ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
+              ) : (
+                <><Save className="mr-2 h-4 w-4" /> Save Assignments</>
+              )}
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
     </div>
   );
 }
+

@@ -5,8 +5,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase/config';
-import { doc, getDoc, collection, getDocs, query, where, orderBy, setDoc, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
-import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME, STUDENT_EXAM_SCORES_COLLECTION_NAME } from '@/config/firebase-constants';
+import { doc, getDoc, collection, getDocs, query, where, orderBy, setDoc, addDoc, serverTimestamp, Timestamp, writeBatch } from 'firebase/firestore';
+import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 import type { ExamSummaryData, ClassInfoForDropdown, Student, StudentExamScore } from '@/types/exam-types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -16,9 +16,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, BarChart3, Users, AlertTriangle, Info, Save, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
+const SCORES_SUBCOLLECTION_NAME = 'scores';
+
 interface ClassWithStudentsAndScores {
   classInfo: ClassInfoForDropdown;
-  students: Student[]; // Student type now includes score-related fields
+  students: Student[];
 }
 
 export default function ExamResultsPage() {
@@ -58,7 +60,7 @@ export default function ExamResultsPage() {
         return;
       }
 
-      // 2. Fetch all user subjects and their classes
+      // 2. Fetch all user subjects and their classes to map classIds to full ClassInfoForDropdown
       const allUserClassesMap = new Map<string, ClassInfoForDropdown>();
       const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
       const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid));
@@ -87,18 +89,17 @@ export default function ExamResultsPage() {
         setIsLoading(false); return;
       }
       
-      // 3. Fetch existing scores for this exam
-      const scoresQuery = query(
-        collection(db, STUDENT_EXAM_SCORES_COLLECTION_NAME),
-        where("examId", "==", examId),
-        where("userId", "==", user.uid)
-      );
-      const scoresSnapshot = await getDocs(scoresQuery);
+      // 3. Fetch existing scores for this exam FOR EACH ASSIGNED CLASS
       const scoresMap = new Map<string, { score: number | null; scoreDocId: string }>();
-      scoresSnapshot.forEach(scoreDoc => {
-        const data = scoreDoc.data() as StudentExamScore;
-        scoresMap.set(data.studentId, { score: data.score, scoreDocId: scoreDoc.id });
-      });
+      for (const classInfo of assignedClassesInfo) {
+        const scoresRef = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, SCORES_SUBCOLLECTION_NAME);
+        const scoresQuery = query(scoresRef, where("examId", "==", examId), where("userId", "==", user.uid));
+        const scoresSnapshot = await getDocs(scoresQuery);
+        scoresSnapshot.forEach(scoreDoc => {
+          const data = scoreDoc.data() as StudentExamScore;
+          scoresMap.set(data.studentId, { score: data.score, scoreDocId: scoreDoc.id });
+        });
+      }
 
       // 4. For each assigned class, fetch its students and merge with scores
       const resultsPromises = assignedClassesInfo.map(async (classInfo) => {
@@ -132,7 +133,7 @@ export default function ExamResultsPage() {
       setIsLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [examId, user, toast]); // Removed router from deps as it's stable
+  }, [examId, user, toast]); 
 
   useEffect(() => {
     if (!authLoading && user && examId) {
@@ -181,35 +182,42 @@ export default function ExamResultsPage() {
             });
             return;
         }
-    } // If empty, scoreToSave remains null (clearing the score)
+    }
 
 
     try {
+      // StudentExamScore no longer includes classId or subjectId in its type definition
       const scoreData: Omit<StudentExamScore, 'id' | 'createdAt'> = {
         examId: examDetails.id,
         studentId: student.id,
-        classId: classInfo.id,
         userId: user.uid,
         score: scoreToSave,
         updatedAt: serverTimestamp() as Timestamp,
       };
 
-      let scoreDocRef;
+      let newScoreDocId = student.scoreDocId;
+
+      // Path to the scores subcollection for this specific class
+      const scoresCollectionPath = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, SCORES_SUBCOLLECTION_NAME);
+
       if (student.scoreDocId) {
-        scoreDocRef = doc(db, STUDENT_EXAM_SCORES_COLLECTION_NAME, student.scoreDocId);
+        // Update existing score document
+        const scoreDocRef = doc(scoresCollectionPath, student.scoreDocId);
         await setDoc(scoreDocRef, scoreData, { merge: true }); 
       } else {
-        scoreDocRef = await addDoc(collection(db, STUDENT_EXAM_SCORES_COLLECTION_NAME), {
+        // Add new score document
+        const newDocRef = await addDoc(scoresCollectionPath, {
             ...scoreData,
             createdAt: serverTimestamp() as Timestamp
         });
+        newScoreDocId = newDocRef.id;
       }
       
       toast({ title: "Score Saved", description: `Score for ${student.firstName} ${student.lastName} saved successfully.` });
       setGroupedStudentScores(prev => {
         const newGroups = [...prev];
         newGroups[classIdx].students[studentIdx].score = scoreToSave;
-        newGroups[classIdx].students[studentIdx].scoreDocId = scoreDocRef.id; // Update with new/existing doc ID
+        newGroups[classIdx].students[studentIdx].scoreDocId = newScoreDocId;
         return newGroups;
       });
 
@@ -338,7 +346,7 @@ export default function ExamResultsPage() {
                       </TableCell>
                       <TableCell className="px-2 sm:px-4 text-xs sm:text-sm py-1.5 sm:py-2 align-middle">
                         <Input
-                          type="text" // Use text to allow empty string, parse to number on save
+                          type="text" 
                           placeholder={`Score / ${examDetails.totalPoints}`}
                           value={student.currentScoreInput ?? ''}
                           onChange={(e) => handleScoreInputChange(classIdx, studentIdx, e.target.value)}
@@ -374,3 +382,4 @@ export default function ExamResultsPage() {
     </div>
   );
 }
+

@@ -128,7 +128,7 @@ export interface StudentExamScore {
   id?: string; // Firestore document ID, optional as it's set upon creation
   examId: string;
   studentId: string;
-  classId: string;
+  // classId: string; // No longer needed here, part of path
   userId: string; // Teacher's ID
   score: number | null; // Score can be null if not graded or cleared
   updatedAt: Timestamp;

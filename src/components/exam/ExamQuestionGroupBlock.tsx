@@ -8,14 +8,25 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Trash2, ChevronDown, ChevronUp } from "lucide-react"; // Added Chevron icons
+import { PlusCircle, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import type { ExamBlock, ExamQuestion, QuestionType } from "@/types/exam-types";
 import { QUESTION_TYPES } from "@/types/exam-types";
 import { ExamItemBlock } from "./ExamItemBlock";
 import { Textarea } from "../ui/textarea";
 import { generateId } from "@/lib/utils";
-import { useState } from "react"; // Added useState
-import { cn } from "@/lib/utils"; // Added cn
+import { useState } from "react";
+import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface ExamQuestionGroupBlockProps {
   block: ExamBlock;
@@ -26,13 +37,12 @@ interface ExamQuestionGroupBlockProps {
   onUpdateQuestionInBlock: (blockIndex: number, questionIndex: number, updatedQuestion: ExamQuestion) => void;
   onRemoveQuestionFromBlock: (blockIndex: number, questionIndex: number) => void;
   onRemoveBlock: (blockIndex: number) => void;
-  onUpdateBlock: (blockIndex: number, updatedBlock: ExamBlock) => void; // For choice pool updates
+  onUpdateBlock: (blockIndex: number, updatedBlock: ExamBlock) => void;
   disabled?: boolean;
 }
 
-// Helper function to get alphabet letter
 const getAlphabetLetter = (index: number): string => {
-  return String.fromCharCode(65 + index); // 65 is ASCII for 'A'
+  return String.fromCharCode(65 + index);
 };
 
 export function ExamQuestionGroupBlock({
@@ -110,16 +120,48 @@ export function ExamQuestionGroupBlock({
           <Button variant="ghost" size="icon" onClick={() => setIsCollapsed(!isCollapsed)} aria-label={isCollapsed ? "Expand block" : "Collapse block"} disabled={disabled} className="h-9 w-9">
             {isCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
           </Button>
-          <Button variant="destructive" size="icon" onClick={() => onRemoveBlock(blockIndex)} aria-label="Remove question block" disabled={disabled} className="h-9 w-9">
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {block.questions.length > 0 ? (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="icon" aria-label="Remove question block" disabled={disabled} className="h-9 w-9">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete this question block
+                    and all questions within it.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={disabled}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => onRemoveBlock(blockIndex)} disabled={disabled}>
+                    Delete Block
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : (
+            <Button 
+              variant="destructive" 
+              size="icon" 
+              onClick={() => onRemoveBlock(blockIndex)} 
+              aria-label="Remove empty question block" 
+              disabled={disabled} 
+              className="h-9 w-9"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent className={cn(
         "space-y-3 sm:space-y-4 transition-all duration-300 ease-in-out",
         isCollapsed 
           ? "max-h-0 opacity-0 py-0 overflow-hidden" 
-          : "max-h-[2000px] opacity-100 pt-3 sm:pt-4 pb-3 sm:pb-4" // Use a large enough max-height
+          : "max-h-[none] opacity-100 pt-3 sm:pt-4 pb-3 sm:pb-4"
       )}>
         <div>
           <Label htmlFor={`blockTitle-${block.id}`} className="mb-1 block text-xs sm:text-sm">
@@ -188,7 +230,7 @@ export function ExamQuestionGroupBlock({
           })}
         </div>
       </CardContent>
-      <CardFooter className={cn(isCollapsed && "hidden")}>
+      <CardFooter className={cn("pt-3 sm:pt-4", isCollapsed && "hidden")}>
         <Button
           type="button"
           variant="outline"
@@ -203,3 +245,4 @@ export function ExamQuestionGroupBlock({
     </Card>
   );
 }
+

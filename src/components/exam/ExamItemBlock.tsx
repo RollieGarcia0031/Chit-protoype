@@ -158,7 +158,7 @@ export function ExamItemBlock({
 
   const handlePooledChoiceAnswerChange = (selectedLetter: string) => {
     if (item.type === 'pooled-choices' && choicePool) {
-      const selectedOptionIndex = choicePool.findIndex((opt, index) => getAlphabetLetter(index) === selectedLetter);
+      const selectedOptionIndex = choicePool.findIndex((_opt, index) => getAlphabetLetter(index) === selectedLetter);
       if (selectedOptionIndex !== -1) {
         const selectedText = choicePool[selectedOptionIndex].text;
         onItemChange({ ...item, correctAnswersFromPool: [selectedText] } as PooledChoicesQuestion);
@@ -174,7 +174,6 @@ export function ExamItemBlock({
       <CardContent className="space-y-2 sm:space-y-3 px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
         <div className="flex items-center justify-between gap-1 sm:gap-2 mb-1 sm:mb-2">
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <span className="text-xs sm:text-sm font-medium whitespace-nowrap">{itemIndex + 1}.</span>
              <Label htmlFor={`points-${item.id}-q${itemIndex}`} className="text-xs sm:text-sm whitespace-nowrap font-medium">Points:</Label>
             <Input
                 id={`points-${item.id}-q${itemIndex}`}
@@ -192,21 +191,24 @@ export function ExamItemBlock({
           </Button>
         </div>
         
-        {questionType !== 'matching' && questionType !== 'pooled-choices' && (
+        {(questionType === 'multiple-choice' || questionType === 'true-false') && (
           <div className="space-y-1">
             <Label htmlFor={`questionText-${item.id}`} className="text-xs sm:text-sm">Question Text / Instructions</Label>
-            <Textarea
-              id={`questionText-${item.id}`}
-              value={item.questionText}
-              onChange={handleQuestionTextChange}
-              placeholder={
-                questionType === 'multiple-choice' ? "e.g., What is the capital of France?" :
-                questionType === 'true-false' ? "e.g., The Earth is flat." :
-                "Enter question text"
-              }
-              className="min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm"
-              disabled={disabled}
-            />
+            <div className="flex items-start gap-2">
+                <span className="text-xs sm:text-sm font-medium pt-2 sm:pt-2.5">{itemIndex + 1}.</span>
+                <Textarea
+                id={`questionText-${item.id}`}
+                value={item.questionText}
+                onChange={handleQuestionTextChange}
+                placeholder={
+                    questionType === 'multiple-choice' ? "e.g., What is the capital of France?" :
+                    questionType === 'true-false' ? "e.g., The Earth is flat." :
+                    "Enter question text"
+                }
+                className="flex-grow min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm"
+                disabled={disabled}
+                />
+            </div>
           </div>
         )}
 
@@ -228,9 +230,9 @@ export function ExamItemBlock({
                     <SelectValue placeholder="Ans." />
                   </SelectTrigger>
                   <SelectContent>
-                    {(choicePool || []).map((poolOpt, poolOptIndex) => (
-                      <SelectItem key={poolOpt.id} value={getAlphabetLetter(poolOptIndex)} className="text-xs sm:text-sm">
-                        {getAlphabetLetter(poolOptIndex)}. {poolOpt.text}
+                    {(choicePool || []).map((_poolOpt, poolOptIndex) => (
+                      <SelectItem key={_poolOpt.id} value={getAlphabetLetter(poolOptIndex)} className="text-xs sm:text-sm">
+                        {getAlphabetLetter(poolOptIndex)}. {_poolOpt.text}
                       </SelectItem>
                     ))}
                     {(!choicePool || choicePool.length === 0) && (
@@ -240,16 +242,19 @@ export function ExamItemBlock({
                 </Select>
               </div>
 
-              <div className="flex-grow">
-                <Label htmlFor={`questionText-${item.id}`} className="block text-xs sm:text-sm font-medium mb-1">Question Text</Label>
-                <Textarea
-                  id={`questionText-${item.id}`}
-                  value={item.questionText}
-                  onChange={handleQuestionTextChange}
-                  placeholder="e.g., Which of the following is a primary color?"
-                  className="min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm"
-                  disabled={disabled}
-                />
+              <div className="flex-grow space-y-1">
+                <Label htmlFor={`questionText-${item.id}`} className="block text-xs sm:text-sm font-medium">Question Text</Label>
+                <div className="flex items-start gap-2">
+                    <span className="text-xs sm:text-sm font-medium pt-2 sm:pt-2.5">{itemIndex + 1}.</span>
+                    <Textarea
+                    id={`questionText-${item.id}`}
+                    value={item.questionText}
+                    onChange={handleQuestionTextChange}
+                    placeholder="e.g., Which of the following is a primary color?"
+                    className="flex-grow min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm"
+                    disabled={disabled}
+                    />
+                </div>
               </div>
             </div>
             {!choicePool || choicePool.length === 0 && (
@@ -319,7 +324,9 @@ export function ExamItemBlock({
         {questionType === 'matching' && item.type === 'matching' && (
           <div className="space-y-2 sm:space-y-3">
              <div className="space-y-1">
-                <Label htmlFor={`matching-premise-${item.id}`} className="text-xs sm:text-sm">Question / Term</Label>
+                <Label htmlFor={`matching-premise-${item.id}`} className="text-xs sm:text-sm">
+                  Question / Term ({itemIndex + 1})
+                </Label>
                 <Input
                     id={`matching-premise-${item.id}`}
                     type="text"

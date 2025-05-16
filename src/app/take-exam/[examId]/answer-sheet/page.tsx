@@ -15,7 +15,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { db } from '@/lib/firebase/config';
-import { collection, getDocs, query, orderBy, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, Timestamp } from 'firebase/firestore';
 import { SUBJECTS_COLLECTION_NAME, EXAMS_COLLECTION_NAME } from '@/config/firebase-constants';
 import {
   AlertDialog,
@@ -59,10 +59,9 @@ interface StudentAnswers {
   [questionId: string]: string | null;
 }
 
-const LOCAL_STORAGE_KEY_PREFIX = 'studentExamProgress-';
 const getLocalStorageKey = (currentExamId: string | null) => {
   if (!currentExamId) return null;
-  return `${LOCAL_STORAGE_KEY_PREFIX}${currentExamId}`;
+  return `studentExamProgress-${currentExamId}`;
 }
 
 export default function AnswerSheetPage() {
@@ -77,6 +76,8 @@ export default function AnswerSheetPage() {
   
   const [selectedClassIdFromSession, setSelectedClassIdFromSession] = useState<string | null>(null);
   const [selectedClassNameFromSession, setSelectedClassNameFromSession] = useState<string | null>(null);
+  const [selectedSubjectIdForExamFromSession, setSelectedSubjectIdForExamFromSession] = useState<string | null>(null);
+
   const [studentsInClass, setStudentsInClass] = useState<Student[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   
@@ -107,6 +108,8 @@ export default function AnswerSheetPage() {
         const cachedExamDataString = sessionStorage.getItem(`examData-${examId}`);
         const cachedClassId = sessionStorage.getItem(`selectedClassId-${examId}`);
         const cachedClassName = sessionStorage.getItem(`selectedClassName-${examId}`);
+        const cachedSubjectIdForExam = sessionStorage.getItem(`selectedSubjectIdForExam-${examId}`);
+
 
         if (cachedExamDataString) {
           localExamData = JSON.parse(cachedExamDataString);
@@ -127,6 +130,14 @@ export default function AnswerSheetPage() {
         if (cachedClassName) {
           setSelectedClassNameFromSession(cachedClassName);
         }
+        if (cachedSubjectIdForExam) {
+          setSelectedSubjectIdForExamFromSession(cachedSubjectIdForExam);
+        } else {
+          setError("Selected subject information for the exam not found. Please return to the exam start page.");
+          setIsLoading(false);
+          return;
+        }
+
 
         const localStorageKey = getLocalStorageKey(examId);
         if (localStorageKey) {
@@ -170,8 +181,9 @@ export default function AnswerSheetPage() {
 
   useEffect(() => {
     const fetchStudents = async () => {
-      if (!selectedClassIdFromSession || !examToDisplay?.subjectId) {
-        if (examToDisplay && !examToDisplay.subjectId) {
+      // Use selectedSubjectIdForExamFromSession here
+      if (!selectedClassIdFromSession || !selectedSubjectIdForExamFromSession) { 
+        if (examToDisplay && !selectedSubjectIdForExamFromSession) {
              setStudentDetailsError("Exam configuration is missing subject ID, cannot fetch student list.");
         }
         setIsLoadingStudents(false);
@@ -181,7 +193,8 @@ export default function AnswerSheetPage() {
       setIsLoadingStudents(true);
       setStudentDetailsError(null);
       try {
-        const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, examToDisplay.subjectId, "classes", selectedClassIdFromSession, "students");
+        // Use selectedSubjectIdForExamFromSession
+        const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, selectedSubjectIdForExamFromSession, "classes", selectedClassIdFromSession, "students");
         const q = query(studentsRef, orderBy("lastName", "asc"), orderBy("firstName", "asc"));
         const querySnapshot = await getDocs(q);
         const fetchedStudents: Student[] = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Student));
@@ -198,12 +211,13 @@ export default function AnswerSheetPage() {
       }
     };
 
-    if (selectedClassIdFromSession && examToDisplay) {
+    if (selectedClassIdFromSession && examToDisplay && selectedSubjectIdForExamFromSession) {
       fetchStudents();
-    } else if (!selectedClassIdFromSession && examToDisplay) {
-      setIsLoading(false);
+    } else if (examToDisplay && (!selectedClassIdFromSession || !selectedSubjectIdForExamFromSession)) {
+      setIsLoading(false); // Not enough info to fetch students
     }
-  }, [selectedClassIdFromSession, examToDisplay]);
+  }, [selectedClassIdFromSession, examToDisplay, selectedSubjectIdForExamFromSession]);
+
 
   useEffect(() => {
     if (examId && examToDisplay && !isLoading && typeof window !== 'undefined') {
@@ -231,7 +245,7 @@ export default function AnswerSheetPage() {
   ]);
 
 
-  const handleAnswerChange = (questionId: string, answer: string) => {
+  const handleAnswerChange = (questionId: string, answer: string | null) => {
     setStudentAnswers(prev => ({ ...prev, [questionId]: answer }));
   };
 
@@ -282,36 +296,47 @@ export default function AnswerSheetPage() {
   };
 
   const handleActualExamSubmit = async () => {
-    if (!examId || !selectedStudentIdFromDropdown || !selectedClassIdFromSession) {
-        toast({ title: "Error", description: "Missing information to submit.", variant: "destructive" });
+    if (!examId || !selectedStudentIdFromDropdown || !selectedClassIdFromSession || !selectedSubjectIdForExamFromSession) {
+        toast({ title: "Error", description: "Missing information to submit. Please ensure all details are correct.", variant: "destructive" });
         return;
     }
     setIsSubmitting(true);
     try {
-        const submissionData = {
+        const submissionPayload = {
             examId,
             studentId: selectedStudentIdFromDropdown,
             classId: selectedClassIdFromSession,
+            subjectId: selectedSubjectIdForExamFromSession,
             answers: studentAnswers,
-            submittedAt: serverTimestamp() as Timestamp,
         };
-        const submissionsRef = collection(db, EXAMS_COLLECTION_NAME, examId, "studentSubmissions");
-        await addDoc(submissionsRef, submissionData);
 
-        const localStorageKey = getLocalStorageKey(examId);
-        if (localStorageKey) {
-            localStorage.removeItem(localStorageKey);
+        const response = await fetch('/api/score', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(submissionPayload),
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            const localStorageKey = getLocalStorageKey(examId);
+            if (localStorageKey) {
+                localStorage.removeItem(localStorageKey);
+            }
+            toast({ 
+                title: "Exam Submitted!", 
+                description: `Your score: ${result.achievedScore} / ${result.maxPossibleScore}. Results saved.`,
+            });
+            setIsSubmitConfirmDialogOpen(false);
+            // router.push(`/take-exam/submission-success?examId=${examId}`); // Optional: redirect to a success page
+        } else {
+            toast({ title: "Submission Failed", description: result.error || "There was an error submitting your exam. Please try again.", variant: "destructive" });
         }
-
-        toast({ title: "Exam Submitted", description: "Your answers have been successfully submitted." });
-        setIsSubmitConfirmDialogOpen(false);
-        // Consider redirecting or clearing form/answers
-        // For now, just clear local storage and close dialog.
-        setStudentAnswers({}); // Clear answers from state
-        // router.push(`/submission-success/${examId}`); 
     } catch (e) {
         console.error("Error submitting exam:", e);
-        toast({ title: "Submission Failed", description: "There was an error submitting your exam. Please try again.", variant: "destructive" });
+        toast({ title: "Submission Failed", description: "An unexpected error occurred. Please try again.", variant: "destructive" });
     } finally {
         setIsSubmitting(false);
     }

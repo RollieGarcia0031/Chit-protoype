@@ -2,34 +2,32 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import admin from 'firebase-admin';
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
-import type { FullExamData, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, PooledChoicesQuestion, StudentAnswers } from '@/types/exam-types';
+import type { FullExamData, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, PooledChoicesQuestion } from '@/types/exam-types';
 
 // Initialize Firebase Admin SDK if it hasn't been initialized yet
 if (!admin.apps.length) {
   try {
-    // If GOOGLE_APPLICATION_CREDENTIALS is set in the environment (pointing to the serviceAccountKey.json path),
-    // initializeApp() will use it automatically.
-    // For Vercel, GOOGLE_APPLICATION_CREDENTIALS would be set to the JSON content itself.
-    admin.initializeApp({
-      // Credential can be inferred from GOOGLE_APPLICATION_CREDENTIALS env var
-      // or you can explicitly provide it if reading from a specific path or JSON string.
-      // credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_ADMIN_SDK_CONFIG_JSON!))
-    });
+    // GOOGLE_APPLICATION_CREDENTIALS environment variable should point to the serviceAccountKey.json file path
+    // or contain the JSON content itself for environments like Vercel.
+    admin.initializeApp(); 
   } catch (error) {
     console.error('Firebase Admin Initialization Error:', error);
     // If initialization fails, subsequent Firestore operations will fail.
-    // It might be better to throw here or handle it in a way that prevents the API route from trying to operate.
   }
 }
 
 const firestore = admin.firestore();
+
+interface StudentAnswers {
+  [questionId: string]: string | null;
+}
 
 interface ScoreRequestBody {
   examId: string;
   studentId: string;
   classId: string;
   subjectId: string;
-  answers: StudentAnswers; // Assuming StudentAnswers is { [questionId: string]: string | null }
+  answers: StudentAnswers; 
 }
 
 function getAlphabetLetter(index: number): string {
@@ -86,21 +84,21 @@ export async function POST(request: NextRequest) {
           case 'multiple-choice':
             const mcq = question as MultipleChoiceQuestion;
             const correctOption = mcq.options.find(opt => opt.isCorrect);
-            // Assuming studentAnswer for MCQ is the ID of the selected option
+            // Student answer for MCQ is the ID of the selected option
             if (correctOption && studentAnswer === correctOption.id) {
               isCorrect = true;
             }
             break;
           case 'true-false':
             const tfq = question as TrueFalseQuestion;
-            // Assuming studentAnswer is "true" or "false" (string)
+            // Student answer is "true" or "false" (string)
             if ((tfq.correctAnswer === true && studentAnswer === "true") || (tfq.correctAnswer === false && studentAnswer === "false")) {
               isCorrect = true;
             }
             break;
           case 'matching':
             const matq = question as MatchingTypeQuestion;
-            // Assuming studentAnswer for matching is the letter of the chosen response for this premise
+            // Student answer for matching is the letter of the chosen response for this premise
             // And matq.pairs[0].responseLetter is the correct letter for this premise's response
             if (matq.pairs && matq.pairs.length > 0 && studentAnswer === matq.pairs[0].responseLetter) {
               isCorrect = true;
@@ -126,8 +124,6 @@ export async function POST(request: NextRequest) {
     });
 
     // Save the score
-    // Path: chit1_subjects/{subjectId}/classes/{classId}/scores/{studentId}
-    // Using studentId as the document ID for the score to ensure one score doc per student for this exam+class.
     const scoreDocRef = firestore
       .collection(SUBJECTS_COLLECTION_NAME)
       .doc(subjectId)

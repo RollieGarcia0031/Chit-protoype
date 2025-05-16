@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase/config';
-import { doc, getDoc, collection, getDocs, query, where, orderBy, setDoc, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, where, orderBy, setDoc, addDoc, serverTimestamp, Timestamp, onSnapshot, type Unsubscribe } from 'firebase/firestore';
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 import type { ExamSummaryData, ClassInfoForDropdown, Student, StudentExamScore } from '@/types/exam-types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -76,10 +76,9 @@ export default function ExamResultsPage() {
     const inputTrimmed = currentScoreInput?.trim();
 
     if (inputTrimmed === undefined || inputTrimmed === "") {
-      if (score === null || score === undefined) { // Ensure score can be explicitly null or undefined
+      if (score === null || score === undefined) {
         return { status: 'emptyAndUnchanged', icon: null, isSavable: false, parsedScore: null, tooltip: "No score entered." };
       }
-      // If input is empty, but there was a saved score, it means we are clearing it.
       return { status: 'emptyAndDirty', icon: Save, color: "text-amber-600", isSavable: true, parsedScore: null, tooltip: "Score will be cleared." };
     }
 
@@ -89,7 +88,6 @@ export default function ExamResultsPage() {
       return { status: 'invalid', icon: AlertTriangle, color: "text-destructive", isSavable: false, parsedScore: null, tooltip: "Invalid input. Score must be a number." };
     }
     
-    // Handle case where original score was null/undefined and new score is 0
     if ((score === null || score === undefined) && parsedInput === 0) {
         return { status: 'dirty', icon: Save, color: "text-amber-600", isSavable: true, parsedScore: parsedInput, tooltip: "Unsaved changes." };
     }
@@ -102,109 +100,146 @@ export default function ExamResultsPage() {
   }, []);
 
 
-  const fetchResultsData = useCallback(async () => {
-    if (!user || !examId) return;
+  useEffect(() => {
+    if (!user || !examId || authLoading) {
+        if (!authLoading && !user) router.push('/login');
+        return;
+    }
 
     setIsLoading(true);
     setError(null);
-    try {
-      const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examId);
-      const examSnap = await getDoc(examDocRef);
+    let isMounted = true;
+    const unsubscribes: Unsubscribe[] = [];
 
-      if (!examSnap.exists() || examSnap.data().userId !== user.uid) {
-        setError("Exam not found or you don't have permission to view its results.");
-        toast({ title: "Error", description: "Exam not found or access denied.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-      const currentExamDetails = { id: examSnap.id, ...examSnap.data() } as ExamSummaryData;
-      setExamDetails(currentExamDetails);
+    const fetchExamAndInitialData = async () => {
+        try {
+            const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examId);
+            const examSnap = await getDoc(examDocRef);
 
-      if (!currentExamDetails.classIds || currentExamDetails.classIds.length === 0) {
-        setError("This exam is not assigned to any classes.");
-        setIsLoading(false);
-        return;
-      }
+            if (!isMounted) return;
 
-      const allUserClassesMap = new Map<string, ClassInfoForDropdown>();
-      const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
-      const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid));
-      const subjectsSnapshot = await getDocs(subjectsQuery);
+            if (!examSnap.exists() || examSnap.data().userId !== user.uid) {
+                setError("Exam not found or you don't have permission to view its results.");
+                toast({ title: "Error", description: "Exam not found or access denied.", variant: "destructive" });
+                setIsLoading(false);
+                return;
+            }
+            const currentExamDetails = { id: examSnap.id, ...examSnap.data() } as ExamSummaryData;
+            setExamDetails(currentExamDetails);
 
-      for (const subjectDoc of subjectsSnapshot.docs) {
-        const subjectData = subjectDoc.data();
-        const classesSubCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME, subjectDoc.id, "classes");
-        const classesQuerySnapshot = await getDocs(query(classesSubCollectionRef, where("userId", "==", user.uid)));
-        classesQuerySnapshot.forEach((classDoc) => {
-          const classData = classDoc.data();
-          allUserClassesMap.set(classDoc.id, {
-            id: classDoc.id, subjectId: subjectDoc.id, subjectName: subjectData.name,
-            subjectCode: subjectData.code, sectionName: classData.sectionName,
-            yearGrade: classData.yearGrade, code: classData.code,
-          });
-        });
-      }
-      
-      const assignedClassesInfo: ClassInfoForDropdown[] = currentExamDetails.classIds
-        .map(id => allUserClassesMap.get(id))
-        .filter(Boolean) as ClassInfoForDropdown[];
+            if (!currentExamDetails.classIds || currentExamDetails.classIds.length === 0) {
+                setError("This exam is not assigned to any classes.");
+                setIsLoading(false);
+                return;
+            }
 
-      if (assignedClassesInfo.length === 0) {
-        setError("Could not find details for the classes assigned to this exam.");
-        setIsLoading(false); return;
-      }
-      
-      const scoresMap = new Map<string, { score: number | null; scoreDocId: string }>();
-      for (const classInfo of assignedClassesInfo) {
-        const scoresRef = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, SCORES_SUBCOLLECTION_NAME);
-        const scoresQuery = query(scoresRef, where("examId", "==", examId), where("userId", "==", user.uid));
-        const scoresSnapshot = await getDocs(scoresQuery);
-        scoresSnapshot.forEach(scoreDoc => {
-          const data = scoreDoc.data() as StudentExamScore;
-          scoresMap.set(data.studentId, { score: data.score, scoreDocId: scoreDoc.id });
-        });
-      }
+            // Fetch all user classes once
+            const allUserClassesMap = new Map<string, ClassInfoForDropdown>();
+            const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
+            const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid));
+            const subjectsSnapshot = await getDocs(subjectsQuery);
 
-      const resultsPromises = assignedClassesInfo.map(async (classInfo) => {
-        const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, "students");
-        const studentsQuery = query(studentsRef, orderBy("lastName", "asc"), orderBy("firstName", "asc"));
-        const studentsSnapshot = await getDocs(studentsQuery);
-        
-        const studentsWithScores: Student[] = studentsSnapshot.docs.map(studentDoc => {
-          const studentData = studentDoc.data() as Student;
-          const existingScoreData = scoresMap.get(studentDoc.id);
-          return {
-            ...studentData,
-            id: studentDoc.id,
-            score: existingScoreData?.score ?? null,
-            currentScoreInput: existingScoreData?.score !== null && existingScoreData?.score !== undefined ? String(existingScoreData.score) : '',
-            isSavingScore: false,
-            scoreDocId: existingScoreData?.scoreDocId ?? null,
-          };
-        });
-        return { classInfo, students: studentsWithScores };
-      });
-      
-      const results = await Promise.all(resultsPromises);
-      setGroupedStudentScores(results);
+            for (const subjectDoc of subjectsSnapshot.docs) {
+                const subjectData = subjectDoc.data();
+                const classesSubCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME, subjectDoc.id, "classes");
+                const classesQuerySnapshot = await getDocs(query(classesSubCollectionRef, where("userId", "==", user.uid)));
+                classesQuerySnapshot.forEach((classDoc) => {
+                    const classData = classDoc.data();
+                    allUserClassesMap.set(classDoc.id, {
+                        id: classDoc.id, subjectId: subjectDoc.id, subjectName: subjectData.name,
+                        subjectCode: subjectData.code, sectionName: classData.sectionName,
+                        yearGrade: classData.yearGrade, code: classData.code,
+                    });
+                });
+            }
 
-    } catch (e) {
-      console.error("Error fetching exam results data: ", e);
-      setError("Failed to load exam results. Please try again.");
-      toast({ title: "Error", description: "Could not fetch exam results.", variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [examId, user, toast]); 
+            const assignedClassesInfo: ClassInfoForDropdown[] = currentExamDetails.classIds
+                .map(id => allUserClassesMap.get(id))
+                .filter(Boolean) as ClassInfoForDropdown[];
 
-  useEffect(() => {
-    if (!authLoading && user && examId) {
-      fetchResultsData();
-    } else if (!authLoading && !user) {
-        router.push('/login');
-    }
-  }, [examId, user, authLoading, router, fetchResultsData]);
+            if (assignedClassesInfo.length === 0) {
+                setError("Could not find details for the classes assigned to this exam.");
+                setIsLoading(false); return;
+            }
+
+            // Initial structure for groupedStudentScores
+            const initialGroups: ClassWithStudentsAndScores[] = await Promise.all(assignedClassesInfo.map(async classInfo => {
+                const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, "students");
+                const studentsQuery = query(studentsRef, orderBy("lastName", "asc"), orderBy("firstName", "asc"));
+                const studentsSnapshot = await getDocs(studentsQuery);
+                const students: Student[] = studentsSnapshot.docs.map(studentDoc => {
+                    const studentData = studentDoc.data() as Student;
+                    return {
+                        ...studentData,
+                        id: studentDoc.id,
+                        score: null, // Will be populated by listener
+                        currentScoreInput: '',
+                        isSavingScore: false,
+                        scoreDocId: null,
+                    };
+                });
+                return { classInfo, students };
+            }));
+            if(isMounted) setGroupedStudentScores(initialGroups);
+
+
+            // Set up real-time listeners for scores for each class
+            initialGroups.forEach((group, groupIndex) => {
+                const scoresRef = collection(db, SUBJECTS_COLLECTION_NAME, group.classInfo.subjectId, "classes", group.classInfo.id, SCORES_SUBCOLLECTION_NAME);
+                const scoresQuery = query(scoresRef, where("examId", "==", examId), where("userId", "==", user.uid));
+
+                const unsubscribe = onSnapshot(scoresQuery, (scoresSnapshot) => {
+                    if (!isMounted) return;
+                    const scoresMap = new Map<string, { score: number | null; scoreDocId: string }>();
+                    scoresSnapshot.forEach(scoreDoc => {
+                        const data = scoreDoc.data() as StudentExamScore;
+                        scoresMap.set(data.studentId, { score: data.score, scoreDocId: scoreDoc.id });
+                    });
+
+                    setGroupedStudentScores(prevGroups => {
+                        const newGroups = [...prevGroups];
+                        if (newGroups[groupIndex]) {
+                            newGroups[groupIndex].students = newGroups[groupIndex].students.map(student => {
+                                const existingScoreData = scoresMap.get(student.id);
+                                const currentScore = existingScoreData?.score ?? null;
+                                return {
+                                    ...student,
+                                    score: currentScore,
+                                    // Only update currentScoreInput if it's not currently being edited (i.e., if it matches the old score or is empty)
+                                    currentScoreInput: (student.currentScoreInput === '' || parseFloat(student.currentScoreInput ?? '') === student.score || student.score === null)
+                                                       ? (currentScore !== null ? String(currentScore) : '')
+                                                       : student.currentScoreInput,
+                                    scoreDocId: existingScoreData?.scoreDocId ?? null,
+                                };
+                            });
+                        }
+                        return newGroups;
+                    });
+                }, (error) => {
+                    console.error(`Error listening to scores for class ${group.classInfo.id}: `, error);
+                    // Optionally, set a specific error state for this class or a general one
+                });
+                unsubscribes.push(unsubscribe);
+            });
+
+        } catch (e) {
+            if (isMounted) {
+                console.error("Error fetching exam results data: ", e);
+                setError("Failed to load exam results. Please try again.");
+                toast({ title: "Error", description: "Could not fetch exam results.", variant: "destructive" });
+            }
+        } finally {
+            if (isMounted) setIsLoading(false);
+        }
+    };
+
+    fetchExamAndInitialData();
+
+    return () => {
+        isMounted = false;
+        unsubscribes.forEach(unsub => unsub());
+    };
+  }, [examId, user, authLoading, toast, router]);
 
 
   const handleScoreInputChange = (classIdx: number, studentIdx: number, value: string) => {
@@ -233,7 +268,7 @@ export default function ExamResultsPage() {
     const savableStudentsPromises = students.map(async (student, studentIdx) => {
       const scoreStatusDetails = getScoreStatus(student);
       if (!scoreStatusDetails.isSavable) {
-        return { studentId: student.id, success: true, noChange: true }; 
+        return { studentId: student.id, success: true, noChange: true, finalScore: student.score, scoreDocId: student.scoreDocId }; 
       }
 
       setGroupedStudentScores(prev => {
@@ -251,7 +286,7 @@ export default function ExamResultsPage() {
           examId: examDetails.id,
           studentId: student.id,
           userId: user.uid,
-          score: scoreToSave, // This can be null if clearing a score
+          score: scoreToSave, 
           updatedAt: serverTimestamp() as Timestamp,
         };
 
@@ -262,15 +297,13 @@ export default function ExamResultsPage() {
           const scoreDocRef = doc(scoresCollectionPath, student.scoreDocId);
           await setDoc(scoreDocRef, scoreData, { merge: true });
         } else {
-          // If saving null for a new score, we might not want to create a doc,
-          // or create it with score: null. Current logic creates it.
           const newDocRef = await addDoc(scoresCollectionPath, { ...scoreData, createdAt: serverTimestamp() as Timestamp });
           newScoreDocId = newDocRef.id;
         }
-        return { studentId: student.id, success: true, newScore: scoreToSave, newScoreDocId };
+        return { studentId: student.id, success: true, finalScore: scoreToSave, newScoreDocId };
       } catch (e) {
         console.error(`Error saving score for ${student.firstName} ${student.lastName}:`, e);
-        return { studentId: student.id, success: false, error: e };
+        return { studentId: student.id, success: false, error: e, finalScore: student.score, scoreDocId: student.scoreDocId };
       }
     });
 
@@ -281,23 +314,27 @@ export default function ExamResultsPage() {
     setGroupedStudentScores(prev => {
       const newGroups = [...prev];
       const studentsToUpdate = newGroups[classIdx].students.map(s => {
-        const result = results.find(r => r.status === 'fulfilled' && r.value.studentId === s.id);
-        if (result && result.status === 'fulfilled' && result.value.success) {
-          if (!result.value.noChange) changesMade = true;
-          return {
-            ...s,
-            score: result.value.newScore !== undefined ? result.value.newScore : s.score,
-            scoreDocId: result.value.newScoreDocId || s.scoreDocId,
-            currentScoreInput: result.value.newScore !== undefined && result.value.newScore !== null ? String(result.value.newScore) : (result.value.newScore === null ? "" : s.currentScoreInput),
-            isSavingScore: false,
-          };
-        } else if (result && result.status === 'fulfilled' && !result.value.success) {
-          allSuccessful = false;
-          return { ...s, isSavingScore: false }; 
-        } else if (result && result.status === 'rejected') {
+        const resultItem = results.find(r => r.status === 'fulfilled' && r.value.studentId === s.id);
+        if (resultItem && resultItem.status === 'fulfilled') {
+          const resultValue = resultItem.value;
+          if (resultValue.success) {
+            if (!resultValue.noChange) changesMade = true;
+            return {
+              ...s,
+              score: resultValue.finalScore,
+              scoreDocId: resultValue.newScoreDocId,
+              currentScoreInput: resultValue.finalScore !== null && resultValue.finalScore !== undefined ? String(resultValue.finalScore) : '',
+              isSavingScore: false,
+            };
+          } else { // Save failed for this student
+            allSuccessful = false;
+            return { ...s, isSavingScore: false }; 
+          }
+        } else if (resultItem && resultItem.status === 'rejected') {
           allSuccessful = false;
           return { ...s, isSavingScore: false };
         }
+        // If student was not part of savableStudentsPromises (noChange was true)
         return { ...s, isSavingScore: false }; 
       });
       newGroups[classIdx].students = studentsToUpdate;

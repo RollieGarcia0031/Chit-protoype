@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowRight, Edit3, Trash2, AlertTriangle, Loader2, Layers, BookOpen, Users2Icon, BarChart3, Send } from "lucide-react";
+import { ArrowRight, Edit3, Trash2, AlertTriangle, Loader2, Layers, BookOpen, Users2Icon, BarChart3, Send, Link2 } from "lucide-react"; // Added Link2
 import Link from "next/link";
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
@@ -40,13 +40,12 @@ interface GroupedExamsBySubject {
   };
 }
 
-// Interface specifically for the "Group by Class" view to aid sorting
 interface ClassGroup {
-  groupKey: string; // e.g., "SectionA-Grade10"
-  groupTitle: string; // e.g., "Section A (Grade 10)"
+  groupKey: string;
+  groupTitle: string;
   exams: ExamSummaryData[];
-  parsedYear: number; // For sorting by year
-  sectionName: string; // For secondary sorting by section name
+  parsedYear: number;
+  sectionName: string;
 }
 
 
@@ -198,12 +197,11 @@ export default function ViewExamsPage() {
             return parseInt(numericMatch[0], 10);
         }
         const lowerYearGrade = yearGradeStr.toLowerCase();
-        if (lowerYearGrade.includes('k') || lowerYearGrade.includes('kinder')) return -1; // Kindergarten sorts before Grade 1
-        if (lowerYearGrade.includes('pre-k') || lowerYearGrade.includes('pre k')) return -2; // Pre-K sorts before Kindergarten
-        return Infinity; // Non-numeric grades without specific handling sort last
+        if (lowerYearGrade.includes('k') || lowerYearGrade.includes('kinder')) return -1; 
+        if (lowerYearGrade.includes('pre-k') || lowerYearGrade.includes('pre k')) return -2;
+        return Infinity;
     };
 
-    // Step 1: Create temporary group data with sorting fields
     interface TempClassGroupData {
       groupTitle: string;
       classIdsInGroup: string[];
@@ -213,7 +211,7 @@ export default function ViewExamsPage() {
     const tempGroupData: { [key: string]: TempClassGroupData } = {};
 
     allUserClasses.forEach(cls => {
-        const groupKey = `${cls.sectionName}-${cls.yearGrade}`; // Unique key for section-year combo
+        const groupKey = `${cls.sectionName}-${cls.yearGrade}`;
         const parsedYear = extractNumericYear(cls.yearGrade);
 
         if (!tempGroupData[groupKey]) {
@@ -227,15 +225,14 @@ export default function ViewExamsPage() {
         tempGroupData[groupKey].classIdsInGroup.push(cls.id);
     });
 
-    // Step 2: Populate groups with exams
     const classGroupMap: { [key: string]: ClassGroup } = {};
 
     Object.entries(tempGroupData).forEach(([groupKey, groupInfo]) => {
         const examsInGroup = exams.filter(exam =>
             exam.classIds && exam.classIds.some(assignedClassId => groupInfo.classIdsInGroup.includes(assignedClassId))
-        ).sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()); // Sort exams within group by date
+        ).sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
 
-        if (groupInfo.classIdsInGroup.length > 0 || examsInGroup.length > 0) { // Only create group if classes exist or exams are assigned
+        if (groupInfo.classIdsInGroup.length > 0 || examsInGroup.length > 0) {
             if (!classGroupMap[groupKey]) {
                  classGroupMap[groupKey] = {
                     groupKey: groupKey,
@@ -245,7 +242,6 @@ export default function ViewExamsPage() {
                     parsedYear: groupInfo.parsedYear,
                 };
             }
-            // Deduplicate exams before pushing
             const existingExamIds = new Set(classGroupMap[groupKey].exams.map(e => e.id));
             examsInGroup.forEach(exam => {
                 if (!existingExamIds.has(exam.id)) {
@@ -256,14 +252,13 @@ export default function ViewExamsPage() {
         }
     });
 
-    // Step 3: Convert to array and sort
     let finalGroupArray: ClassGroup[] = Object.values(classGroupMap);
 
     finalGroupArray.sort((groupA, groupB) => {
         if (groupA.parsedYear !== groupB.parsedYear) {
-            return groupA.parsedYear - groupB.parsedYear; // Sort by numeric year first
+            return groupA.parsedYear - groupB.parsedYear;
         }
-        return groupA.sectionName.localeCompare(groupB.sectionName); // Then by section name
+        return groupA.sectionName.localeCompare(groupB.sectionName);
     });
 
     return finalGroupArray;
@@ -315,6 +310,21 @@ export default function ViewExamsPage() {
     if (selectedExamForOptions) {
       router.push(`/exams/${selectedExamForOptions.id}/publish`);
       handleCloseOptionsDialog();
+    }
+  };
+
+  const handleShareLink = () => {
+    if (selectedExamForOptions && typeof window !== 'undefined') {
+        const link = `${window.location.origin}/take-exam/${selectedExamForOptions.id}`;
+        navigator.clipboard.writeText(link)
+            .then(() => {
+                toast({ title: "Link Copied", description: "Exam link copied to clipboard." });
+            })
+            .catch(err => {
+                console.error("Failed to copy link: ", err);
+                toast({ title: "Error", description: "Could not copy link to clipboard.", variant: "destructive" });
+            });
+        handleCloseOptionsDialog();
     }
   };
 
@@ -520,7 +530,7 @@ export default function ViewExamsPage() {
     
     {displayMode === 'byClass' && (
         groupedExamsByClass.length > 0 ? (
-            groupedExamsByClass.map((group) => ( // Iterate over the sorted array
+            groupedExamsByClass.map((group) => (
                 <Card key={group.groupKey} className="shadow-lg">
                     <CardHeader>
                         <CardTitle className="text-lg sm:text-xl flex items-center">
@@ -549,7 +559,6 @@ export default function ViewExamsPage() {
         )
     )}
 
-    {/* Fallback for exams not fitting into current grouped views if needed */}
     {displayMode !== 'all' && 
         ( (displayMode === 'bySubject' && Object.keys(groupedExamsBySubject).length === 0 && !isLoadingSubjects && exams.length > 0) ||
           (displayMode === 'byClass' && groupedExamsByClass.length === 0 && !isLoadingClasses && !isLoadingSubjects && exams.length > 0)
@@ -585,6 +594,10 @@ export default function ViewExamsPage() {
                         <Send className="mr-2 h-4 w-4" />
                         Publish Exam
                     </Button>
+                     <Button variant="outline" onClick={handleShareLink} size="sm" className="text-xs sm:text-sm sm:col-span-2">
+                        <Link2 className="mr-2 h-4 w-4" />
+                        Share Link
+                    </Button>
                 </div>
                 <DialogFooter className="sm:justify-start">
                     <DialogClose asChild>
@@ -600,4 +613,3 @@ export default function ViewExamsPage() {
     </div>
   );
 }
-

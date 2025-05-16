@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, CalendarIcon, Send, AlertTriangle, Info, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, CalendarIcon, Send, AlertTriangle, Info, Save, Loader2, Link2 } from 'lucide-react'; // Added Link2
 import { useToast } from '@/hooks/use-toast';
 import { format, set } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -163,17 +163,11 @@ export default function PublishExamPage() {
   const handleAssignmentModeChange = (mode: AssignmentMode) => {
     setAssignmentMode(mode);
     if (mode === 'individual' && commonDate && commonTime) {
-      // Pre-fill individual fields if common schedule was set
       setClassAssignments(prev => prev.map(ca => ({
         ...ca,
         date: commonDate,
         time: commonTime,
       })));
-    } else if (mode === 'all') {
-      // Optionally clear or set a default for commonDate/commonTime, here we leave them
-      // or one could pick the first class's schedule if available
-      // setCommonDate(undefined);
-      // setCommonTime('');
     }
   };
 
@@ -226,7 +220,7 @@ export default function PublishExamPage() {
           successCount++;
         } catch (e) { console.error(`Error saving common assignment for class ${ca.classInfo.id}: `, e); errorCount++; }
       }
-    } else { // Individual mode
+    } else { 
       for (const ca of classAssignments) {
         if (!ca.date || !ca.time) continue; 
 
@@ -279,12 +273,26 @@ export default function PublishExamPage() {
     } else if (errorCount > 0) {
       toast({ title: "Saving Failed", description: `Could not save assignments for ${errorCount} class(es). Please try again.`, variant: "destructive" });
     } else if (successCount === 0 && errorCount === 0 && (assignmentMode === 'all' ? (commonDate && commonTime) : classAssignments.some(ca => ca.date && ca.time))) {
-      if (changesMade) { // Should only be true if some were skipped because no change, and others were empty. Unlikely.
+      if (changesMade) { 
         toast({ title: "Assignments Saved", description: "All assignments were up to date or successfully saved." });
       } else {
         toast({title: "No Changes", description: "No changes detected in assignments."});
       }
        router.push('/exams');
+    }
+  };
+
+  const handleShareLink = () => {
+    if (examDetails && typeof window !== 'undefined') {
+        const link = `${window.location.origin}/take-exam/${examDetails.id}`;
+        navigator.clipboard.writeText(link)
+            .then(() => {
+                toast({ title: "Link Copied", description: "Exam link copied to clipboard." });
+            })
+            .catch(err => {
+                console.error("Failed to copy link: ", err);
+                toast({ title: "Error", description: "Could not copy link to clipboard.", variant: "destructive" });
+            });
     }
   };
 
@@ -347,9 +355,14 @@ export default function PublishExamPage() {
             Assign a date and time for each class this exam is linked to, or set a common schedule.
           </CardDescription>
         </div>
-        <Button variant="outline" onClick={() => router.back()} size="sm" className="text-xs sm:text-sm flex-shrink-0">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Options
-        </Button>
+         <div className="flex items-center gap-2 flex-shrink-0">
+            <Button variant="outline" onClick={handleShareLink} size="sm" className="text-xs sm:text-sm">
+                <Link2 className="mr-2 h-4 w-4" /> Share Link
+            </Button>
+            <Button variant="outline" onClick={() => router.back()} size="sm" className="text-xs sm:text-sm">
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Options
+            </Button>
+        </div>
       </div>
 
       {classAssignments.length === 0 && !isLoading && (
@@ -463,4 +476,3 @@ export default function PublishExamPage() {
     </div>
   );
 }
-

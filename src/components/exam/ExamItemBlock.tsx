@@ -3,7 +3,7 @@
 'use client';
 
 import type { ChangeEvent } from 'react';
-import { Card, CardContent } from "@/components/ui/card"; // Removed CardHeader, CardTitle
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -172,10 +172,10 @@ export function ExamItemBlock({
   return (
     <Card className="border-border shadow-sm bg-card/50">
       <CardContent className="space-y-2 sm:space-y-3 px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
-        <div className="flex items-center justify-between gap-1 sm:gap-2 mb-2">
+        <div className="flex items-center justify-between gap-1 sm:gap-2 mb-1 sm:mb-2">
           <div className="flex items-center gap-1.5 sm:gap-2">
             <span className="text-xs sm:text-sm font-medium whitespace-nowrap">{itemIndex + 1}.</span>
-            <Label htmlFor={`points-${item.id}-q${itemIndex}`} className="text-xs sm:text-sm whitespace-nowrap sr-only">Points:</Label>
+             <Label htmlFor={`points-${item.id}-q${itemIndex}`} className="text-xs sm:text-sm whitespace-nowrap font-medium">Points:</Label>
             <Input
                 id={`points-${item.id}-q${itemIndex}`}
                 type="number"
@@ -183,7 +183,7 @@ export function ExamItemBlock({
                 onChange={handlePointsChange}
                 min="0"
                 placeholder="Pts"
-                className="h-7 w-10 text-xs text-center sm:h-8 sm:w-14 sm:text-sm"
+                className="h-7 w-12 text-xs text-center sm:h-8 sm:w-14 sm:text-sm"
                 disabled={disabled}
             />
           </div>
@@ -192,7 +192,6 @@ export function ExamItemBlock({
           </Button>
         </div>
         
-        {/* Question specific content starts here, indented slightly more implicitly by being in this flow */}
         {questionType !== 'matching' && questionType !== 'pooled-choices' && (
           <div className="space-y-1">
             <Label htmlFor={`questionText-${item.id}`} className="text-xs sm:text-sm">Question Text / Instructions</Label>

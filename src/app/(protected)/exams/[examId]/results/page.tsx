@@ -403,7 +403,7 @@ export default function ExamResultsPage() {
     if (allSuccessful && changesMade) {
       toast({ title: "Scores Saved", description: `All changes for ${classInfo.sectionName} saved successfully.` });
     } else if (!changesMade && allSuccessful) {
-      toast({ title: "No Changes", description: `No scores needed saving for ${classInfo.sectionName}.`});
+      // toast({ title: "No Changes", description: `No scores needed saving for ${classInfo.sectionName}.`}); // Removed this line
     } else if (!allSuccessful) {
       toast({ title: "Partial Save", description: `Some scores for ${classInfo.sectionName} could not be saved. Please check individual statuses.`, variant: "destructive" });
     }

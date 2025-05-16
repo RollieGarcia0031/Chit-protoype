@@ -1,16 +1,22 @@
+
 // src/app/take-exam/[examId]/answer-sheet/page.tsx
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useEffect, useState } from 'react';
-import type { FullExamData, ExamBlock, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, PooledChoicesQuestion } from '@/types/exam-types';
+import type { FullExamData, ExamBlock, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, PooledChoicesQuestion, Student } from '@/types/exam-types';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, AlertTriangle, Send, ArrowLeft, Info } from 'lucide-react';
+import { FileText, AlertTriangle, Send, ArrowLeft, Info, UserCheck } from 'lucide-react';
 import { QUESTION_TYPES } from '@/types/exam-types';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { db } from '@/lib/firebase/config';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 
 const getAlphabetLetter = (index: number): string => String.fromCharCode(65 + index);
 
@@ -38,7 +44,7 @@ const getQuestionTypeLabel = (type: ExamQuestion['type']): string => {
 };
 
 interface StudentAnswers {
-  [questionId: string]: string | null;
+  [questionId: string]: string | null; // For MC, T/F, Matching
 }
 
 export default function AnswerSheetPage() {
@@ -52,22 +58,45 @@ export default function AnswerSheetPage() {
   const [studentAnswers, setStudentAnswers] = useState<StudentAnswers>({});
   let globalQuestionNumber = 1;
 
+  const [selectedClassIdFromSession, setSelectedClassIdFromSession] = useState<string | null>(null);
+  const [studentsInClass, setStudentsInClass] = useState<Student[]>([]);
+  const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+  const [selectedStudentIdFromDropdown, setSelectedStudentIdFromDropdown] = useState<string | null>(null);
+  const [enteredFirstName, setEnteredFirstName] = useState('');
+  const [enteredLastName, setEnteredLastName] = useState('');
+  const [isNameConfirmed, setIsNameConfirmed] = useState(false);
+  const [studentDetailsError, setStudentDetailsError] = useState<string | null>(null);
+
+
   useEffect(() => {
     if (typeof window !== 'undefined' && examId) {
       setIsLoading(true);
       try {
         const cachedExamDataString = sessionStorage.getItem(`examData-${examId}`);
+        const cachedClassId = sessionStorage.getItem(`selectedClassId-${examId}`);
+
         if (cachedExamDataString) {
           const parsedData: FullExamData = JSON.parse(cachedExamDataString);
           setExamToDisplay(parsedData);
         } else {
-          setError("Exam data not found. Please return to the previous page and try starting the exam again.");
+          setError("Exam data not found in session. Please return to the previous page and try starting the exam again.");
+          setIsLoading(false);
+          return;
         }
+
+        if (cachedClassId) {
+          setSelectedClassIdFromSession(cachedClassId);
+        } else {
+          setError("Selected class information not found in session. Please return to the previous page.");
+          setIsLoading(false);
+          return;
+        }
+
       } catch (e) {
-        console.error("Error parsing exam data from sessionStorage:", e);
-        setError("There was an issue loading the exam. Please try again.");
+        console.error("Error parsing data from sessionStorage:", e);
+        setError("There was an issue loading the exam or class information. Please try again.");
       } finally {
-        setIsLoading(false);
+        // setIsLoading(false); // Loading is set to false after students are fetched or if an error occurs
       }
     } else if (!examId) {
       setError("No exam ID provided.");
@@ -75,14 +104,71 @@ export default function AnswerSheetPage() {
     }
   }, [examId]);
 
+  useEffect(() => {
+    const fetchStudents = async () => {
+      if (!selectedClassIdFromSession || !examToDisplay?.subjectId) {
+        if (examToDisplay && !examToDisplay.subjectId) {
+             setStudentDetailsError("Exam configuration is missing subject ID, cannot fetch student list.");
+        }
+        setIsLoadingStudents(false);
+        setIsLoading(false); // Also stop main loading if this critical info is missing
+        return;
+      }
+      setIsLoadingStudents(true);
+      setStudentDetailsError(null);
+      try {
+        const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, examToDisplay.subjectId, "classes", selectedClassIdFromSession, "students");
+        const q = query(studentsRef, orderBy("lastName", "asc"), orderBy("firstName", "asc"));
+        const querySnapshot = await getDocs(q);
+        const fetchedStudents: Student[] = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Student));
+        setStudentsInClass(fetchedStudents);
+        if (fetchedStudents.length === 0) {
+            setStudentDetailsError("No students found for the selected class. Please check with your instructor.");
+        }
+      } catch (e) {
+        console.error("Error fetching students for class:", e);
+        setStudentDetailsError("Could not load the student list for your class.");
+      } finally {
+        setIsLoadingStudents(false);
+        setIsLoading(false); // Indicate main loading is complete
+      }
+    };
+
+    if (selectedClassIdFromSession && examToDisplay) {
+      fetchStudents();
+    } else if (!selectedClassIdFromSession && examToDisplay) {
+      // This state is reached if exam data loaded but classId didn't (error handled in first useEffect)
+      setIsLoading(false);
+    }
+  }, [selectedClassIdFromSession, examToDisplay]);
+
+
   const handleAnswerChange = (questionId: string, answer: string) => {
     setStudentAnswers(prev => ({ ...prev, [questionId]: answer }));
+  };
+
+  const handleNameConfirmation = () => {
+    if (!selectedStudentIdFromDropdown || !enteredFirstName.trim() || !enteredLastName.trim()) {
+      setStudentDetailsError("Please select your name and enter your first and last name.");
+      return;
+    }
+    const selectedStudent = studentsInClass.find(s => s.id === selectedStudentIdFromDropdown);
+    if (selectedStudent && 
+        selectedStudent.firstName.trim().toLowerCase() === enteredFirstName.trim().toLowerCase() &&
+        selectedStudent.lastName.trim().toLowerCase() === enteredLastName.trim().toLowerCase()) {
+      setIsNameConfirmed(true);
+      setStudentDetailsError(null);
+    } else {
+      setStudentDetailsError("The entered first and last name do not match the selected student. Please try again.");
+      setIsNameConfirmed(false);
+    }
   };
 
   const handleSubmitExam = () => {
     // Placeholder for future submission logic
     console.log("Student Answers:", studentAnswers);
-    alert("Exam submission functionality is coming soon! Answers logged to console.");
+    console.log("Confirmed Student ID:", selectedStudentIdFromDropdown);
+    alert("Exam submission functionality is coming soon! Answers and student ID logged to console.");
   };
 
   if (isLoading) {
@@ -90,6 +176,7 @@ export default function AnswerSheetPage() {
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
         <Skeleton className="h-10 w-1/2 mb-2" />
         <Skeleton className="h-6 w-3/4 mb-6" />
+        <Skeleton className="h-20 w-full max-w-2xl mb-4" /> {/* For student ID section */}
         <Skeleton className="h-40 w-full max-w-2xl mb-4" />
         <Skeleton className="h-40 w-full max-w-2xl" />
       </div>
@@ -103,7 +190,7 @@ export default function AnswerSheetPage() {
         <h1 className="text-2xl font-bold text-destructive mb-2">Error Loading Exam</h1>
         <p className="text-muted-foreground max-w-md mb-4">{error}</p>
         <Button onClick={() => router.push(`/take-exam/${examId}`)} variant="outline">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Try Again
+          <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
         </Button>
       </div>
     );
@@ -135,139 +222,217 @@ export default function AnswerSheetPage() {
             </CardDescription>
           )}
         </CardHeader>
-        <CardContent className="p-4 sm:p-6 md:p-8 prose prose-sm sm:prose-base max-w-none">
-          {examToDisplay.examBlocks.map((block, blockIndex) => {
-            const blockTypeLabel = getQuestionTypeLabel(block.blockType);
-            return (
-              <div key={block.id} className="mb-6 last:mb-0">
-                <h2 className="text-lg sm:text-xl font-semibold mb-1 text-foreground">
-                  {toRoman(blockIndex + 1)}. {blockTypeLabel}
-                </h2>
-                {block.blockTitle && <p className="italic text-muted-foreground mb-2 text-sm sm:text-base">{block.blockTitle}</p>}
+        <CardContent className="p-4 sm:p-6 md:p-8">
+          {/* Student Identification Section */}
+          {!isNameConfirmed && (
+            <Card className="mb-6 shadow-md bg-muted/30">
+              <CardHeader>
+                <CardTitle className="text-lg sm:text-xl text-foreground">Student Identification</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">Please select your name and confirm by typing it.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="studentSelect" className="text-sm">Select Your Name</Label>
+                  {isLoadingStudents ? (
+                    <Skeleton className="h-10 w-full" />
+                  ) : studentsInClass.length > 0 ? (
+                    <Select
+                      onValueChange={setSelectedStudentIdFromDropdown}
+                      value={selectedStudentIdFromDropdown || ""}
+                      disabled={isLoadingStudents}
+                    >
+                      <SelectTrigger id="studentSelect" className="w-full">
+                        <SelectValue placeholder="-- Select your name --" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {studentsInClass.map((student) => (
+                          <SelectItem key={student.id} value={student.id}>
+                            {student.lastName}, {student.firstName} {student.middleName && `${student.middleName.charAt(0)}.`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                     <p className="text-sm text-muted-foreground">{studentDetailsError || "Student list is unavailable for this class."}</p>
+                  )}
+                </div>
 
-                {block.blockType === 'pooled-choices' && block.choicePool && block.choicePool.length > 0 && (
-                  <div className="mb-3 p-3 border border-dashed rounded-md bg-muted/30">
-                    <h3 className="font-medium text-sm mb-1">Choices for this section:</h3>
-                    <ul className="list-none pl-0 columns-1 sm:columns-2 md:columns-3 gap-x-4">
-                      {block.choicePool.map((poolOpt, poolOptIndex) => (
-                        <li key={poolOpt.id} className="text-sm break-inside-avoid-column">
-                          {getAlphabetLetter(poolOptIndex)}. {poolOpt.text}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {block.questions.map((question) => {
-                  const questionDisplayNumber = globalQuestionNumber;
-                  globalQuestionNumber += question.points;
-                  const displayLabel = question.points > 1 ? `${questionDisplayNumber}-${globalQuestionNumber - 1}` : `${questionDisplayNumber}`;
-
-                  if (question.type === 'pooled-choices') {
-                    return (
-                      <div key={question.id} className="mb-4 pl-4 flex items-start gap-2 sm:gap-3">
-                        <div className="flex-shrink-0 pt-0.5">
-                          <select
-                            className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring w-24"
-                            value={studentAnswers[question.id] || ""}
-                            onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                            aria-label={`Answer for question ${displayLabel}`}
-                          >
-                            <option value="" disabled>Answer</option>
-                            {block.choicePool?.map((_poolOpt, poolOptIndex) => (
-                              <option key={poolOptIndex} value={getAlphabetLetter(poolOptIndex)}>
-                                {getAlphabetLetter(poolOptIndex)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <p className="font-medium flex-grow text-sm sm:text-base">
-                          {displayLabel}. {question.questionText}
-                        </p>
-                      </div>
-                    );
-                  } else {
-                    return (
-                      <div key={question.id} className="mb-4 pl-4">
-                        <p className="font-medium mb-1 text-sm sm:text-base">
-                          {displayLabel}. {question.questionText}
-                        </p>
-                        {question.type === 'multiple-choice' && (
-                          <RadioGroup
-                            name={question.id}
-                            value={studentAnswers[question.id] || ""}
-                            onValueChange={(value) => handleAnswerChange(question.id, value)}
-                            className="space-y-1 pl-5 mt-1"
-                          >
-                            {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
-                              <div key={opt.id} className="flex items-center space-x-2">
-                                <RadioGroupItem value={opt.id} id={`option-${question.id}-${opt.id}`} />
-                                <Label htmlFor={`option-${question.id}-${opt.id}`} className="font-normal cursor-pointer text-sm sm:text-base">
-                                  {getAlphabetLetter(optIndex)}. {opt.text}
-                                </Label>
-                              </div>
-                            ))}
-                          </RadioGroup>
-                        )}
-                        {question.type === 'true-false' && (
-                          <RadioGroup
-                            name={question.id}
-                            value={studentAnswers[question.id] || ""}
-                            onValueChange={(value) => handleAnswerChange(question.id, value)}
-                            className="flex space-x-4 pl-5 mt-1"
-                          >
-                            <div className="flex items-center space-x-2">
-                              <RadioGroupItem value="true" id={`true-${question.id}`} />
-                              <Label htmlFor={`true-${question.id}`} className="font-normal cursor-pointer text-sm sm:text-base">True</Label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <RadioGroupItem value="false" id={`false-${question.id}`} />
-                              <Label htmlFor={`false-${question.id}`} className="font-normal cursor-pointer text-sm sm:text-base">False</Label>
-                            </div>
-                          </RadioGroup>
-                        )}
-                        {question.type === 'matching' && (
-                          <div className="pl-5 mt-1">
-                            <input
-                              type="text"
-                              placeholder="Enter matching letter"
-                              className="h-9 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring w-full max-w-xs"
-                              onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                              value={studentAnswers[question.id] || ""}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-                })}
-                {block.blockType === 'matching' && (
-                    <div className="mt-2 pl-4">
-                        <h4 className="font-medium text-sm mb-1">Match From:</h4>
-                        <ul className="list-none pl-0 columns-1 sm:columns-2 gap-x-4">
-                            {(block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs.map(p => p.response))
-                                .filter((value, index, self) => self.indexOf(value) === index)
-                                .sort((a,b) => {
-                                    const letterA = (block.questions as MatchingTypeQuestion[]).find(q => q.pairs.find(p => p.response === a))?.pairs.find(p => p.response === a)?.responseLetter || '';
-                                    const letterB = (block.questions as MatchingTypeQuestion[]).find(q => q.pairs.find(p => p.response === b))?.pairs.find(p => p.response === b)?.responseLetter || '';
-                                    if (letterA && letterB) return letterA.localeCompare(letterB);
-                                    return a.localeCompare(b);
-                                })
-                                .map((response, index) => {
-                                     const originalPair = (block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs).find(p => p.response === response);
-                                     const letter = originalPair?.responseLetter || getAlphabetLetter(index);
-                                     return <li key={`match-resp-${index}`} className="text-sm break-inside-avoid-column">{letter}. {response}</li>;
-                                })
-                            }
-                        </ul>
+                {selectedStudentIdFromDropdown && (
+                  <>
+                    <div>
+                      <Label htmlFor="firstNameConfirm" className="text-sm">Enter Your First Name</Label>
+                      <Input
+                        id="firstNameConfirm"
+                        value={enteredFirstName}
+                        onChange={(e) => setEnteredFirstName(e.target.value)}
+                        placeholder="First Name"
+                      />
                     </div>
+                    <div>
+                      <Label htmlFor="lastNameConfirm" className="text-sm">Enter Your Last Name</Label>
+                      <Input
+                        id="lastNameConfirm"
+                        value={enteredLastName}
+                        onChange={(e) => setEnteredLastName(e.target.value)}
+                        placeholder="Last Name"
+                      />
+                    </div>
+                    <Button onClick={handleNameConfirmation} className="w-full sm:w-auto">
+                      Confirm Name
+                    </Button>
+                  </>
                 )}
-              </div>
-            );
-          })}
+                {studentDetailsError && !isLoadingStudents && (
+                  <p className="text-sm text-destructive">{studentDetailsError}</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {isNameConfirmed && (
+            <div className="prose prose-sm sm:prose-base max-w-none">
+              {examToDisplay.examBlocks.map((block, blockIndex) => {
+                const blockTypeLabel = getQuestionTypeLabel(block.blockType);
+                // Reset globalQuestionNumber for each rendering pass for consistent numbering
+                if (blockIndex === 0) globalQuestionNumber = 1;
+
+                return (
+                  <div key={block.id} className="mb-6 last:mb-0">
+                    <h2 className="text-lg sm:text-xl font-semibold mb-1 text-foreground">
+                      {toRoman(blockIndex + 1)}. {blockTypeLabel}
+                    </h2>
+                    {block.blockTitle && <p className="italic text-muted-foreground mb-2 text-sm sm:text-base">{block.blockTitle}</p>}
+
+                    {block.blockType === 'pooled-choices' && block.choicePool && block.choicePool.length > 0 && (
+                      <div className="mb-3 p-3 border border-dashed rounded-md bg-muted/30">
+                        <h3 className="font-medium text-sm mb-1">Choices for this section:</h3>
+                        <ul className="list-none pl-0 columns-1 sm:columns-2 md:columns-3 gap-x-4">
+                          {block.choicePool.map((poolOpt, poolOptIndex) => (
+                            <li key={poolOpt.id} className="text-sm break-inside-avoid-column">
+                              {getAlphabetLetter(poolOptIndex)}. {poolOpt.text}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {block.questions.map((question) => {
+                      const questionDisplayNumber = globalQuestionNumber;
+                      globalQuestionNumber += question.points; // Increment for the next question
+                      const displayLabel = question.points > 1 ? `${questionDisplayNumber}-${globalQuestionNumber - 1}` : `${questionDisplayNumber}`;
+
+                      if (question.type === 'pooled-choices') {
+                        return (
+                          <div key={question.id} className="mb-4 pl-4 flex items-start gap-2 sm:gap-3">
+                            <div className="flex-shrink-0 pt-0.5">
+                              <select
+                                className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring w-24"
+                                value={studentAnswers[question.id] || ""}
+                                onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                                aria-label={`Answer for question ${displayLabel}`}
+                              >
+                                <option value="" disabled>Answer</option>
+                                {block.choicePool?.map((_poolOpt, poolOptIndex) => (
+                                  <option key={poolOptIndex} value={getAlphabetLetter(poolOptIndex)}>
+                                    {getAlphabetLetter(poolOptIndex)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <p className="font-medium flex-grow text-sm sm:text-base">
+                              {displayLabel}. {question.questionText}
+                            </p>
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <div key={question.id} className="mb-4 pl-4">
+                            <p className="font-medium mb-1 text-sm sm:text-base">
+                              {displayLabel}. {question.questionText}
+                            </p>
+                            {question.type === 'multiple-choice' && (
+                              <RadioGroup
+                                name={question.id}
+                                value={studentAnswers[question.id] || ""}
+                                onValueChange={(value) => handleAnswerChange(question.id, value)}
+                                className="space-y-1 pl-5 mt-1"
+                              >
+                                {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
+                                  <div key={opt.id} className="flex items-center space-x-2">
+                                    <RadioGroupItem value={opt.id} id={`option-${question.id}-${opt.id}`} />
+                                    <Label htmlFor={`option-${question.id}-${opt.id}`} className="font-normal cursor-pointer text-sm sm:text-base">
+                                      {getAlphabetLetter(optIndex)}. {opt.text}
+                                    </Label>
+                                  </div>
+                                ))}
+                              </RadioGroup>
+                            )}
+                            {question.type === 'true-false' && (
+                              <RadioGroup
+                                name={question.id}
+                                value={studentAnswers[question.id] || ""}
+                                onValueChange={(value) => handleAnswerChange(question.id, value)}
+                                className="flex space-x-4 pl-5 mt-1"
+                              >
+                                <div className="flex items-center space-x-2">
+                                  <RadioGroupItem value="true" id={`true-${question.id}`} />
+                                  <Label htmlFor={`true-${question.id}`} className="font-normal cursor-pointer text-sm sm:text-base">True</Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <RadioGroupItem value="false" id={`false-${question.id}`} />
+                                  <Label htmlFor={`false-${question.id}`} className="font-normal cursor-pointer text-sm sm:text-base">False</Label>
+                                </div>
+                              </RadioGroup>
+                            )}
+                            {question.type === 'matching' && (
+                              <div className="pl-5 mt-1">
+                                <input
+                                  type="text"
+                                  placeholder="Enter matching letter"
+                                  className="h-9 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring w-full max-w-xs"
+                                  onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                                  value={studentAnswers[question.id] || ""}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                    })}
+                    {block.blockType === 'matching' && (
+                        <div className="mt-2 pl-4">
+                            <h4 className="font-medium text-sm mb-1">Match From:</h4>
+                            <ul className="list-none pl-0 columns-1 sm:columns-2 gap-x-4">
+                                {(block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs.map(p => p.response))
+                                    .filter((value, index, self) => self.indexOf(value) === index) // Unique responses
+                                    .sort((a,b) => { // Sort by assigned letter if available, otherwise alphabetically
+                                        const letterA = (block.questions as MatchingTypeQuestion[]).find(q => q.pairs.find(p => p.response === a))?.pairs.find(p => p.response === a)?.responseLetter || '';
+                                        const letterB = (block.questions as MatchingTypeQuestion[]).find(q => q.pairs.find(p => p.response === b))?.pairs.find(p => p.response === b)?.responseLetter || '';
+                                        if (letterA && letterB) return letterA.localeCompare(letterB);
+                                        return a.localeCompare(b);
+                                    })
+                                    .map((response, index) => {
+                                         const originalPair = (block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs).find(p => p.response === response);
+                                         const letter = originalPair?.responseLetter || getAlphabetLetter(index); // Fallback letter if not assigned
+                                         return <li key={`match-resp-${index}`} className="text-sm break-inside-avoid-column">{letter}. {response}</li>;
+                                    })
+                                }
+                            </ul>
+                        </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
         <CardFooter className="border-t pt-6">
-          <Button onClick={handleSubmitExam} size="lg" className="w-full sm:w-auto mx-auto">
+          <Button 
+            onClick={handleSubmitExam} 
+            size="lg" 
+            className="w-full sm:w-auto mx-auto"
+            disabled={!isNameConfirmed || isLoading}
+          >
             <Send className="mr-2 h-5 w-5" />
             Submit Exam (Coming Soon)
           </Button>
@@ -276,3 +441,5 @@ export default function AnswerSheetPage() {
     </div>
   );
 }
+
+    

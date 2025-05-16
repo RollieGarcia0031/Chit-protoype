@@ -24,13 +24,17 @@ function sanitizeExamDataForStudent(fullExamData: FullExamData): FullExamData {
   const sanitizedBlocks = fullExamData.examBlocks.map(block => {
     const sanitizedQuestions = block.questions.map(question => {
       const baseSanitizedQuestion = { ...question };
+      // Remove isCorrect from multiple choice options
       if (question.type === 'multiple-choice') {
         (baseSanitizedQuestion as MultipleChoiceQuestion).options = (question as MultipleChoiceQuestion).options.map(opt => ({ ...opt, isCorrect: false }));
-      } else if (question.type === 'true-false') {
+      }
+      // Remove correctAnswer from true/false questions
+      else if (question.type === 'true-false') {
         (baseSanitizedQuestion as TrueFalseQuestion).correctAnswer = null;
-      } else if (question.type === 'matching') {
-        // Matching pairs are needed for students to see and match.
-      } else if (question.type === 'pooled-choices') {
+      }
+      // Matching pairs are kept as students need to see them
+      // Pooled choices: correctAnswersFromPool are removed, choicePool on block level is kept
+      else if (question.type === 'pooled-choices') {
         (baseSanitizedQuestion as PooledChoicesQuestion).correctAnswersFromPool = [];
       }
       return baseSanitizedQuestion;
@@ -77,6 +81,7 @@ export default function TakeExamLandingPage() {
             if (data.status !== 'Published') {
               setExamError("This exam is not currently published or active.");
               setExamDetails(null);
+              setIsLoadingExam(false);
               return;
             }
 
@@ -101,6 +106,7 @@ export default function TakeExamLandingPage() {
             const fullExamData: FullExamData = { id: examSnap.id, ...data, examBlocks: loadedBlocks };
             setExamDetails(fullExamData);
 
+            // Cache sanitized exam data if published
             if (typeof window !== 'undefined' && fullExamData.status === 'Published') {
               const sanitizedData = sanitizeExamDataForStudent(fullExamData);
               sessionStorage.setItem(`examData-${examId}`, JSON.stringify(sanitizedData));
@@ -154,12 +160,14 @@ export default function TakeExamLandingPage() {
         setIsLoadingClassDetails(true);
         const classSelectionPromises = assignments.map(async (assignment) => {
           try {
+            // Assuming subjectId on examDetails is the correct parent for all assigned classes.
+            // If classes can come from different subjects, this logic needs adjustment.
             const classDocRef = doc(db, SUBJECTS_COLLECTION_NAME, examDetails.subjectId!, "classes", assignment.classId);
             const classSnap = await getDoc(classDocRef);
             if (classSnap.exists()) {
               const classData = classSnap.data();
               return {
-                id: assignment.classId,
+                id: assignment.classId, // Store the actual class ID from the assignment
                 name: `${classData.sectionName} (${classData.yearGrade})`,
               };
             }
@@ -170,12 +178,14 @@ export default function TakeExamLandingPage() {
         });
 
         const results = (await Promise.all(classSelectionPromises)).filter(Boolean) as ClassForSelection[];
+        // Ensure unique classes in dropdown if an exam is assigned multiple times to the same class (shouldn't happen with current publish logic)
         const uniqueResults = results.filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
         setAvailableClassesForSelection(uniqueResults);
         setIsLoadingClassDetails(false);
       };
       fetchClassDetailsForAssignments();
     } else if (assignments.length > 0 && !examDetails?.subjectId) {
+        // This case indicates a potential data integrity issue or incomplete exam setup
         setAccessMessage("Exam configuration incomplete (missing subject details). Cannot determine classes.");
         setAvailableClassesForSelection([]);
         setIsLoadingClassDetails(false);
@@ -191,8 +201,9 @@ export default function TakeExamLandingPage() {
       if (selectedClassId && assignments.length > 0 && !isLoadingAssignments && !isLoadingClassDetails) {
         setAccessMessage("No schedule found for the selected class.");
       } else if (selectedClassId && (isLoadingAssignments || isLoadingClassDetails)) {
-        // Handled by main loading indicator
+        // Loading message handled by main loading indicator
       } else {
+        // No class selected yet, or no assignments at all
         setAccessMessage(null);
       }
       return;
@@ -202,11 +213,11 @@ export default function TakeExamLandingPage() {
     if (assignment && assignment.assignedDateTime) {
       const assignedTime = assignment.assignedDateTime.toDate();
       const now = new Date();
-      setCurrentTime(now);
+      setCurrentTime(now); // Update current time for display
 
       if (now >= assignedTime) {
         setIsExamTime(true);
-        setAccessMessage(null);
+        setAccessMessage(null); // Clear any "too early" message
       } else {
         setIsExamTime(false);
         setAccessMessage(`This exam is scheduled for your class on ${format(assignedTime, "PPP 'at' p")}. Please return at that time.`);
@@ -215,32 +226,41 @@ export default function TakeExamLandingPage() {
       setIsExamTime(false);
       setAccessMessage("No specific schedule found for your selected class in this exam.");
     }
-  }, [selectedClassId, assignments, isLoadingAssignments, isLoadingClassDetails]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClassId, assignments, isLoadingAssignments, isLoadingClassDetails]); // currentTime removed as it causes re-runs; logic relies on assignment fetch
 
+  // Timer effect for "Too Early" message
   useEffect(() => {
     if (!isExamTime && accessMessage && accessMessage.startsWith("This exam is scheduled")) {
       const interval = setInterval(() => {
+        // Re-check time
         const assignment = assignments.find(a => a.classId === selectedClassId);
         if (assignment && assignment.assignedDateTime) {
           const assignedTime = assignment.assignedDateTime.toDate();
           const now = new Date();
-          setCurrentTime(now);
+          setCurrentTime(now); // Update displayed current time
           if (now >= assignedTime) {
             setIsExamTime(true);
             setAccessMessage(null);
             clearInterval(interval);
           }
         } else {
+          // Should not happen if accessMessage is set this way, but good to clear interval
           clearInterval(interval);
         }
-      }, 30000);
+      }, 30000); // Check every 30 seconds
       return () => clearInterval(interval);
     }
   }, [isExamTime, accessMessage, assignments, selectedClassId]);
 
   const handleStartExam = () => {
-    if (examId && isExamTime && selectedClassId) {
+    if (examId && isExamTime && selectedClassId && examDetails) {
       setIsNavigating(true);
+      // Store selectedClassId in session storage to be used by the answer sheet page
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(`selectedClassId-${examId}`, selectedClassId);
+         // Exam data is already saved in sessionStorage by the fetchFullExamDetails effect
+      }
       router.push(`/take-exam/${examId}/answer-sheet`);
       // setIsNavigating(false) will happen implicitly on unmount or can be set if navigation fails
     }
@@ -250,8 +270,15 @@ export default function TakeExamLandingPage() {
     return (
       <main className="flex flex-col items-center justify-center min-h-screen p-4">
         <Card className="w-full max-w-2xl shadow-xl">
-          <CardHeader className="text-center"> <Skeleton className="h-8 w-3/4 mx-auto mb-2" /> <Skeleton className="h-5 w-1/2 mx-auto" /> </CardHeader>
-          <CardContent className="py-10 text-center space-y-4"> <Skeleton className="h-10 w-full max-w-xs mx-auto" /> <Skeleton className="h-6 w-2/3 mx-auto" /> <Skeleton className="h-12 w-1/2 mx-auto" /> </CardContent>
+          <CardHeader className="text-center">
+            <Skeleton className="h-8 w-3/4 mx-auto mb-2" />
+            <Skeleton className="h-5 w-1/2 mx-auto" />
+          </CardHeader>
+          <CardContent className="py-10 text-center space-y-4">
+            <Skeleton className="h-10 w-full max-w-xs mx-auto" />
+            <Skeleton className="h-6 w-2/3 mx-auto" />
+            <Skeleton className="h-12 w-1/2 mx-auto" />
+          </CardContent>
         </Card>
       </main>
     );
@@ -268,6 +295,7 @@ export default function TakeExamLandingPage() {
   }
 
   if (!examDetails) {
+    // This case can occur if exam status is not "Published" or if examDoc doesn't exist
     return (
       <main className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
         <FileText className="h-16 w-16 text-muted-foreground mb-4" />
@@ -284,18 +312,37 @@ export default function TakeExamLandingPage() {
     <main className="flex flex-col items-center justify-center min-h-screen p-4">
       <Card className="w-full max-w-3xl shadow-xl">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl sm:text-3xl font-bold text-primary"> {examDetails.title} </CardTitle>
-          {examDetails.description && ( <CardDescription className="text-sm sm:text-base text-muted-foreground mt-2"> {examDetails.description} </CardDescription> )}
-          <CardDescription className="text-xs sm:text-sm text-muted-foreground/80 mt-1"> Total Points: {examDetails.totalPoints} | Total Questions: {examDetails.totalQuestions} </CardDescription>
+          <CardTitle className="text-2xl sm:text-3xl font-bold text-primary">
+            {examDetails.title}
+          </CardTitle>
+          {examDetails.description && (
+            <CardDescription className="text-sm sm:text-base text-muted-foreground mt-2">
+              {examDetails.description}
+            </CardDescription>
+          )}
+          <CardDescription className="text-xs sm:text-sm text-muted-foreground/80 mt-1">
+            Total Points: {examDetails.totalPoints} | Total Questions: {examDetails.totalQuestions}
+          </CardDescription>
         </CardHeader>
         <CardContent className="py-8 sm:py-10 text-center space-y-4">
           {isPageLoading ? (
-            <> <Skeleton className="h-10 w-full max-w-xs mx-auto" /> <Skeleton className="h-5 w-1/2 mx-auto" /> </>
+            <>
+              <Skeleton className="h-10 w-full max-w-xs mx-auto" />
+              <Skeleton className="h-5 w-1/2 mx-auto" />
+            </>
           ) : availableClassesForSelection.length > 0 ? (
             <div className="w-full max-w-xs mx-auto">
               <Select onValueChange={setSelectedClassId} value={selectedClassId || undefined} disabled={isPageLoading || isNavigating}>
-                <SelectTrigger className="w-full"> <SelectValue placeholder="Select your class section" /> </SelectTrigger>
-                <SelectContent> {availableClassesForSelection.map((cls) => ( <SelectItem key={cls.id} value={cls.id}> {cls.name} </SelectItem> ))} </SelectContent>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select your class section" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableClassesForSelection.map((cls) => (
+                    <SelectItem key={cls.id} value={cls.id}>
+                      {cls.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </div>
           ) : (
@@ -324,9 +371,14 @@ export default function TakeExamLandingPage() {
             {isNavigating ? "Starting..." : "Start Exam"}
           </Button>
         </CardContent>
-        <CardFooter className="text-center justify-center"> <p className="text-xs text-muted-foreground"> Current time: {format(currentTime, "PPP p")} </p> </CardFooter>
+        <CardFooter className="text-center justify-center">
+          <p className="text-xs text-muted-foreground">
+            Current time: {format(currentTime, "PPP p")}
+          </p>
+        </CardFooter>
       </Card>
     </main>
   );
 }
 
+    

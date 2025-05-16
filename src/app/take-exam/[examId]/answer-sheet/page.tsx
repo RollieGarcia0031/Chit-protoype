@@ -1,4 +1,3 @@
-
 // src/app/take-exam/[examId]/answer-sheet/page.tsx
 'use client';
 
@@ -39,7 +38,7 @@ const getQuestionTypeLabel = (type: ExamQuestion['type']): string => {
 };
 
 interface StudentAnswers {
-  [questionId: string]: string | null; // Store optionId for MCQ, or other answer format
+  [questionId: string]: string | null;
 }
 
 export default function AnswerSheetPage() {
@@ -144,7 +143,7 @@ export default function AnswerSheetPage() {
                 <h2 className="text-lg sm:text-xl font-semibold mb-1 text-foreground">
                   {toRoman(blockIndex + 1)}. {blockTypeLabel}
                 </h2>
-                {block.blockTitle && <p className="italic text-muted-foreground mb-2">{block.blockTitle}</p>}
+                {block.blockTitle && <p className="italic text-muted-foreground mb-2 text-sm sm:text-base">{block.blockTitle}</p>}
 
                 {block.blockType === 'pooled-choices' && block.choicePool && block.choicePool.length > 0 && (
                   <div className="mb-3 p-3 border border-dashed rounded-md bg-muted/30">
@@ -161,87 +160,94 @@ export default function AnswerSheetPage() {
 
                 {block.questions.map((question) => {
                   const questionDisplayNumber = globalQuestionNumber;
-                  globalQuestionNumber += question.points; 
+                  globalQuestionNumber += question.points;
                   const displayLabel = question.points > 1 ? `${questionDisplayNumber}-${globalQuestionNumber - 1}` : `${questionDisplayNumber}`;
-                  
-                  return (
-                    <div key={question.id} className="mb-4 pl-4">
-                      <p className="font-medium mb-1">
-                        {displayLabel}. {question.questionText}
-                      </p>
-                      {question.type === 'multiple-choice' && (
-                        <RadioGroup
-                          name={question.id}
-                          value={studentAnswers[question.id] || ""}
-                          onValueChange={(value) => handleAnswerChange(question.id, value)}
-                          className="space-y-1 pl-5 mt-1"
-                        >
-                          {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
-                            <div key={opt.id} className="flex items-center space-x-2">
-                              <RadioGroupItem value={opt.id} id={`option-${question.id}-${opt.id}`} />
-                              <Label htmlFor={`option-${question.id}-${opt.id}`} className="font-normal cursor-pointer">
-                                {getAlphabetLetter(optIndex)}. {opt.text}
-                              </Label>
-                            </div>
-                          ))}
-                        </RadioGroup>
-                      )}
-                      {question.type === 'true-false' && (
-                        <RadioGroup
-                          name={question.id}
-                          value={studentAnswers[question.id] || ""}
-                          onValueChange={(value) => handleAnswerChange(question.id, value)}
-                          className="flex space-x-4 pl-5 mt-1"
-                        >
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="true" id={`true-${question.id}`} />
-                            <Label htmlFor={`true-${question.id}`} className="font-normal cursor-pointer">True</Label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="false" id={`false-${question.id}`} />
-                            <Label htmlFor={`false-${question.id}`} className="font-normal cursor-pointer">False</Label>
-                          </div>
-                        </RadioGroup>
-                      )}
-                      {question.type === 'matching' && (
-                        <div className="pl-5 mt-1">
-                          {/* Placeholder for matching input: e.g., a text input or dropdown for each premise */}
-                          <input 
-                            type="text" 
-                            placeholder="Enter matching letter" 
-                            className="input input-bordered input-sm w-full max-w-xs" // Basic styling
-                            onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+
+                  if (question.type === 'pooled-choices') {
+                    return (
+                      <div key={question.id} className="mb-4 pl-4 flex items-start gap-2 sm:gap-3">
+                        <div className="flex-shrink-0 pt-0.5">
+                          <select
+                            className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring w-24"
                             value={studentAnswers[question.id] || ""}
-                          />
-                        </div>
-                      )}
-                       {question.type === 'pooled-choices' && (
-                        <div className="pl-5 mt-1">
-                           {/* Placeholder for pooled choices input: e.g., a dropdown with letters A, B, C... */}
-                           <select 
-                             className="select select-bordered select-sm w-full max-w-xs" // Basic styling
-                             value={studentAnswers[question.id] || ""}
-                             onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                           >
-                            <option value="" disabled>Select an answer</option>
+                            onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                            aria-label={`Answer for question ${displayLabel}`}
+                          >
+                            <option value="" disabled>Answer</option>
                             {block.choicePool?.map((_poolOpt, poolOptIndex) => (
-                                <option key={poolOptIndex} value={getAlphabetLetter(poolOptIndex)}>
-                                    {getAlphabetLetter(poolOptIndex)}
-                                </option>
+                              <option key={poolOptIndex} value={getAlphabetLetter(poolOptIndex)}>
+                                {getAlphabetLetter(poolOptIndex)}
+                              </option>
                             ))}
-                           </select>
+                          </select>
                         </div>
-                      )}
-                    </div>
-                  );
+                        <p className="font-medium flex-grow text-sm sm:text-base">
+                          {displayLabel}. {question.questionText}
+                        </p>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div key={question.id} className="mb-4 pl-4">
+                        <p className="font-medium mb-1 text-sm sm:text-base">
+                          {displayLabel}. {question.questionText}
+                        </p>
+                        {question.type === 'multiple-choice' && (
+                          <RadioGroup
+                            name={question.id}
+                            value={studentAnswers[question.id] || ""}
+                            onValueChange={(value) => handleAnswerChange(question.id, value)}
+                            className="space-y-1 pl-5 mt-1"
+                          >
+                            {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
+                              <div key={opt.id} className="flex items-center space-x-2">
+                                <RadioGroupItem value={opt.id} id={`option-${question.id}-${opt.id}`} />
+                                <Label htmlFor={`option-${question.id}-${opt.id}`} className="font-normal cursor-pointer text-sm sm:text-base">
+                                  {getAlphabetLetter(optIndex)}. {opt.text}
+                                </Label>
+                              </div>
+                            ))}
+                          </RadioGroup>
+                        )}
+                        {question.type === 'true-false' && (
+                          <RadioGroup
+                            name={question.id}
+                            value={studentAnswers[question.id] || ""}
+                            onValueChange={(value) => handleAnswerChange(question.id, value)}
+                            className="flex space-x-4 pl-5 mt-1"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="true" id={`true-${question.id}`} />
+                              <Label htmlFor={`true-${question.id}`} className="font-normal cursor-pointer text-sm sm:text-base">True</Label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="false" id={`false-${question.id}`} />
+                              <Label htmlFor={`false-${question.id}`} className="font-normal cursor-pointer text-sm sm:text-base">False</Label>
+                            </div>
+                          </RadioGroup>
+                        )}
+                        {question.type === 'matching' && (
+                          <div className="pl-5 mt-1">
+                            <input
+                              type="text"
+                              placeholder="Enter matching letter"
+                              className="h-9 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring w-full max-w-xs"
+                              onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                              value={studentAnswers[question.id] || ""}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
                 })}
                 {block.blockType === 'matching' && (
                     <div className="mt-2 pl-4">
                         <h4 className="font-medium text-sm mb-1">Match From:</h4>
                         <ul className="list-none pl-0 columns-1 sm:columns-2 gap-x-4">
                             {(block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs.map(p => p.response))
-                                .filter((value, index, self) => self.indexOf(value) === index) 
-                                .sort((a,b) => { 
+                                .filter((value, index, self) => self.indexOf(value) === index)
+                                .sort((a,b) => {
                                     const letterA = (block.questions as MatchingTypeQuestion[]).find(q => q.pairs.find(p => p.response === a))?.pairs.find(p => p.response === a)?.responseLetter || '';
                                     const letterB = (block.questions as MatchingTypeQuestion[]).find(q => q.pairs.find(p => p.response === b))?.pairs.find(p => p.response === b)?.responseLetter || '';
                                     if (letterA && letterB) return letterA.localeCompare(letterB);
@@ -270,4 +276,3 @@ export default function AnswerSheetPage() {
     </div>
   );
 }
-

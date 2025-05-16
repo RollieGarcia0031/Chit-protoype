@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { Sheet, SheetContent } from "@/components/ui/sheet" // Removed SheetTrigger import as it's handled by SidebarTrigger
+import { Sheet, SheetContent } from "@/components/ui/sheet" 
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
@@ -22,7 +22,7 @@ import {
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
-const SIDEBAR_WIDTH_ICON = "3.5rem"; // Adjusted from 3rem for slightly more space
+const SIDEBAR_WIDTH_ICON = "3.5rem"; 
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 type SidebarContextValue = {
@@ -49,7 +49,6 @@ const SidebarProvider = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
     defaultOpen?: boolean;
-    // Removed open and onOpenChange props as state is managed internally with cookie
   }
 >(
   (
@@ -62,26 +61,9 @@ const SidebarProvider = React.forwardRef<
     },
     ref
   ) => {
-    const isMobileHookValue = useIsMobile();
-    const [open, setOpen] = React.useState(defaultOpen);
-    const [openMobile, setOpenMobile] = React.useState(false);
-
-    // Cookie persistence for desktop sidebar state
-    React.useEffect(() => {
-      if (isMobileHookValue === false) { // Only apply cookie logic on desktop
-        const storedState = localStorage.getItem("sidebar-open");
-        if (storedState !== null) {
-          setOpen(JSON.parse(storedState));
-        }
-      }
-    }, [isMobileHookValue]);
-
-    React.useEffect(() => {
-      if (isMobileHookValue === false) {
-        localStorage.setItem("sidebar-open", JSON.stringify(open));
-      }
-    }, [open, isMobileHookValue]);
-
+    const isMobileHookValue = useIsMobile(); // Returns null initially, then true/false
+    const [open, setOpen] = React.useState(defaultOpen); // For desktop state
+    const [openMobile, setOpenMobile] = React.useState(false); // For mobile sheet state
 
     const toggleSidebar = React.useCallback(() => {
       if (isMobileHookValue) {
@@ -104,20 +86,21 @@ const SidebarProvider = React.forwardRef<
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
     }, [toggleSidebar]);
-
-    const state = open ? "expanded" : "collapsed";
+    
+    // Determine state based on 'open' for desktop, not relevant for mobile sheet directly
+    const desktopState = open ? "expanded" : "collapsed"; 
 
     const contextValue = React.useMemo<SidebarContextValue>(
       () => ({
-        state,
-        open,
+        state: desktopState, // This state is primarily for desktop logic
+        open,               // Desktop open state
         setOpen,
         isMobile: isMobileHookValue,
-        openMobile,
+        openMobile,         // Mobile sheet open state
         setOpenMobile,
         toggleSidebar,
       }),
-      [state, open, setOpen, isMobileHookValue, openMobile, setOpenMobile, toggleSidebar]
+      [desktopState, open, setOpen, isMobileHookValue, openMobile, setOpenMobile, toggleSidebar]
     );
     
     React.useEffect(() => {
@@ -125,10 +108,10 @@ const SidebarProvider = React.forwardRef<
       if (wrapper) {
         if (isMobileHookValue) {
           wrapper.classList.add('is-mobile');
-          wrapper.removeAttribute('data-sidebar-collapsed'); // Ensure no collapsed state on mobile
+          wrapper.removeAttribute('data-sidebar-collapsed');
         } else {
           wrapper.classList.remove('is-mobile');
-          if (!open) {
+          if (!open) { // 'open' here refers to the desktop sidebar's state
             wrapper.setAttribute('data-sidebar-collapsed', 'true');
           } else {
             wrapper.removeAttribute('data-sidebar-collapsed');
@@ -185,16 +168,16 @@ const Sidebar = React.forwardRef<
     },
     ref
   ) => {
-    const { isMobile, state, open, openMobile, setOpenMobile } = useSidebar();
+    const { isMobile, open, state, openMobile, setOpenMobile } = useSidebar();
 
     if (isMobile === null) {
-      // Initial render (SSR or client before isMobile is determined)
-      // Render a basic structure consistent with desktop, using 'open' (which is defaultOpen from provider)
+      // Server-side render and initial client render before isMobile is determined
+      // Always render the desktop <aside> structure based on `open` (which is `defaultOpen` from provider)
       const serverState = open ? "expanded" : "collapsed";
       const initialClasses = cn(
         "fixed inset-y-0 z-20 flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border", // No transition for initial render
         side === "left" ? "border-r" : "border-l",
-        open ? "w-[var(--sidebar-width)]" : "w-[var(--sidebar-width-icon)]",
+        open ? "w-[var(--sidebar-width)]" : "w-[var(--sidebar-width-icon)]", // Width based on defaultOpen
         variant === "floating" && "shadow-lg m-2 rounded-lg h-[calc(100vh-1rem)]",
         variant === "inset" && "relative",
         className
@@ -208,11 +191,12 @@ const Sidebar = React.forwardRef<
           data-variant={variant}
           {...props}
         >
-          {children} {/* Render children so their structure is present */}
+          {children} {/* Children sub-components will handle their own isMobile === null state */}
         </aside>
       );
     }
 
+    // Client-side rendering (isMobile is true or false)
     if (isMobile) {
       return (
         <Sheet open={openMobile} onOpenChange={setOpenMobile}>
@@ -227,23 +211,24 @@ const Sidebar = React.forwardRef<
     }
 
     // Desktop rendering (isMobile is false)
+    // `state` here is the current client-side desktop state
     const desktopSidebarClasses = cn(
       "fixed inset-y-0 z-20 flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border transition-all duration-300 ease-in-out",
       side === "left" ? "border-r" : "border-l",
-      open ? "w-[var(--sidebar-width)]" : "w-[var(--sidebar-width-icon)]",
-      collapsible === "offcanvas" && !open ? (side === "left" ? "-translate-x-full" : "translate-x-full") : "translate-x-0",
+      state === "expanded" ? "w-[var(--sidebar-width)]" : "w-[var(--sidebar-width-icon)]",
+      collapsible === "offcanvas" && state === "collapsed" ? (side === "left" ? "-translate-x-full" : "translate-x-full") : "translate-x-0",
       variant === "floating" && "shadow-lg m-2 rounded-lg h-[calc(100vh-1rem)]",
       variant === "inset" && "relative",
       className
     );
     
-    if (variant === 'inset') { // This case might need more specific handling if "inset" is used differently
+    if (variant === 'inset') {
        return (
          <aside
             ref={ref}
             className={cn(
                 "h-full flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 ease-in-out",
-                 open ? "w-[var(--sidebar-width)]" : "w-[var(--sidebar-width-icon)]",
+                 state === "expanded" ? "w-[var(--sidebar-width)]" : "w-[var(--sidebar-width-icon)]",
                  className
             )}
             data-state={state}
@@ -279,7 +264,7 @@ const SidebarTrigger = React.forwardRef<
 >(({ className, onClick, ...props }, ref) => {
   const { toggleSidebar, isMobile, openMobile, state } = useSidebar();
 
-  if (isMobile === null) { // Don't render on server / initial client if behavior depends on client state
+  if (isMobile === null) { // Don't render on server if behavior depends on client state
     return null;
   }
 
@@ -357,7 +342,7 @@ const SidebarInput = React.forwardRef<
 >(({ className, ...props }, ref) => {
   const { state, isMobile } = useSidebar();
 
-  if (isMobile === null || isMobile) return null; 
+  if (isMobile === null || isMobile || state === 'collapsed') return null; 
 
   return (
     <Input
@@ -365,7 +350,6 @@ const SidebarInput = React.forwardRef<
       data-sidebar="input"
       className={cn(
         "h-8 w-full bg-background shadow-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-        state === 'collapsed' && "sr-only",
         className
       )}
       {...props}
@@ -587,53 +571,62 @@ const SidebarMenuButton = React.forwardRef<
     ref
   ) => {
     const Comp = asChild ? Slot : "button";
-    const { isMobile, state } = useSidebar();
+    const { isMobile, open, state: sidebarContextState } = useSidebar();
 
-    // If isMobile is null (SSR or initial client render), render a skeleton or non-interactive version
-    if (isMobile === null) {
-      const isActuallyCollapsed = state === 'collapsed'; // Based on defaultOpen on server
-      if (asChild) {
-        // Render children but make them non-interactive/invisible to preserve structure
-        return <Comp ref={ref} {...props} className={cn(className, "opacity-0 pointer-events-none")}>{children}</Comp>;
-      }
-      return <Skeleton className={cn(sidebarMenuButtonVariants({size, className: "bg-muted/50" }), isActuallyCollapsed && "w-[var(--sidebar-width-icon)] h-[var(--sidebar-width-icon)] px-0")} />;
-    }
+    // Determine the state to use for rendering.
+    // On server (isMobile === null), `open` from context is `defaultOpen`.
+    // On client, `sidebarContextState` is the actual current state.
+    const effectiveState = isMobile === null ? (open ? "expanded" : "collapsed") : sidebarContextState;
     
-    const isActuallyCollapsed = !isMobile && state === 'collapsed';
+    // Determine if we are rendering the collapsed icon-only version for desktop
+    // `isMobile` being false means desktop.
+    const renderAsCollapsedIconDesktop = effectiveState === "collapsed" && (isMobile === false);
 
-    const buttonContent = (
-      <Comp
-        ref={ref}
-        data-sidebar="menu-button"
-        data-size={size}
-        data-active={isActive}
-        className={cn(sidebarMenuButtonVariants({ variant, size, justify: isActuallyCollapsed ? 'center' : 'start' }),
-                      isActuallyCollapsed && 'px-0 w-[var(--sidebar-width-icon)] h-[var(--sidebar-width-icon)]',
-                      className)}
-        {...props}
-      >
-        {children}
-      </Comp>
+    // For SSR and initial client render (isMobile === null), also treat as desktop for class calculation
+    const renderAsCollapsedIconInitial = effectiveState === "collapsed" && (isMobile === null);
+
+
+    const buttonClasses = cn(
+      sidebarMenuButtonVariants({
+        variant,
+        size,
+        justify: (renderAsCollapsedIconDesktop || renderAsCollapsedIconInitial) ? 'center' : 'start',
+      }),
+      (renderAsCollapsedIconDesktop || renderAsCollapsedIconInitial) && 'px-0 w-[var(--sidebar-width-icon)] h-[var(--sidebar-width-icon)]',
+      className
     );
 
-    if (!tooltip || (state === "expanded" && !isMobile)) {
-      return buttonContent;
+    const dataAttributes = {
+      'data-sidebar': "menu-button",
+      'data-size': size,
+      'data-active': isActive, // isActive is a prop, should be consistent server/client
+    };
+
+    const elementProps = {
+      ref,
+      className: buttonClasses,
+      ...dataAttributes,
+      ...props,
+    };
+
+    const buttonElement = asChild ? (
+      <Comp {...elementProps}>{children}</Comp>
+    ) : (
+      <button {...elementProps}>{children}</button>
+    );
+    
+    // Tooltip logic: only on desktop (isMobile === false) and when collapsed
+    if (tooltip && isMobile === false && effectiveState === "collapsed") {
+      const tooltipProps = typeof tooltip === 'string' ? { children: tooltip } : tooltip;
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>{buttonElement}</TooltipTrigger>
+          <TooltipContent side="right" align="center" alignOffset={4} sideOffset={8} {...tooltipProps} />
+        </Tooltip>
+      );
     }
 
-    const tooltipProps = typeof tooltip === 'string' ? { children: tooltip } : tooltip;
-
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
-        <TooltipContent
-          side="right"
-          align="center"
-          alignOffset={4}
-          sideOffset={8}
-          {...tooltipProps}
-        />
-      </Tooltip>
-    );
+    return buttonElement;
   }
 );
 SidebarMenuButton.displayName = "SidebarMenuButton";
@@ -814,3 +807,4 @@ export {
   SidebarTrigger,
   useSidebar,
 };
+

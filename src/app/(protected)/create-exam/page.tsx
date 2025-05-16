@@ -382,8 +382,7 @@ export default function CreateExamPage() {
 
     if (examIdFromUrl) {
       setEditingExamId(examIdFromUrl);
-      setIsLoadingExamData(true);
-      // Note: fetchExamForEditing will set isInitialLoadComplete to true in its finally block
+      // setIsLoadingExamData(true); // This will be set inside fetchExamForEditing
     } else {
       // This is the path for new exams / loading from localStorage
       if (typeof window !== 'undefined') { // Ensure client-side
@@ -406,7 +405,8 @@ export default function CreateExamPage() {
                           selectedClassId: slot.selectedClassId || null,
                       })));
                   } else {
-                      setAssignedClassSlots([]);
+                       // If saved as empty array, keep it empty, otherwise default to one slot
+                       setAssignedClassSlots([]); // Keep empty if saved as empty
                   }
               } else {
                    setAssignedClassSlots([{ key: generateId('default-class-slot-no-saved'), selectedClassId: null }]);
@@ -469,11 +469,10 @@ export default function CreateExamPage() {
 
   // Effect for fetching an existing exam for editing
   useEffect(() => {
-    if (!editingExamId || !user || isLoadingExamData || isLoadingUserClasses || isLoadingUserSubjectsForDropdown) {
-      return;
-    }
-    
     const fetchExamForEditing = async () => {
+      if (!editingExamId || !user) return; // Guard against missing IDs or user
+      
+      setIsLoadingExamData(true);
       setExamTitle("");
       setExamDescription("");
       setSelectedSubjectIdForFilter(null);
@@ -496,7 +495,9 @@ export default function CreateExamPage() {
         setExamDescription(examData.description || "");
 
         if (examData.subjectId) {
-            setSelectedSubjectIdForFilter(examData.subjectId);
+            // Wait for userSubjectsForDropdown to be loaded before setting this,
+            // to ensure the Select component populates correctly.
+            // This will be handled by the loading check below.
         } else {
             setSelectedSubjectIdForFilter(null); 
         }
@@ -512,6 +513,12 @@ export default function CreateExamPage() {
         } else {
           setAssignedClassSlots([{ key: generateId('default-fetch-slot'), selectedClassId: null }]);
         }
+
+        // Set subjectId after classes are potentially set, especially if userSubjectsForDropdown isn't ready
+        if (examData.subjectId) {
+            setSelectedSubjectIdForFilter(examData.subjectId);
+        }
+
 
         const loadedBlocks: ExamBlock[] = [];
         const blocksCollectionRef = collection(db, EXAMS_COLLECTION_NAME, editingExamId, "questionBlocks");
@@ -594,12 +601,12 @@ export default function CreateExamPage() {
       }
     };
 
-    if (editingExamId && user && !isLoadingExamData && !isLoadingUserClasses && !isLoadingUserSubjectsForDropdown) {
+    // Trigger fetch only if editingExamId is set and other dependent data is ready
+    if (editingExamId && user && !isLoadingUserClasses && !isLoadingUserSubjectsForDropdown) {
       fetchExamForEditing();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingExamId, user, router, toast, 
-      isLoadingUserClasses, isLoadingUserSubjectsForDropdown]); 
+  }, [editingExamId, user, isLoadingUserClasses, isLoadingUserSubjectsForDropdown, router, toast]); 
 
 
   // Effect for saving to localStorage (for new exams only)

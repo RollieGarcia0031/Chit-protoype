@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Trash2, PlusCircle } from "lucide-react";
+import { Trash2, PlusCircle, Minus, Plus } from "lucide-react";
 import type { ExamQuestion, QuestionType, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair, PoolOption, PooledChoicesQuestion } from "@/types/exam-types";
 import { generateId } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -46,13 +46,15 @@ export function ExamItemBlock({
     onItemChange({ ...item, questionText: e.target.value });
   };
 
-  const handlePointsChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const points = parseInt(e.target.value, 10);
-    if (!isNaN(points) && points >= 0) {
-      onItemChange({ ...item, points });
-    } else if (e.target.value === "") {
-        onItemChange({ ...item, points: 0 });
+  const handleDecrementPoints = () => {
+    if (item.points > 0) {
+      onItemChange({ ...item, points: item.points - 1 });
     }
+  };
+
+  const handleIncrementPoints = () => {
+    // Consider adding an upper limit if necessary, e.g., if (item.points < 100)
+    onItemChange({ ...item, points: item.points + 1 });
   };
 
   const handleOptionTextChange = (optionIndex: number, text: string) => {
@@ -172,19 +174,34 @@ export function ExamItemBlock({
   return (
     <Card className="border-border shadow-sm bg-card/50">
       <CardContent className="space-y-2 sm:space-y-3 px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
-        <div className="flex items-center justify-between gap-1 sm:gap-2 mb-1 sm:mb-2">
+        <div className="flex items-center justify-between gap-1 sm:gap-2">
           <div className="flex items-center gap-1.5 sm:gap-2">
-             <Label htmlFor={`points-${item.id}-q${itemIndex}`} className="text-xs sm:text-sm whitespace-nowrap font-medium">Points:</Label>
-            <Input
-                id={`points-${item.id}-q${itemIndex}`}
-                type="number"
-                value={item.points}
-                onChange={handlePointsChange}
-                min="0"
-                placeholder="Pts"
-                className="h-7 w-12 text-xs text-center sm:h-8 sm:w-14 sm:text-sm"
-                disabled={disabled}
-            />
+            <Label className="text-xs sm:text-sm whitespace-nowrap font-medium">Points:</Label>
+            <div className="flex items-center gap-1">
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-6 w-6 sm:h-7 sm:w-7"
+                    onClick={handleDecrementPoints}
+                    disabled={disabled || item.points <= 0}
+                    aria-label="Decrease points"
+                >
+                    <Minus className="h-3.5 w-3.5" />
+                </Button>
+                <span className="text-xs sm:text-sm font-medium w-8 text-center tabular-nums">{item.points}</span>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-6 w-6 sm:h-7 sm:w-7"
+                    onClick={handleIncrementPoints}
+                    disabled={disabled}
+                    aria-label="Increase points"
+                >
+                    <Plus className="h-3.5 w-3.5" />
+                </Button>
+            </div>
           </div>
           <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block" disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
               <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground hover:text-destructive" />

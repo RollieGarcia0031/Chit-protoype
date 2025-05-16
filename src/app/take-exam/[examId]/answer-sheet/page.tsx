@@ -6,13 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useEffect, useState } from 'react';
-import type { FullExamData, ExamBlock, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, Student, MatchingTypeQuestion, PooledChoicesQuestion } from '@/types/exam-types';
+import type { FullExamData, ExamBlock, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, Student, MatchingTypeQuestion, PooledChoicesQuestion, PoolOption } from '@/types/exam-types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FileText, AlertTriangle, Send, ArrowLeft, Info, UserCheck, Loader2 } from 'lucide-react';
 import { QUESTION_TYPES } from '@/types/exam-types';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Select as ShadcnSelect, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Renamed to avoid conflict
+import { Select as ShadcnSelect, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { db } from '@/lib/firebase/config';
 import { collection, getDocs, query, orderBy, Timestamp, addDoc, serverTimestamp } from 'firebase/firestore';
 import { SUBJECTS_COLLECTION_NAME, EXAMS_COLLECTION_NAME } from '@/config/firebase-constants';
@@ -129,14 +129,14 @@ export default function AnswerSheetPage() {
         if (cachedClassName) {
           setSelectedClassNameFromSession(cachedClassName);
         }
-
-        if (cachedSubjectId) {
+         if (cachedSubjectId) {
           setSelectedSubjectIdForExamFromSession(cachedSubjectId);
         } else {
           setError("Selected subject information for the exam not found. Please return to the exam start page.");
           setIsLoading(false);
           return;
         }
+
 
         const localStorageKey = getLocalStorageKey(examId);
         if (localStorageKey) {
@@ -295,6 +295,7 @@ export default function AnswerSheetPage() {
   const handleActualExamSubmit = async () => {
     if (!examId || !selectedStudentIdFromDropdown || !selectedClassIdFromSession || !selectedSubjectIdForExamFromSession) {
         toast({ title: "Error", description: "Missing information to submit. Please ensure all details are correct.", variant: "destructive" });
+        setIsSubmitting(false);
         return;
     }
     setIsSubmitting(true);
@@ -322,10 +323,8 @@ export default function AnswerSheetPage() {
             if (localStorageKey) {
                 localStorage.removeItem(localStorageKey);
             }
-            // Toast will be shown by the API route on success/failure for the user.
-            // Redirecting after API call confirmation.
-            setIsSubmitConfirmDialogOpen(false); // Close dialog first
-            router.push('/take-exam/submission-success'); // Then redirect
+            setIsSubmitConfirmDialogOpen(false);
+            router.push('/take-exam/submission-success');
         } else {
             toast({ title: "Submission Failed", description: result.error || "There was an error submitting your exam. Please try again.", variant: "destructive" });
         }
@@ -462,10 +461,10 @@ export default function AnswerSheetPage() {
 
                 let choicesForMatchingBlock: { letter: string, text: string }[] = [];
                 if (block.blockType === 'matching') {
-                    const uniqueResponses = new Map<string, string>(); // letter -> text
+                    const uniqueResponses = new Map<string, string>();
                     (block.questions as MatchingTypeQuestion[]).forEach(q => {
                         if (q.pairs && q.pairs.length > 0) {
-                            const letter = q.pairs[0].responseLetter || getAlphabetLetter(uniqueResponses.size); // Fallback letter if not set
+                            const letter = q.pairs[0].responseLetter || getAlphabetLetter(uniqueResponses.size);
                             if (!uniqueResponses.has(letter)) {
                                 uniqueResponses.set(letter, q.pairs[0].response);
                             }
@@ -538,25 +537,30 @@ export default function AnswerSheetPage() {
                             </p>
                           </div>
                         );
+                      } else if (question.type === 'matching') {
+                          const matchingQ = question as MatchingTypeQuestion;
+                          const premiseText = matchingQ.pairs[0]?.premise || "Missing premise";
+                          return (
+                            <div key={question.id} className="mb-4 pl-4 flex items-center gap-2 sm:gap-3">
+                              <p className="font-medium text-sm sm:text-base w-10 text-right">{displayLabel}.</p>
+                              <p className="font-medium text-sm sm:text-base flex-grow">{premiseText}</p>
+                              <Input
+                                type="text"
+                                maxLength={1}
+                                className="h-8 w-12 sm:w-14 text-sm text-center flex-shrink-0"
+                                placeholder="Ans"
+                                value={studentAnswers[question.id] || ""}
+                                onChange={(e) => handleAnswerChange(question.id, e.target.value.toUpperCase())}
+                                aria-label={`Answer for matching question ${displayLabel}`}
+                              />
+                            </div>
+                          );
                       } else {
                         return (
                           <div key={question.id} className="mb-4 pl-4">
-                            <div className="flex items-start gap-2">
-                                <p className="font-medium mb-1 text-sm sm:text-base flex-grow">
+                            <p className="font-medium mb-1 text-sm sm:text-base">
                                 {displayLabel}. {question.questionText}
-                                </p>
-                                {question.type === 'matching' && (
-                                    <Input
-                                        type="text"
-                                        maxLength={1}
-                                        className="h-8 w-12 sm:w-14 text-sm text-center flex-shrink-0"
-                                        placeholder="Ans"
-                                        value={studentAnswers[question.id] || ""}
-                                        onChange={(e) => handleAnswerChange(question.id, e.target.value.toUpperCase())}
-                                        aria-label={`Answer for matching question ${displayLabel}`}
-                                    />
-                                )}
-                            </div>
+                            </p>
                             {question.type === 'multiple-choice' && (
                               <RadioGroup
                                 name={question.id}

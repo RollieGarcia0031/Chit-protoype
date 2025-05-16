@@ -1,4 +1,3 @@
-
 // src/app/(protected)/exams/[examId]/results/page.tsx
 'use client';
 
@@ -14,7 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, BarChart3, Users, AlertTriangle, Info, Save, Loader2, ChevronDown, ChevronUp, CheckCircle2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, BarChart3, Users, AlertTriangle, Info, Save, Loader2, ChevronDown, ChevronUp, CheckCircle2, RotateCcw, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -329,16 +329,13 @@ export default function ExamResultsPage() {
 
         const scoresCollectionPath = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, SCORES_SUBCOLLECTION_NAME);
         
-        // Always use student.id as the document ID for the score document
-        const scoreDocRef = doc(scoresCollectionPath, student.id);
+        const scoreDocRef = doc(scoresCollectionPath, student.id); 
         
-        // Use setDoc with merge:true to create or update
         await setDoc(scoreDocRef, 
             student.scoreDocId ? scoreData : { ...scoreData, createdAt: serverTimestamp() as Timestamp }, 
             { merge: true }
         );
         
-        // The scoreDocId in our local state should now always be student.id after a successful save
         const newScoreDocId = student.id; 
 
         return { studentId: student.id, success: true, finalScore: scoreToSave, newScoreDocId };
@@ -365,7 +362,7 @@ export default function ExamResultsPage() {
             return {
               ...s,
               score: resultValue.finalScore, 
-              scoreDocId: resultValue.newScoreDocId, // This will be student.id
+              scoreDocId: resultValue.newScoreDocId, 
               currentScoreInput: resultValue.finalScore !== null && resultValue.finalScore !== undefined ? String(resultValue.finalScore) : '', 
               isSavingScore: false,
             };
@@ -424,6 +421,45 @@ export default function ExamResultsPage() {
     } else {
       router.back();
     }
+  };
+
+  const handleGenerateExcelForClass = (classInfo: ClassInfoForDropdown, students: Student[], examTitle: string | undefined) => {
+    if (!students || students.length === 0) {
+      toast({ title: "No Data", description: "No student scores to export for this class.", variant: "default" });
+      return;
+    }
+
+    const dataForSheet = students.map(student => {
+      const fullName = `${student.lastName}, ${student.firstName}${student.middleName ? ` ${student.middleName.charAt(0)}.` : ''}`;
+      const scoreStatus = getScoreStatus(student);
+      let displayScore: string | number = "N/A";
+      if (scoreStatus.status === 'saved' || scoreStatus.status === 'dirty') {
+        displayScore = scoreStatus.parsedScore !== null ? scoreStatus.parsedScore : "N/A (Cleared)";
+      } else if (scoreStatus.status === 'emptyAndUnchanged' || scoreStatus.status === 'emptyAndDirty') {
+          displayScore = "N/A (Not Entered)";
+      } else if (scoreStatus.status === 'invalid') {
+          displayScore = "Invalid Input";
+      }
+  
+      return {
+        "Student Name": fullName,
+        "Score": displayScore,
+        "Max Score": examDetails?.totalPoints ?? "N/A",
+      };
+    });
+  
+    const worksheet = XLSX.utils.json_to_sheet(dataForSheet);
+    const columnWidths = [ { wch: 30 }, { wch: 10 }, { wch: 10 } ];
+    worksheet['!cols'] = columnWidths;
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Scores");
+  
+    const safeExamTitle = (examTitle || "exam").replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const safeClassName = `${classInfo.sectionName}_${classInfo.yearGrade}`.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const fileName = `${safeExamTitle}_${safeClassName}_scores.xlsx`;
+  
+    XLSX.writeFile(workbook, fileName);
+    toast({ title: "Export Successful", description: `${fileName} has been downloaded.` });
   };
 
 
@@ -614,6 +650,15 @@ export default function ExamResultsPage() {
                   </TableBody>
                 </Table>
                 <CardFooter className="mt-4 px-0 py-0 flex justify-end gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleGenerateExcelForClass(classInfo, students, examDetails?.title)}
+                        disabled={classIsSaving || students.length === 0}
+                        className="text-xs sm:text-sm"
+                    >
+                       <FileSpreadsheet className="mr-2 h-3.5 w-3.5" /> Export to Excel
+                    </Button>
                     <AlertDialog open={classIdToResetConfirm === classInfo.id} onOpenChange={(isOpen) => !isOpen && setClassIdToResetConfirm(null)}>
                         <AlertDialogTrigger asChild>
                             <Button
@@ -645,7 +690,7 @@ export default function ExamResultsPage() {
                         size="sm"
                         onClick={() => handleSaveAllScoresForClass(classIdx)}
                         disabled={classIsSaving || !hasSavableChangesForThisClass}
-                        className="text-xs sm:text-sm"
+                        className="text-xs sm:text-sm min-w-[80px]"
                     >
                         {classIsSaving ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -232,9 +232,11 @@ export default function ExamResultsPage() {
           <CardHeader>
             <CardTitle className="text-lg sm:text-xl flex items-center">
               <Users className="mr-2 h-5 w-5 text-muted-foreground" />
-              {classInfo.subjectName} - {classInfo.sectionName} ({classInfo.yearGrade})
+              {classInfo.sectionName} ({classInfo.yearGrade})
             </CardTitle>
-            <CardDescription className="text-xs sm:text-sm ml-7">Class Code: {classInfo.code}</CardDescription>
+            <CardDescription className="text-xs sm:text-sm ml-7">
+              Subject: {classInfo.subjectName} ({classInfo.subjectCode}) | Class Code: {classInfo.code}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {students.length > 0 ? (
@@ -268,3 +270,4 @@ export default function ExamResultsPage() {
     </div>
   );
 }
+

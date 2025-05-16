@@ -3,54 +3,204 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { useEffect, useState, useMemo } from 'react';
+import { doc, getDoc, collection, getDocs, query, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
-import { EXAMS_COLLECTION_NAME } from '@/config/firebase-constants';
-import type { ExamSummaryData } from '@/types/exam-types'; 
+import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
+import type { ExamSummaryData, ExamAssignment, ClassInfoForDropdown } from '@/types/exam-types';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, AlertTriangle } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { FileText, AlertTriangle, Info, Clock } from 'lucide-react';
+import { format } from 'date-fns';
+
+interface ClassForSelection {
+  id: string;
+  name: string; // e.g., "Section A (Grade 10)"
+}
 
 export default function TakeExamPage() {
   const params = useParams();
   const examId = params.examId as string;
-  const [examDetails, setExamDetails] = useState<ExamSummaryData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
+  const [examDetails, setExamDetails] = useState<ExamSummaryData | null>(null);
+  const [isLoadingExam, setIsLoadingExam] = useState(true);
+  const [examError, setExamError] = useState<string | null>(null);
+
+  const [assignments, setAssignments] = useState<ExamAssignment[]>([]);
+  const [isLoadingAssignments, setIsLoadingAssignments] = useState(true);
+
+  const [availableClassesForSelection, setAvailableClassesForSelection] = useState<ClassForSelection[]>([]);
+  const [isLoadingClassDetails, setIsLoadingClassDetails] = useState(false);
+
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [accessMessage, setAccessMessage] = useState<string | null>(null);
+  const [isExamTime, setIsExamTime] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date()); // For re-checking time
+
+  // Fetch exam details
   useEffect(() => {
     if (examId) {
       const fetchExamDetails = async () => {
-        setIsLoading(true);
-        setError(null);
+        setIsLoadingExam(true);
+        setExamError(null);
         try {
           const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examId);
           const examSnap = await getDoc(examDocRef);
           if (examSnap.exists()) {
-            // Future: Add check here if exam status is 'Published' 
-            // and if current time is within assignedDateTime for the relevant class.
-            // For now, we load it if it exists.
-            setExamDetails({ id: examSnap.id, ...examSnap.data() } as ExamSummaryData);
+            const data = examSnap.data() as ExamSummaryData;
+            if (data.status !== 'Published') {
+              setExamError("This exam is not currently published or active.");
+              setExamDetails(null);
+            } else {
+              setExamDetails({ id: examSnap.id, ...data });
+            }
           } else {
-            setError("Exam not found. The link may be invalid or the exam may have been removed.");
+            setExamError("Exam not found. The link may be invalid or the exam may have been removed.");
           }
         } catch (e) {
           console.error("Error fetching exam details:", e);
-          setError("An error occurred while trying to load the exam.");
+          setExamError("An error occurred while trying to load the exam details.");
         } finally {
-          setIsLoading(false);
+          setIsLoadingExam(false);
         }
       };
       fetchExamDetails();
     } else {
-      setError("No exam ID provided.");
-      setIsLoading(false);
+      setExamError("No exam ID provided.");
+      setIsLoadingExam(false);
     }
   }, [examId]);
 
-  if (isLoading) {
+  // Fetch assignments for the exam
+  useEffect(() => {
+    if (examId && examDetails?.status === 'Published') {
+      const fetchAssignments = async () => {
+        setIsLoadingAssignments(true);
+        try {
+          const assignmentsRef = collection(db, EXAMS_COLLECTION_NAME, examId, "assignments");
+          const assignmentsSnap = await getDocs(assignmentsRef);
+          const fetchedAssignments: ExamAssignment[] = [];
+          assignmentsSnap.forEach(docSnap => {
+            fetchedAssignments.push({ id: docSnap.id, ...docSnap.data() } as ExamAssignment);
+          });
+          setAssignments(fetchedAssignments);
+        } catch (e) {
+          console.error("Error fetching exam assignments:", e);
+          setAccessMessage("Could not load schedule information for this exam.");
+        } finally {
+          setIsLoadingAssignments(false);
+        }
+      };
+      fetchAssignments();
+    } else {
+      setIsLoadingAssignments(false); // No need to load if exam not published or no details
+    }
+  }, [examId, examDetails]);
+
+  // Populate available classes for selection based on fetched assignments and exam subject
+  useEffect(() => {
+    if (assignments.length > 0 && examDetails?.subjectId) {
+      const fetchClassDetailsForAssignments = async () => {
+        setIsLoadingClassDetails(true);
+        const classSelectionPromises = assignments.map(async (assignment) => {
+          try {
+            // Assumption: All classes assigned to an exam belong to the exam's primary subjectId.
+            const classDocRef = doc(db, SUBJECTS_COLLECTION_NAME, examDetails.subjectId!, "classes", assignment.classId);
+            const classSnap = await getDoc(classDocRef);
+            if (classSnap.exists()) {
+              const classData = classSnap.data();
+              return {
+                id: assignment.classId,
+                name: `${classData.sectionName} (${classData.yearGrade})`,
+              };
+            }
+          } catch (e) {
+            console.error(`Error fetching details for class ${assignment.classId}:`, e);
+          }
+          return null;
+        });
+
+        const results = (await Promise.all(classSelectionPromises)).filter(Boolean) as ClassForSelection[];
+        // Deduplicate based on class ID, in case an exam was assigned to the same class multiple times (though UI should prevent this)
+        const uniqueResults = results.filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
+        setAvailableClassesForSelection(uniqueResults);
+        setIsLoadingClassDetails(false);
+      };
+      fetchClassDetailsForAssignments();
+    } else if (assignments.length > 0 && !examDetails?.subjectId) {
+        setAccessMessage("Exam configuration incomplete (missing subject details). Cannot determine classes.");
+        setAvailableClassesForSelection([]);
+        setIsLoadingClassDetails(false);
+    } else {
+      setAvailableClassesForSelection([]);
+      setIsLoadingClassDetails(false);
+    }
+  }, [assignments, examDetails?.subjectId]);
+
+
+  // Check schedule when selectedClassId or assignments change
+  useEffect(() => {
+    if (!selectedClassId || assignments.length === 0) {
+      setIsExamTime(false);
+      if (selectedClassId && assignments.length > 0 && !isLoadingAssignments && !isLoadingClassDetails) {
+        setAccessMessage("No schedule found for the selected class.");
+      } else if (selectedClassId && (isLoadingAssignments || isLoadingClassDetails)) {
+        setAccessMessage("Loading schedule information...");
+      } else {
+        setAccessMessage(null);
+      }
+      return;
+    }
+
+    const assignment = assignments.find(a => a.classId === selectedClassId);
+    if (assignment && assignment.assignedDateTime) {
+      const assignedTime = assignment.assignedDateTime.toDate();
+      const now = new Date(); // Use current time for comparison
+      setCurrentTime(now); // Update currentTime state for potential re-renders
+
+      if (now >= assignedTime) {
+        setIsExamTime(true);
+        setAccessMessage(null);
+      } else {
+        setIsExamTime(false);
+        setAccessMessage(`This exam is scheduled for your class on ${format(assignedTime, "PPP 'at' p")}. Please return at that time.`);
+      }
+    } else {
+      setIsExamTime(false);
+      setAccessMessage("No specific schedule found for your selected class in this exam.");
+    }
+  }, [selectedClassId, assignments, isLoadingAssignments, isLoadingClassDetails]);
+
+  // Effect to periodically re-check time if exam is not yet active but a schedule exists
+  useEffect(() => {
+    if (!isExamTime && accessMessage && accessMessage.startsWith("This exam is scheduled")) {
+      const interval = setInterval(() => {
+        const assignment = assignments.find(a => a.classId === selectedClassId);
+        if (assignment && assignment.assignedDateTime) {
+          const assignedTime = assignment.assignedDateTime.toDate();
+          const now = new Date();
+          setCurrentTime(now);
+          if (now >= assignedTime) {
+            setIsExamTime(true);
+            setAccessMessage(null);
+            clearInterval(interval);
+          }
+        } else {
+          clearInterval(interval); // Clear if assignment or selectedClassId changes
+        }
+      }, 30000); // Check every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [isExamTime, accessMessage, assignments, selectedClassId]);
+
+  const handleStartExam = () => {
+    // Placeholder for actual exam start logic
+    alert("Starting exam... (Feature in development)");
+  };
+
+  if (isLoadingExam) {
     return (
       <main className="flex flex-col items-center justify-center min-h-screen p-4">
         <Card className="w-full max-w-2xl shadow-xl">
@@ -58,45 +208,35 @@ export default function TakeExamPage() {
             <Skeleton className="h-8 w-3/4 mx-auto mb-2" />
             <Skeleton className="h-5 w-1/2 mx-auto" />
           </CardHeader>
-          <CardContent className="py-10 text-center">
-            <Skeleton className="h-6 w-1/3 mx-auto mb-4" />
-            <Skeleton className="h-10 w-1/2 mx-auto" />
+          <CardContent className="py-10 text-center space-y-4">
+            <Skeleton className="h-10 w-full max-w-xs mx-auto" /> {/* Class select placeholder */}
+            <Skeleton className="h-6 w-2/3 mx-auto" /> {/* Message placeholder */}
+            <Skeleton className="h-12 w-1/2 mx-auto" /> {/* Button placeholder */}
           </CardContent>
         </Card>
       </main>
     );
   }
 
-  if (error) {
+  if (examError) {
     return (
       <main className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
         <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-bold text-destructive mb-2">Error</h1>
-        <p className="text-muted-foreground max-w-md">{error}</p>
+        <p className="text-muted-foreground max-w-md">{examError}</p>
       </main>
     );
   }
-  
+
   if (!examDetails) {
     return (
       <main className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
         <FileText className="h-16 w-16 text-muted-foreground mb-4" />
         <h1 className="text-2xl font-bold mb-2">Exam Not Available</h1>
-        <p className="text-muted-foreground">The requested exam could not be loaded or is not available.</p>
+        <p className="text-muted-foreground">The requested exam could not be loaded.</p>
       </main>
     );
   }
-
-  // Placeholder for more sophisticated status/access checks
-  // if (examDetails.status !== 'Published') {
-  //   return (
-  //     <main className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
-  //       <FileText className="h-16 w-16 text-muted-foreground mb-4" />
-  //       <h1 className="text-2xl font-bold mb-2">Exam Not Active</h1>
-  //       <p className="text-muted-foreground">This exam is not currently active.</p>
-  //     </main>
-  //   );
-  // }
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-4">
@@ -110,19 +250,61 @@ export default function TakeExamPage() {
               {examDetails.description}
             </CardDescription>
           )}
-           <CardDescription className="text-xs sm:text-sm text-muted-foreground/80 mt-1">
-             Total Points: {examDetails.totalPoints} | Total Questions: {examDetails.totalQuestions}
-            </CardDescription>
+          <CardDescription className="text-xs sm:text-sm text-muted-foreground/80 mt-1">
+            Total Points: {examDetails.totalPoints} | Total Questions: {examDetails.totalQuestions}
+          </CardDescription>
         </CardHeader>
-        <CardContent className="py-8 sm:py-10 text-center">
-          <p className="text-lg sm:text-xl text-foreground mb-6">
-            Exam questions will be rendered here. (Feature coming soon)
-          </p>
-          <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-            Start Exam (Coming Soon)
+        <CardContent className="py-8 sm:py-10 text-center space-y-4">
+          {isLoadingAssignments || isLoadingClassDetails ? (
+            <>
+              <Skeleton className="h-10 w-full max-w-xs mx-auto" />
+              <Skeleton className="h-5 w-1/2 mx-auto" />
+            </>
+          ) : availableClassesForSelection.length > 0 ? (
+            <div className="w-full max-w-xs mx-auto">
+              <Select onValueChange={setSelectedClassId} value={selectedClassId || undefined}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select your class section" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableClassesForSelection.map((cls) => (
+                    <SelectItem key={cls.id} value={cls.id}>
+                      {cls.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center text-muted-foreground p-3 border rounded-md bg-muted/50">
+              <Info className="h-5 w-5 mr-2" />
+              <span>No class schedules found for this exam, or exam setup is incomplete.</span>
+            </div>
+          )}
+
+          {accessMessage && (
+            <div className={`p-3 border rounded-md text-sm ${isExamTime ? 'border-green-500 bg-green-50 text-green-700' : 'border-amber-500 bg-amber-50 text-amber-700'} flex items-center justify-center`}>
+              <Clock className="h-5 w-5 mr-2" />
+              <span>{accessMessage}</span>
+            </div>
+          )}
+
+          <Button
+            size="lg"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground mt-4"
+            onClick={handleStartExam}
+            disabled={!isExamTime || !selectedClassId || isLoadingAssignments || isLoadingClassDetails || isLoadingExam}
+          >
+            Start Exam
           </Button>
         </CardContent>
+        <CardFooter className="text-center justify-center">
+          <p className="text-xs text-muted-foreground">
+            Current time: {format(currentTime, "PPP p")}
+          </p>
+        </CardFooter>
       </Card>
     </main>
   );
 }
+      

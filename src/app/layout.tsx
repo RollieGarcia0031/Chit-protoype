@@ -1,25 +1,28 @@
 
+'use client'; // Make RootLayout a client component to use usePathname
+
 import type { Metadata } from 'next';
 import { GeistSans } from 'geist/font/sans';
 import './globals.css';
 import { AppFooter } from '@/components/layout/footer';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { AppTopBar } from '@/components/layout/app-top-bar';
-import { Toaster } from "@/components/ui/toaster";
+// Toaster removed as it's not used here based on previous context,
+// but if needed, it should be placed within the conditional main app shell.
 import { AuthProvider } from '@/contexts/auth-context';
 import { SidebarProvider } from '@/components/ui/sidebar';
+import { usePathname } from 'next/navigation'; // Import usePathname
 
-export const metadata: Metadata = {
+// Metadata must be exported from the top level of the file for client components
+export const metadataPlain: Metadata = {
   title: 'Chit',
-  description: 'Smart Exam Creation Made Simple', // Updated description
-  manifest: '/manifest.json', // Link to your PWA manifest file
+  description: 'Smart Exam Creation Made Simple',
+  manifest: '/manifest.json',
   icons: {
-    icon: '/favicon.ico', // Standard favicon
-    apple: '/icons/apple-icon-180.png', // Apple touch icon
-    // PWA icons (e.g., 192x192, 512x512) are typically defined in manifest.json
-
-    // Add the Apple touch startup images here
+    icon: '/favicon.ico',
+    apple: '/icons/apple-icon-180.png',
     appleStartupImages: [
+      // Existing appleStartupImages...
       { url: 'public/icons/apple-splash-2048-2732.jpg', media: '(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)' },
       { url: 'public/icons/apple-splash-2732-2048.jpg', media: '(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)' },
       { url: 'public/icons/apple-splash-1668-2388.jpg', media: '(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)' },
@@ -60,8 +63,7 @@ export const metadata: Metadata = {
       { url: 'public/icons/apple-splash-1136-640.jpg', media: '(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)' },
     ],
   },
-  themeColor: '#19A0A6', // Sets the browser theme color for PWA on mobile
-  // Add the apple-mobile-web-app-capable meta tag here
+  themeColor: '#19A0A6',
   appleWebApp: {
     capable: true,
   },
@@ -72,23 +74,34 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const pathname = usePathname();
+  const isTakeExamRoute = pathname?.startsWith('/take-exam');
+
   return (
     <html lang="en" className={`${GeistSans.variable}`}>
-      <body className="antialiased">
+      <body className={isTakeExamRoute ? "antialiased bg-slate-50 dark:bg-slate-900" : "antialiased"}>
         <AuthProvider>
-          <SidebarProvider defaultOpen={true}> {/* Desktop sidebar initially open */}
-            <AppSidebar />
-            {/* This div is the main content area to the right of the sidebar */}
-            <div className="flex flex-col flex-1 min-h-screen md:ml-[var(--sidebar-width)] data-[sidebar-collapsed=true]:md:ml-[var(--sidebar-width-icon)] group-[.is-mobile]/sidebar-provider:ml-0 transition-[margin-left] duration-300 ease-in-out">
-              <AppTopBar />
-              <main className="flex-grow">
-                <div className="container mx-auto px-3 py-4 sm:px-4 sm:py-6 lg:px-8 lg:py-8">
-                  {children}
-                </div>
-              </main>
-              <AppFooter />
-            </div>
-          </SidebarProvider>
+          {isTakeExamRoute ? (
+            // Minimal structure for /take-exam routes
+            <main className="min-h-screen">
+              {children}
+            </main>
+          ) : (
+            // Full app shell for all other routes
+            <SidebarProvider defaultOpen={true}> {/* Desktop sidebar initially open */}
+              <AppSidebar />
+              {/* This div is the main content area to the right of the sidebar */}
+              <div className="flex flex-col flex-1 min-h-screen md:ml-[var(--sidebar-width)] data-[sidebar-collapsed=true]:md:ml-[var(--sidebar-width-icon)] group-[.is-mobile]/sidebar-provider:ml-0 transition-[margin-left] duration-300 ease-in-out">
+                <AppTopBar />
+                <main className="flex-grow">
+                  <div className="container mx-auto px-3 py-4 sm:px-4 sm:py-6 lg:px-8 lg:py-8">
+                    {children}
+                  </div>
+                </main>
+                <AppFooter />
+              </div>
+            </SidebarProvider>
+          )}
         </AuthProvider>
       </body>
     </html>

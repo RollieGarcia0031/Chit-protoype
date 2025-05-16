@@ -1,7 +1,11 @@
 
+// src/app/take-exam/layout.tsx
+
+// This layout is now significantly simplified because RootLayout handles the shell switching.
+// It still exists to define segment-specific metadata.
+
 import type { Metadata } from 'next';
-import { GeistSans } from 'geist/font/sans';
-import '../globals.css'; // This path assumes globals.css is in src/app/
+// We don't need to import GeistSans or globals.css here if RootLayout handles it.
 
 export const metadata: Metadata = {
   title: 'Take Exam - Chit',
@@ -13,17 +17,8 @@ export default function TakeExamLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
-    <html lang="en" className={`${GeistSans.variable}`}>
-      <body className="antialiased bg-slate-50 dark:bg-slate-900">
-        {/*
-          This layout is intentionally minimal for the exam-taking experience.
-          It does NOT include the main AppSidebar, AppTopBar, or AppFooter.
-          It also omits AuthProvider and Toaster for now, assuming the exam page
-          is self-contained and doesn't require these global contexts.
-        */}
-        {children}
-      </body>
-    </html>
-  );
+  // The <html> and <body> tags are now rendered by the RootLayout.
+  // This layout just passes through its children.
+  // Specific styling for the take-exam body is handled in RootLayout's conditional className.
+  return <>{children}</>;
 }

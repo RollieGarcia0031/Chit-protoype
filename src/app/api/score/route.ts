@@ -8,14 +8,18 @@ import type { FullExamData, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuest
 try {
   if (!admin.apps.length) {
     if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+      // For Vercel, use the JSON string from the environment variable
       admin.initializeApp({
         credential: admin.credential.cert(JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON)),
       });
     } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+       // For local development using a file path
        admin.initializeApp({
-        credential: admin.credential.applicationDefault(),
+        credential: admin.credential.applicationDefault(), // Checks GOOGLE_APPLICATION_CREDENTIALS env var for file path
       });
     } else {
+       // Fallback for other environments if GOOGLE_APPLICATION_CREDENTIALS is set via gcloud CLI or to a file path
+       // Or if running in a Google Cloud environment with Application Default Credentials
        admin.initializeApp();
     }
   }
@@ -185,3 +189,4 @@ export async function POST(request: NextRequest) {
     }, { status: 500 });
   }
 }
+

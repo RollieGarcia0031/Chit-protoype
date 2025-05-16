@@ -319,7 +319,7 @@ export default function ExamResultsPage() {
       const scoreToSave = scoreStatusDetails.parsedScore; 
 
       try {
-        const scoreData: Omit<StudentExamScore, 'id' | 'createdAt'> & { score: number | null } = {
+        const scoreData: Partial<StudentExamScore> & { score: number | null, examId: string, studentId: string, userId: string } = {
           examId: examDetails.id,
           studentId: student.id,
           userId: user.uid,
@@ -432,14 +432,14 @@ export default function ExamResultsPage() {
     const dataForSheet = students.map(student => {
       const fullName = `${student.lastName}, ${student.firstName}${student.middleName ? ` ${student.middleName.charAt(0)}.` : ''}`;
       const scoreStatus = getScoreStatus(student);
-      let displayScore: string | number = "N/A";
-      if (scoreStatus.status === 'saved' || scoreStatus.status === 'dirty') {
-        displayScore = scoreStatus.parsedScore !== null ? scoreStatus.parsedScore : "N/A (Cleared)";
-      } else if (scoreStatus.status === 'emptyAndUnchanged' || scoreStatus.status === 'emptyAndDirty') {
-          displayScore = "N/A (Not Entered)";
-      } else if (scoreStatus.status === 'invalid') {
+      
+      let displayScore: string | number = ""; // Default to blank for Excel
+      if (scoreStatus.status === 'invalid') {
           displayScore = "Invalid Input";
+      } else if (scoreStatus.parsedScore !== null) {
+          displayScore = scoreStatus.parsedScore;
       }
+      // If parsedScore is null and status is not 'invalid', it remains blank.
   
       return {
         "Student Name": fullName,
@@ -713,3 +713,4 @@ export default function ExamResultsPage() {
 }
     
     
+

@@ -12,10 +12,10 @@ import { FileText, AlertTriangle, Send, ArrowLeft, Info, UserCheck, Loader2 } fr
 import { QUESTION_TYPES } from '@/types/exam-types';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select as ShadcnSelect, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Renamed to avoid conflict
 import { db } from '@/lib/firebase/config';
-import { collection, getDocs, query, orderBy, Timestamp } from 'firebase/firestore';
-import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
+import { collection, getDocs, query, orderBy, Timestamp, addDoc, serverTimestamp } from 'firebase/firestore';
+import { SUBJECTS_COLLECTION_NAME, EXAMS_COLLECTION_NAME } from '@/config/firebase-constants';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,7 +77,6 @@ export default function AnswerSheetPage() {
   const [selectedClassNameFromSession, setSelectedClassNameFromSession] = useState<string | null>(null);
   const [selectedSubjectIdForExamFromSession, setSelectedSubjectIdForExamFromSession] = useState<string | null>(null);
 
-
   const [studentsInClass, setStudentsInClass] = useState<Student[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   
@@ -108,8 +107,7 @@ export default function AnswerSheetPage() {
         const cachedExamDataString = sessionStorage.getItem(`examData-${examId}`);
         const cachedClassId = sessionStorage.getItem(`selectedClassId-${examId}`);
         const cachedClassName = sessionStorage.getItem(`selectedClassName-${examId}`);
-        const cachedSubjectIdForExam = sessionStorage.getItem(`selectedSubjectIdForExam-${examId}`);
-
+        const cachedSubjectId = sessionStorage.getItem(`selectedSubjectIdForExam-${examId}`);
 
         if (cachedExamDataString) {
           localExamData = JSON.parse(cachedExamDataString);
@@ -127,17 +125,18 @@ export default function AnswerSheetPage() {
           setIsLoading(false);
           return;
         }
+
         if (cachedClassName) {
           setSelectedClassNameFromSession(cachedClassName);
         }
-         if (cachedSubjectIdForExam) {
-          setSelectedSubjectIdForExamFromSession(cachedSubjectIdForExam);
+
+        if (cachedSubjectId) {
+          setSelectedSubjectIdForExamFromSession(cachedSubjectId);
         } else {
           setError("Selected subject information for the exam not found. Please return to the exam start page.");
           setIsLoading(false);
           return;
         }
-
 
         const localStorageKey = getLocalStorageKey(examId);
         if (localStorageKey) {
@@ -238,8 +237,8 @@ export default function AnswerSheetPage() {
     enteredLastName,
     isNameConfirmed,
     studentAnswers,
-    examToDisplay, // Ensure examToDisplay is loaded before saving
-    isLoading // Ensure initial loading is complete
+    examToDisplay,
+    isLoading 
   ]);
 
 
@@ -323,12 +322,10 @@ export default function AnswerSheetPage() {
             if (localStorageKey) {
                 localStorage.removeItem(localStorageKey);
             }
-            toast({ 
-                title: "Exam Submitted!", 
-                description: `Your score: ${result.achievedScore} / ${result.maxPossibleScore}. Results saved.`,
-            });
-            setIsSubmitConfirmDialogOpen(false);
-            router.push('/take-exam/submission-success');
+            // Toast will be shown by the API route on success/failure for the user.
+            // Redirecting after API call confirmation.
+            setIsSubmitConfirmDialogOpen(false); // Close dialog first
+            router.push('/take-exam/submission-success'); // Then redirect
         } else {
             toast({ title: "Submission Failed", description: result.error || "There was an error submitting your exam. Please try again.", variant: "destructive" });
         }
@@ -404,7 +401,7 @@ export default function AnswerSheetPage() {
                   {isLoadingStudents ? (
                     <Skeleton className="h-10 w-full" />
                   ) : studentsInClass.length > 0 ? (
-                    <Select
+                    <ShadcnSelect
                       onValueChange={setSelectedStudentIdFromDropdown}
                       value={selectedStudentIdFromDropdown || ""}
                       disabled={isLoadingStudents}
@@ -419,7 +416,7 @@ export default function AnswerSheetPage() {
                           </SelectItem>
                         ))}
                       </SelectContent>
-                    </Select>
+                    </ShadcnSelect>
                   ) : (
                      <p className="text-sm text-muted-foreground">{studentDetailsError || "Student list is unavailable for this class."}</p>
                   )}
@@ -463,6 +460,23 @@ export default function AnswerSheetPage() {
                 const blockTypeLabel = getQuestionTypeLabel(block.blockType);
                 if (blockIndex === 0) globalQuestionNumber = 1;
 
+                let choicesForMatchingBlock: { letter: string, text: string }[] = [];
+                if (block.blockType === 'matching') {
+                    const uniqueResponses = new Map<string, string>(); // letter -> text
+                    (block.questions as MatchingTypeQuestion[]).forEach(q => {
+                        if (q.pairs && q.pairs.length > 0) {
+                            const letter = q.pairs[0].responseLetter || getAlphabetLetter(uniqueResponses.size); // Fallback letter if not set
+                            if (!uniqueResponses.has(letter)) {
+                                uniqueResponses.set(letter, q.pairs[0].response);
+                            }
+                        }
+                    });
+                    choicesForMatchingBlock = Array.from(uniqueResponses.entries())
+                        .map(([letter, text]) => ({ letter, text }))
+                        .sort((a, b) => a.letter.localeCompare(b.letter));
+                }
+
+
                 return (
                   <div key={block.id} className="mb-6 last:mb-0">
                     <h2 className="text-lg sm:text-xl font-semibold mb-1 text-foreground">
@@ -483,6 +497,19 @@ export default function AnswerSheetPage() {
                       </div>
                     )}
 
+                    {block.blockType === 'matching' && choicesForMatchingBlock.length > 0 && (
+                        <div className="mb-3 p-3 border border-dashed rounded-md bg-muted/30">
+                            <h3 className="font-medium text-sm mb-1">Match From:</h3>
+                            <ul className="list-none pl-0 columns-1 sm:columns-2 md:columns-3 gap-x-4">
+                                {choicesForMatchingBlock.map(choice => (
+                                    <li key={choice.letter} className="text-sm break-inside-avoid-column">
+                                        {choice.letter}. {choice.text}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
                     {block.questions.map((question) => {
                       const questionDisplayNumber = globalQuestionNumber;
                       globalQuestionNumber += question.points;
@@ -490,8 +517,8 @@ export default function AnswerSheetPage() {
 
                       if (question.type === 'pooled-choices') {
                         return (
-                          <div key={question.id} className="mb-4 pl-4 flex items-start gap-2 sm:gap-3">
-                            <div className="flex-shrink-0 pt-0.5">
+                          <div key={question.id} className="mb-4 pl-4 flex items-center gap-2 sm:gap-3">
+                            <div className="flex-shrink-0">
                               <select
                                 className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring w-24"
                                 value={studentAnswers[question.id] || ""}
@@ -514,9 +541,22 @@ export default function AnswerSheetPage() {
                       } else {
                         return (
                           <div key={question.id} className="mb-4 pl-4">
-                            <p className="font-medium mb-1 text-sm sm:text-base">
-                              {displayLabel}. {question.questionText}
-                            </p>
+                            <div className="flex items-start gap-2">
+                                <p className="font-medium mb-1 text-sm sm:text-base flex-grow">
+                                {displayLabel}. {question.questionText}
+                                </p>
+                                {question.type === 'matching' && (
+                                    <Input
+                                        type="text"
+                                        maxLength={1}
+                                        className="h-8 w-12 sm:w-14 text-sm text-center flex-shrink-0"
+                                        placeholder="Ans"
+                                        value={studentAnswers[question.id] || ""}
+                                        onChange={(e) => handleAnswerChange(question.id, e.target.value.toUpperCase())}
+                                        aria-label={`Answer for matching question ${displayLabel}`}
+                                    />
+                                )}
+                            </div>
                             {question.type === 'multiple-choice' && (
                               <RadioGroup
                                 name={question.id}
@@ -551,45 +591,10 @@ export default function AnswerSheetPage() {
                                 </div>
                               </RadioGroup>
                             )}
-                            {question.type === 'matching' && (
-                              <div className="pl-5 mt-1">
-                                <input
-                                  type="text"
-                                  placeholder="Enter matching letter"
-                                  className="h-9 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring w-full max-w-xs"
-                                  onChange={(e) => handleAnswerChange(question.id, e.target.value.toUpperCase())}
-                                  value={studentAnswers[question.id] || ""}
-                                  maxLength={1}
-                                />
-                              </div>
-                            )}
                           </div>
                         );
                       }
                     })}
-                    {block.blockType === 'matching' && (
-                        <div className="mt-2 pl-4">
-                            <h4 className="font-medium text-sm mb-1">Match From:</h4>
-                            <ul className="list-none pl-0 columns-1 sm:columns-2 gap-x-4">
-                                {(block.questions as MatchingTypeQuestion[]).flatMap(q => (q as MatchingTypeQuestion).pairs.map(p => p.response))
-                                    .filter((value, index, self) => self.indexOf(value) === index)
-                                    .sort((a, b) => {
-                                        const pairA = (block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs).find(p => p.response === a);
-                                        const pairB = (block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs).find(p => p.response === b);
-                                        const letterA = pairA?.responseLetter || '';
-                                        const letterB = pairB?.responseLetter || '';
-                                        if (letterA && letterB) return letterA.localeCompare(letterB);
-                                        return String(a).localeCompare(String(b));
-                                    })
-                                    .map((response, index) => {
-                                         const originalPair = (block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs).find(p => p.response === response);
-                                         const letter = originalPair?.responseLetter || getAlphabetLetter(index);
-                                         return <li key={`match-resp-${index}`} className="text-sm break-inside-avoid-column">{letter}. {response}</li>;
-                                    })
-                                }
-                            </ul>
-                        </div>
-                    )}
                   </div>
                 );
               })}

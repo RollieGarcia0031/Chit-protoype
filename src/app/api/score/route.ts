@@ -2,13 +2,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import admin from 'firebase-admin';
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
-import type { FullExamData, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, PooledChoicesQuestion, StudentAnswers, ExamBlock } from '@/types/exam-types';
+import type { FullExamData, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, PooledChoicesQuestion, StudentAnswers, ExamBlock, StudentExamScore } from '@/types/exam-types';
 
 // Initialize Firebase Admin SDK if it hasn't been initialized yet
 try {
   if (!admin.apps.length) {
-    // For local development, ensure serviceAccountKey.json is at the root and .env points to it (GOOGLE_APPLICATION_CREDENTIALS).
-    // For Vercel, GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable should contain the JSON content.
     if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
       admin.initializeApp({
         credential: admin.credential.cert(JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON)),
@@ -18,13 +16,12 @@ try {
         credential: admin.credential.applicationDefault(),
       });
     } else {
-      // Fallback for local dev if GOOGLE_APPLICATION_CREDENTIALS is set in .env to path
        admin.initializeApp();
     }
   }
 } catch (error: any) {
-  console.error('Firebase Admin Initialization Error in API route:', error.message);
-  // If initialization fails, subsequent Firestore operations will fail.
+  console.error('Firebase Admin Initialization Error in /api/score:', error.message);
+  // This error will likely prevent the API route from functioning correctly.
 }
 
 const firestore = admin.firestore();
@@ -60,9 +57,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Exam not found' }, { status: 404 });
     }
     const examData = examSnap.data() as Omit<FullExamData, 'id' | 'examBlocks'>;
-    const examCreatorUserId = examData.userId;
+    const teacherUserId = examData.userId;
 
-    if (!examCreatorUserId) {
+    if (!teacherUserId) {
       console.error(`Exam ${examId} is missing userId (exam creator ID).`);
       return NextResponse.json({ error: 'Exam configuration error: missing exam creator ID.' }, { status: 500 });
     }
@@ -72,11 +69,11 @@ export async function POST(request: NextRequest) {
 
     const fetchedBlocks: ExamBlock[] = [];
     for (const blockDoc of blocksSnapshot.docs) {
-      const blockData = blockDoc.data();
+      const blockDocData = blockDoc.data();
       const questionsCollectionRef = blocksCollectionRef.doc(blockDoc.id).collection("questions");
       const questionsSnapshot = await questionsCollectionRef.orderBy("orderIndex").get();
       const fetchedQuestions: ExamQuestion[] = questionsSnapshot.docs.map(qDoc => ({ id: qDoc.id, ...qDoc.data() } as ExamQuestion));
-      fetchedBlocks.push({ id: blockDoc.id, ...blockData, questions: fetchedQuestions } as ExamBlock);
+      fetchedBlocks.push({ id: blockDoc.id, ...blockDocData, questions: fetchedQuestions } as ExamBlock);
     }
     const fullExam: FullExamData = { ...examData, id: examId, examBlocks: fetchedBlocks };
 
@@ -86,17 +83,16 @@ export async function POST(request: NextRequest) {
     fullExam.examBlocks.forEach(block => {
       block.questions.forEach(question => {
         maxPossibleScore += question.points;
-        const studentAnswerForQuestion = answers[question.id]; // Can be string or string[]
+        const studentAnswerForQuestion = answers[question.id];
 
-        if (studentAnswerForQuestion === undefined || studentAnswerForQuestion === null || 
+        if (studentAnswerForQuestion === undefined || studentAnswerForQuestion === null ||
             (typeof studentAnswerForQuestion === 'string' && studentAnswerForQuestion.trim() === "") ||
             (Array.isArray(studentAnswerForQuestion) && studentAnswerForQuestion.length === 0)
         ) {
-          return; 
+          return;
         }
 
         let isCorrect = false;
-        // Ensure studentAnswer is treated as a single string for comparison for most types
         const singleStudentAnswer = Array.isArray(studentAnswerForQuestion) ? studentAnswerForQuestion[0] : studentAnswerForQuestion;
 
         switch (question.type) {
@@ -122,7 +118,7 @@ export async function POST(request: NextRequest) {
           case 'pooled-choices':
             const pcq = question as PooledChoicesQuestion;
             if (block.choicePool && pcq.correctAnswersFromPool && pcq.correctAnswersFromPool.length > 0 && typeof singleStudentAnswer === 'string') {
-                const correctChoiceText = pcq.correctAnswersFromPool[0]; // Assuming single correct answer for now
+                const correctChoiceText = pcq.correctAnswersFromPool[0];
                 const studentAnswerIndex = block.choicePool.findIndex((_opt, index) => getAlphabetLetter(index) === singleStudentAnswer.toUpperCase());
                 if (studentAnswerIndex !== -1 && block.choicePool[studentAnswerIndex].text === correctChoiceText) {
                     isCorrect = true;
@@ -145,28 +141,26 @@ export async function POST(request: NextRequest) {
       .collection('scores')
       .doc(studentId); // Use studentId as document ID for the score
 
-    const scoreDataToSave = {
+    const scoreDataToSave: StudentExamScore = {
       examId: examId,
-      studentId: studentId, 
+      studentId: studentId,
       score: totalAchievedScore,
       maxPossibleScore: maxPossibleScore,
-      answers: answers, // Save the raw answers (StudentAnswers type)
-      userId: examCreatorUserId, 
-      submittedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(), 
-      // createdAt is implicitly set if this is a new document via set with merge:true
+      answers: answers,
+      userId: teacherUserId,
+      submittedAt: admin.firestore.FieldValue.serverTimestamp() as FirebaseFirestore.Timestamp,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp() as FirebaseFirestore.Timestamp,
+      createdAt: admin.firestore.FieldValue.serverTimestamp() as FirebaseFirestore.Timestamp, // Will be set on create
     };
-
+    
     // Using set with merge:true will create the document if it doesn't exist, or update it if it does.
-    // For first time submission, it will create. If a resubmission logic were added later, it would update.
     await scoreDocRef.set(scoreDataToSave, { merge: true });
     
-    // Add createdAt if it's a new document (or handle this in a more sophisticated way if needed)
+    // Ensure createdAt is set if it was a new document (set with merge might not trigger this for new docs)
     const scoreSnap = await scoreDocRef.get();
     if (!scoreSnap.data()?.createdAt) {
         await scoreDocRef.update({ createdAt: admin.firestore.FieldValue.serverTimestamp() });
     }
-
 
     return NextResponse.json({
       message: 'Score computed and saved successfully',
@@ -180,14 +174,14 @@ export async function POST(request: NextRequest) {
     let errorDetails: any = {};
     if (error instanceof Error) {
         errorMessage = error.message;
-        errorDetails = { name: error.name, stack: error.stack?.substring(0, 500) }; 
+        errorDetails = { name: error.name, stack: error.stack?.substring(0, 500) };
     } else if (typeof error === 'object' && error !== null) {
         errorDetails = { ...error };
     }
-    return NextResponse.json({ 
-      error: 'Failed to process score submission', 
-      details: errorMessage, 
-      debugInfo: errorDetails 
+    return NextResponse.json({
+      error: 'Failed to process score submission',
+      details: errorMessage,
+      debugInfo: errorDetails
     }, { status: 500 });
   }
 }

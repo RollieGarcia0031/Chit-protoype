@@ -1,3 +1,4 @@
+
 // src/app/(protected)/exams/[examId]/results/page.tsx
 'use client';
 
@@ -24,7 +25,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -72,38 +72,30 @@ export default function ExamResultsPage() {
   };
 
   const getScoreStatus = useCallback((student: Student): ScoreStatusDetails => {
-    const { currentScoreInput, score } = student; // score is from DB, currentScoreInput is from UI
+    const { currentScoreInput, score } = student;
     const inputTrimmed = currentScoreInput?.trim();
 
     if (inputTrimmed === undefined || inputTrimmed === "") {
-      // Input is empty
       if (score === null || score === undefined) {
-        // DB score is also null/undefined, so no change if input is empty
         return { status: 'emptyAndUnchanged', icon: null, isSavable: false, parsedScore: null, tooltip: "No score entered." };
       }
-      // DB score exists, but input is empty. This is a change (clearing the score).
       return { status: 'emptyAndDirty', icon: Save, color: "text-amber-600", isSavable: true, parsedScore: null, tooltip: "Score will be cleared." };
     }
 
-    // Input is not empty
     const parsedInput = parseFloat(inputTrimmed);
 
     if (isNaN(parsedInput)) {
       return { status: 'invalid', icon: AlertTriangle, color: "text-destructive", isSavable: false, parsedScore: null, tooltip: "Invalid input. Score must be a number." };
     }
     
-    // Specific check for when DB score is null/undefined and user enters 0.
-    // This is a valid change (from no score to score of 0).
     if ((score === null || score === undefined) && parsedInput === 0) {
         return { status: 'dirty', icon: Save, color: "text-amber-600", isSavable: true, parsedScore: parsedInput, tooltip: "Unsaved changes." };
     }
 
-    // Compare parsed input with DB score
     if (parsedInput === score) {
       return { status: 'saved', icon: CheckCircle2, color: "text-green-600", isSavable: false, parsedScore: parsedInput, tooltip: "Score saved." };
     }
 
-    // Parsed input is different from DB score
     return { status: 'dirty', icon: Save, color: "text-amber-600", isSavable: true, parsedScore: parsedInput, tooltip: "Unsaved changes." };
   }, []);
 
@@ -141,7 +133,6 @@ export default function ExamResultsPage() {
                 return;
             }
 
-            // Fetch all user classes once
             const allUserClassesMap = new Map<string, ClassInfoForDropdown>();
             const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
             const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid));
@@ -176,18 +167,16 @@ export default function ExamResultsPage() {
                 return;
             }
 
-
-            // Initial structure for groupedStudentScores
             const initialGroups: ClassWithStudentsAndScores[] = await Promise.all(assignedClassesInfo.map(async classInfo => {
                 const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, "students");
                 const studentsQuery = query(studentsRef, orderBy("lastName", "asc"), orderBy("firstName", "asc"));
                 const studentsSnapshot = await getDocs(studentsQuery);
                 const students: Student[] = studentsSnapshot.docs.map(studentDoc => {
-                    const studentData = studentDoc.data() as Student; // Omit id from Student if it's just data
+                    const studentData = studentDoc.data() as Student;
                     return {
                         ...studentData,
-                        id: studentDoc.id, // Ensure id is assigned from studentDoc.id
-                        score: null, // Will be populated by listener
+                        id: studentDoc.id, 
+                        score: null, 
                         currentScoreInput: '',
                         isSavingScore: false,
                         scoreDocId: null,
@@ -197,8 +186,6 @@ export default function ExamResultsPage() {
             }));
             if(isMounted) setGroupedStudentScores(initialGroups);
 
-
-            // Set up real-time listeners for scores for each class
             initialGroups.forEach((group, groupIndex) => {
                 const scoresRef = collection(db, SUBJECTS_COLLECTION_NAME, group.classInfo.subjectId, "classes", group.classInfo.id, SCORES_SUBCOLLECTION_NAME);
                 const scoresQuery = query(scoresRef, where("examId", "==", examId), where("userId", "==", user.uid));
@@ -212,37 +199,44 @@ export default function ExamResultsPage() {
                     });
 
                     setGroupedStudentScores(prevGroups => {
-                        const newGroups = prevGroups.map(g => ({ ...g, students: [...g.students] })); 
+                        const newGroups = prevGroups.map((g, idx) => {
+                            if (idx === groupIndex) {
+                                const updatedStudents = g.students.map(student => {
+                                    const existingScoreData = scoresMap.get(student.id);
+                                    const dbScore = existingScoreData?.score ?? null;
+                                    const dbScoreDocId = existingScoreData?.scoreDocId ?? null;
 
-                        if (newGroups[groupIndex]) { 
-                            newGroups[groupIndex].students = newGroups[groupIndex].students.map(student => {
-                                const existingScoreData = scoresMap.get(student.id);
-                                const dbScore = existingScoreData?.score ?? null; 
-                                
-                                let newCurrentScoreInput = student.currentScoreInput;
-                                const oldDbScoreForStudent = student.score; 
+                                    let newCurrentScoreInput = student.currentScoreInput;
+                                    const oldDbScoreForStudent = student.score;
 
-                                if (student.currentScoreInput === undefined || student.currentScoreInput === null || student.currentScoreInput === "") {
-                                    if (!(oldDbScoreForStudent === null && dbScore === null)){
-                                        newCurrentScoreInput = dbScore !== null ? String(dbScore) : "";
+                                    if (student.currentScoreInput === undefined || student.currentScoreInput === null || student.currentScoreInput.trim() === "") {
+                                       if (!(oldDbScoreForStudent === null && dbScore === null)){ // if dbScore changed or was set
+                                            newCurrentScoreInput = dbScore !== null ? String(dbScore) : "";
+                                        }
+                                    } else {
+                                        const currentInputAsNumber = parseFloat(student.currentScoreInput);
+                                        if (!isNaN(currentInputAsNumber) && currentInputAsNumber === oldDbScoreForStudent) {
+                                             // Input matched old DB score, so update input if new DB score is different
+                                             newCurrentScoreInput = dbScore !== null ? String(dbScore) : "";
+                                        } else if (isNaN(currentInputAsNumber) && oldDbScoreForStudent === null) {
+                                            // Input was invalid, but old DB score was null, so update if new DB score is set
+                                            newCurrentScoreInput = dbScore !== null ? String(dbScore) : "";
+                                        }
+                                        // If user is actively typing something different, don't overwrite it
                                     }
-                                } else {
-                                    const currentInputAsNumber = parseFloat(student.currentScoreInput);
-                                    if (!isNaN(currentInputAsNumber) && currentInputAsNumber === oldDbScoreForStudent) {
-                                         newCurrentScoreInput = dbScore !== null ? String(dbScore) : "";
-                                    } else if (isNaN(currentInputAsNumber) && oldDbScoreForStudent === null) {
-                                        newCurrentScoreInput = dbScore !== null ? String(dbScore) : "";
-                                    }
-                                }
-
-                                return {
-                                    ...student,
-                                    score: dbScore,
-                                    currentScoreInput: newCurrentScoreInput,
-                                    scoreDocId: existingScoreData?.scoreDocId ?? null,
-                                };
-                            });
-                        }
+                                    
+                                    return {
+                                        ...student,
+                                        score: dbScore,
+                                        scoreDocId: dbScoreDocId,
+                                        currentScoreInput: newCurrentScoreInput,
+                                        isSavingScore: false, // Reset saving state as new data arrived
+                                    };
+                                });
+                                return { ...g, students: updatedStudents };
+                            }
+                            return g;
+                        });
                         return newGroups;
                     });
                 }, (error) => {
@@ -319,24 +313,23 @@ export default function ExamResultsPage() {
       const scoreToSave = scoreStatusDetails.parsedScore; 
 
       try {
-        const scoreData: Partial<StudentExamScore> & { score: number | null, examId: string, studentId: string, userId: string } = {
+        const scoreData: Partial<StudentExamScore> & { examId: string, studentId: string, userId: string, score: number | null } = {
           examId: examDetails.id,
           studentId: student.id,
-          userId: user.uid,
+          userId: user.uid, 
           score: scoreToSave, 
           updatedAt: serverTimestamp() as Timestamp,
         };
 
         const scoresCollectionPath = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, SCORES_SUBCOLLECTION_NAME);
-        
-        const scoreDocRef = doc(scoresCollectionPath, student.id); 
-        
+        const scoreDocRef = doc(scoresCollectionPath, student.id); // Use student.id as document ID
+
         await setDoc(scoreDocRef, 
             student.scoreDocId ? scoreData : { ...scoreData, createdAt: serverTimestamp() as Timestamp }, 
             { merge: true }
         );
         
-        const newScoreDocId = student.id; 
+        const newScoreDocId = student.id; // The doc ID is the student's ID
 
         return { studentId: student.id, success: true, finalScore: scoreToSave, newScoreDocId };
       } catch (e) {
@@ -433,13 +426,12 @@ export default function ExamResultsPage() {
       const fullName = `${student.lastName}, ${student.firstName}${student.middleName ? ` ${student.middleName.charAt(0)}.` : ''}`;
       const scoreStatus = getScoreStatus(student);
       
-      let displayScore: string | number = ""; // Default to blank for Excel
+      let displayScore: string | number = ""; 
       if (scoreStatus.status === 'invalid') {
           displayScore = "Invalid Input";
       } else if (scoreStatus.parsedScore !== null) {
           displayScore = scoreStatus.parsedScore;
       }
-      // If parsedScore is null and status is not 'invalid', it remains blank.
   
       return {
         "Student Name": fullName,
@@ -711,6 +703,3 @@ export default function ExamResultsPage() {
     </div>
   );
 }
-    
-    
-

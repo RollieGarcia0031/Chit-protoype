@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useEffect, useState } from 'react';
-import type { FullExamData, ExamBlock, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, Student } from '@/types/exam-types';
+import type { FullExamData, ExamBlock, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, Student, MatchingTypeQuestion } from '@/types/exam-types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FileText, AlertTriangle, Send, ArrowLeft, Info, UserCheck, Loader2 } from 'lucide-react';
 import { QUESTION_TYPES } from '@/types/exam-types';
@@ -75,20 +75,22 @@ export default function AnswerSheetPage() {
   const [studentAnswers, setStudentAnswers] = useState<StudentAnswers>({});
   let globalQuestionNumber = 1;
 
+
   // Effect to load exam data from sessionStorage and student progress from localStorage
   useEffect(() => {
     if (typeof window !== 'undefined' && examId) {
       setIsLoading(true);
       setError(null);
       setStudentDetailsError(null);
+      let localExamData: FullExamData | null = null;
 
       try {
         const cachedExamDataString = sessionStorage.getItem(`examData-${examId}`);
         const cachedClassId = sessionStorage.getItem(`selectedClassId-${examId}`);
 
         if (cachedExamDataString) {
-          const parsedData: FullExamData = JSON.parse(cachedExamDataString);
-          setExamToDisplay(parsedData);
+          localExamData = JSON.parse(cachedExamDataString);
+          setExamToDisplay(localExamData);
         } else {
           setError("Exam data not found. Please return to the exam start page and try again.");
           setIsLoading(false);
@@ -113,13 +115,28 @@ export default function AnswerSheetPage() {
             if (savedProgress.enteredFirstName) setEnteredFirstName(savedProgress.enteredFirstName);
             if (savedProgress.enteredLastName) setEnteredLastName(savedProgress.enteredLastName);
             if (typeof savedProgress.isNameConfirmed === 'boolean') setIsNameConfirmed(savedProgress.isNameConfirmed);
-            if (savedProgress.studentAnswers) setStudentAnswers(savedProgress.studentAnswers || {});
+            
+            if (savedProgress.studentAnswers && localExamData) {
+              const validAnswers: StudentAnswers = {};
+              const allQuestionIdsInExam = new Set<string>();
+              localExamData.examBlocks.forEach(block => {
+                block.questions.forEach(q => allQuestionIdsInExam.add(q.id));
+              });
+
+              for (const questionId in savedProgress.studentAnswers) {
+                if (allQuestionIdsInExam.has(questionId)) {
+                  validAnswers[questionId] = savedProgress.studentAnswers[questionId];
+                }
+              }
+              setStudentAnswers(validAnswers);
+            } else {
+              setStudentAnswers({});
+            }
           }
         }
       } catch (e) {
         console.error("Error processing initial data from storage:", e);
         setError("There was an issue loading exam or progress information. Please try again.");
-        // Optionally clear potentially corrupted localStorage
         const lsKey = getLocalStorageKey(examId);
         if(lsKey) localStorage.removeItem(lsKey);
       } finally {
@@ -165,6 +182,8 @@ export default function AnswerSheetPage() {
     if (selectedClassIdFromSession && examToDisplay) {
       fetchStudents();
     } else if (!selectedClassIdFromSession && examToDisplay) {
+      // This case means exam data is loaded, but no class ID was found in session, which is an error path handled by the first effect.
+      // Setting isLoading to false here if it wasn't already set by an error condition earlier.
       setIsLoading(false);
     }
   }, [selectedClassIdFromSession, examToDisplay]);
@@ -224,7 +243,7 @@ export default function AnswerSheetPage() {
     console.log("Entered Last Name:", enteredLastName);
     console.log("Student Answers:", studentAnswers);
     
-    // TODO: Clear local storage for this exam upon successful submission
+    // TODO: On actual submission, clear local storage:
     // const localStorageKey = getLocalStorageKey(examId);
     // if (localStorageKey) localStorage.removeItem(localStorageKey);
 
@@ -462,16 +481,18 @@ export default function AnswerSheetPage() {
                         <div className="mt-2 pl-4">
                             <h4 className="font-medium text-sm mb-1">Match From:</h4>
                             <ul className="list-none pl-0 columns-1 sm:columns-2 gap-x-4">
-                                {(block.questions as MultipleChoiceQuestion[]).flatMap(q => (q as any).pairs.map((p: any) => p.response)) // Casting to any for pairs temporarily
-                                    .filter((value: any, index: number, self: any[]) => self.indexOf(value) === index)
-                                    .sort((a: any, b: any) => {
-                                        const letterA = (block.questions as MultipleChoiceQuestion[]).find(q => (q as any).pairs.find((p: any) => p.response === a))?.(q as any).pairs.find((p: any) => p.response === a)?.responseLetter || '';
-                                        const letterB = (block.questions as MultipleChoiceQuestion[]).find(q => (q as any).pairs.find((p: any) => p.response === b))?.(q as any).pairs.find((p: any) => p.response === b)?.responseLetter || '';
+                                {(block.questions as MatchingTypeQuestion[]).flatMap(q => (q as MatchingTypeQuestion).pairs.map(p => p.response))
+                                    .filter((value, index, self) => self.indexOf(value) === index)
+                                    .sort((a, b) => {
+                                        const pairA = (block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs).find(p => p.response === a);
+                                        const pairB = (block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs).find(p => p.response === b);
+                                        const letterA = pairA?.responseLetter || '';
+                                        const letterB = pairB?.responseLetter || '';
                                         if (letterA && letterB) return letterA.localeCompare(letterB);
                                         return String(a).localeCompare(String(b));
                                     })
-                                    .map((response: any, index: number) => {
-                                         const originalPair = (block.questions as MultipleChoiceQuestion[]).flatMap(q => (q as any).pairs).find((p: any) => p.response === response);
+                                    .map((response, index) => {
+                                         const originalPair = (block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs).find(p => p.response === response);
                                          const letter = originalPair?.responseLetter || getAlphabetLetter(index);
                                          return <li key={`match-resp-${index}`} className="text-sm break-inside-avoid-column">{letter}. {response}</li>;
                                     })

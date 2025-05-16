@@ -16,10 +16,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, CalendarIcon, Send, AlertTriangle, Info, Save } from 'lucide-react';
+import { ArrowLeft, CalendarIcon, Send, AlertTriangle, Info, Save, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, set } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface ClassAssignmentState {
   classInfo: ClassInfoForDropdown;
@@ -29,6 +30,8 @@ interface ClassAssignmentState {
   assignmentStatus?: ExamAssignment['status'];
   initialAssignedDateTime?: Timestamp; // To detect changes
 }
+
+type AssignmentMode = 'all' | 'individual';
 
 export default function PublishExamPage() {
   const params = useParams();
@@ -40,6 +43,10 @@ export default function PublishExamPage() {
   const [examDetails, setExamDetails] = useState<ExamSummaryData | null>(null);
   const [classAssignments, setClassAssignments] = useState<ClassAssignmentState[]>([]);
   
+  const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>('individual');
+  const [commonDate, setCommonDate] = useState<Date | undefined>(undefined);
+  const [commonTime, setCommonTime] = useState<string>('');
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +81,6 @@ export default function PublishExamPage() {
           return;
         }
 
-        // Fetch all user classes to get details for assigned ones
         const allUserClassesMap = new Map<string, ClassInfoForDropdown>();
         const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
         const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid));
@@ -102,8 +108,6 @@ export default function PublishExamPage() {
             setError("Could not find details for one or more assigned classes. Please check class assignments.");
         }
 
-
-        // Fetch existing assignments for this exam
         const assignmentsRef = collection(db, EXAMS_COLLECTION_NAME, examId, "assignments");
         const assignmentsSnap = await getDocs(assignmentsRef);
         const existingAssignmentsMap = new Map<string, ExamAssignment>();
@@ -144,150 +148,155 @@ export default function PublishExamPage() {
     fetchData();
   }, [examId, user, authLoading, toast, router]);
 
-  const handleDateChange = (classId: string, newDate?: Date) => {
+  const handleIndividualDateChange = (classId: string, newDate?: Date) => {
     setClassAssignments(prev => 
       prev.map(ca => ca.classInfo.id === classId ? { ...ca, date: newDate } : ca)
     );
   };
 
-  const handleTimeChange = (classId: string, newTime: string) => {
+  const handleIndividualTimeChange = (classId: string, newTime: string) => {
     setClassAssignments(prev =>
       prev.map(ca => ca.classInfo.id === classId ? { ...ca, time: newTime } : ca)
     );
   };
 
+  const handleAssignmentModeChange = (mode: AssignmentMode) => {
+    setAssignmentMode(mode);
+    if (mode === 'individual' && commonDate && commonTime) {
+      // Pre-fill individual fields if common schedule was set
+      setClassAssignments(prev => prev.map(ca => ({
+        ...ca,
+        date: commonDate,
+        time: commonTime,
+      })));
+    } else if (mode === 'all') {
+      // Optionally clear or set a default for commonDate/commonTime, here we leave them
+      // or one could pick the first class's schedule if available
+      // setCommonDate(undefined);
+      // setCommonTime('');
+    }
+  };
+
   const handleSaveAssignments = async () => {
     if (!user || !examDetails) return;
-
-    const assignmentsToSave = classAssignments.filter(ca => ca.date && ca.time);
-    if (assignmentsToSave.length === 0) {
-      toast({ title: "No Assignments Set", description: "Please set a date and time for at least one class.", variant: "destructive" });
-      return;
-    }
-
     setIsSaving(true);
     let successCount = 0;
     let errorCount = 0;
+    let changesMade = false;
 
-    for (const ca of classAssignments) {
-      if (!ca.date || !ca.time) continue; // Skip if date or time not set
-
-      const [hours, minutes] = ca.time.split(':').map(Number);
-      if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-        toast({ title: "Invalid Time", description: `Invalid time for ${ca.classInfo.sectionName}. Please use HH:mm format.`, variant: "destructive" });
-        errorCount++;
-        continue;
+    if (assignmentMode === 'all') {
+      if (!commonDate || !commonTime) {
+        toast({ title: "Missing Information", description: "Please set a common date and time for all classes.", variant: "destructive" });
+        setIsSaving(false);
+        return;
       }
-      const combinedDateTime = set(ca.date, { hours, minutes, seconds: 0, milliseconds: 0 });
-      const assignedDateTime = Timestamp.fromDate(combinedDateTime);
+      const [commonHours, commonMinutes] = commonTime.split(':').map(Number);
+      if (isNaN(commonHours) || isNaN(commonMinutes) || commonHours < 0 || commonHours > 23 || commonMinutes < 0 || commonMinutes > 59) {
+        toast({ title: "Invalid Time", description: "Invalid common time. Please use HH:mm format.", variant: "destructive" });
+        setIsSaving(false);
+        return;
+      }
+      const commonCombinedDateTime = set(commonDate, { hours: commonHours, minutes: commonMinutes, seconds: 0, milliseconds: 0 });
+      const commonAssignedTimestamp = Timestamp.fromDate(commonCombinedDateTime);
 
-      // Check if the new date/time is different from the initial one if it exists
-      let needsUpdate = true;
-      if (ca.existingAssignmentId && ca.initialAssignedDateTime) {
-        if (ca.initialAssignedDateTime.isEqual(assignedDateTime)) {
-          needsUpdate = false; // No change in date/time
+      for (const ca of classAssignments) {
+        let needsUpdate = true;
+        if (ca.existingAssignmentId && ca.initialAssignedDateTime) {
+          if (ca.initialAssignedDateTime.isEqual(commonAssignedTimestamp)) {
+            needsUpdate = false;
+          }
         }
-      }
-
-      if (!needsUpdate && ca.existingAssignmentId) { // No change for an existing assignment
-        successCount++; // Consider it a success as no update was needed
-        continue;
-      }
-      
-      const assignmentData: Omit<ExamAssignment, 'id' | 'createdAt'> = {
-        examId: examDetails.id,
-        classId: ca.classInfo.id,
-        assignedDateTime: assignedDateTime,
-        status: 'Scheduled', 
-        // We can enhance status logic later, e.g., if date is past, set to 'Active' or 'Completed'
-      };
-
-      try {
-        const assignmentsCollectionRef = collection(db, EXAMS_COLLECTION_NAME, examDetails.id, "assignments");
-        if (ca.existingAssignmentId) {
-          const assignmentDocRef = doc(assignmentsCollectionRef, ca.existingAssignmentId);
-          await updateDoc(assignmentDocRef, {
-            ...assignmentData,
-            updatedAt: serverTimestamp(),
-          });
-        } else {
-          await addDoc(assignmentsCollectionRef, { 
-            ...assignmentData,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-           });
+        if (!needsUpdate && ca.existingAssignmentId) {
+           successCount++; continue;
         }
-        successCount++;
-      } catch (e) {
-        console.error(`Error saving assignment for class ${ca.classInfo.id}: `, e);
-        errorCount++;
+        changesMade = true;
+        const assignmentData: Omit<ExamAssignment, 'id' | 'createdAt'> = {
+          examId: examDetails.id,
+          classId: ca.classInfo.id,
+          assignedDateTime: commonAssignedTimestamp,
+          status: 'Scheduled',
+        };
+        try {
+          const assignmentsCollectionRef = collection(db, EXAMS_COLLECTION_NAME, examDetails.id, "assignments");
+          if (ca.existingAssignmentId) {
+            await updateDoc(doc(assignmentsCollectionRef, ca.existingAssignmentId), { ...assignmentData, updatedAt: serverTimestamp() });
+          } else {
+            await addDoc(assignmentsCollectionRef, { ...assignmentData, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          }
+          successCount++;
+        } catch (e) { console.error(`Error saving common assignment for class ${ca.classInfo.id}: `, e); errorCount++; }
+      }
+    } else { // Individual mode
+      for (const ca of classAssignments) {
+        if (!ca.date || !ca.time) continue; 
+
+        const [hours, minutes] = ca.time.split(':').map(Number);
+        if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+          toast({ title: "Invalid Time", description: `Invalid time for ${ca.classInfo.sectionName}. Please use HH:mm format.`, variant: "destructive" });
+          errorCount++; continue;
+        }
+        const combinedDateTime = set(ca.date, { hours, minutes, seconds: 0, milliseconds: 0 });
+        const assignedTimestamp = Timestamp.fromDate(combinedDateTime);
+
+        let needsUpdate = true;
+        if (ca.existingAssignmentId && ca.initialAssignedDateTime) {
+          if (ca.initialAssignedDateTime.isEqual(assignedTimestamp)) {
+            needsUpdate = false;
+          }
+        }
+         if (!needsUpdate && ca.existingAssignmentId) {
+           successCount++; continue;
+        }
+        changesMade = true;
+        const assignmentData: Omit<ExamAssignment, 'id' | 'createdAt'> = {
+          examId: examDetails.id,
+          classId: ca.classInfo.id,
+          assignedDateTime: assignedTimestamp,
+          status: 'Scheduled',
+        };
+        try {
+          const assignmentsCollectionRef = collection(db, EXAMS_COLLECTION_NAME, examDetails.id, "assignments");
+          if (ca.existingAssignmentId) {
+            await updateDoc(doc(assignmentsCollectionRef, ca.existingAssignmentId), { ...assignmentData, updatedAt: serverTimestamp() });
+          } else {
+            await addDoc(assignmentsCollectionRef, { ...assignmentData, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          }
+          successCount++;
+        } catch (e) { console.error(`Error saving individual assignment for class ${ca.classInfo.id}: `, e); errorCount++; }
       }
     }
     setIsSaving(false);
 
     if (successCount > 0 && errorCount === 0) {
-      toast({ title: "Assignments Saved", description: `Successfully saved ${successCount} class assignment(s).` });
+      if (changesMade) {
+        toast({ title: "Assignments Saved", description: `Successfully saved ${successCount} class assignment(s).` });
+      } else {
+        toast({ title: "No Changes", description: "No changes detected in assignments." });
+      }
       router.push('/exams');
     } else if (successCount > 0 && errorCount > 0) {
       toast({ title: "Partial Success", description: `Saved ${successCount} assignment(s), but ${errorCount} failed. Please review.`, variant: "default" });
     } else if (errorCount > 0) {
       toast({ title: "Saving Failed", description: `Could not save assignments for ${errorCount} class(es). Please try again.`, variant: "destructive" });
-    } else if (successCount === 0 && errorCount === 0 && assignmentsToSave.length > 0) {
+    } else if (successCount === 0 && errorCount === 0 && (assignmentMode === 'all' ? (commonDate && commonTime) : classAssignments.some(ca => ca.date && ca.time))) {
+      if (changesMade) { // Should only be true if some were skipped because no change, and others were empty. Unlikely.
+        toast({ title: "Assignments Saved", description: "All assignments were up to date or successfully saved." });
+      } else {
         toast({title: "No Changes", description: "No changes detected in assignments."});
+      }
+       router.push('/exams');
     }
   };
 
-
   if (isLoading || authLoading) {
-    return (
-      <div className="space-y-6 p-4">
-        <Skeleton className="h-10 w-1/3" />
-        <Skeleton className="h-8 w-1/2" />
-        <Card className="shadow-lg">
-          <CardHeader><Skeleton className="h-7 w-3/4" /></CardHeader>
-          <CardContent className="space-y-4">
-            {[1, 2].map(i => (
-              <div key={i} className="p-3 border rounded-md space-y-3">
-                <Skeleton className="h-6 w-1/2" />
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              </div>
-            ))}
-          </CardContent>
-          <CardFooter><Skeleton className="h-10 w-32" /></CardFooter>
-        </Card>
-      </div>
-    );
+    return ( /* Skeleton UI */ <div className="space-y-6 p-4"> <Skeleton className="h-10 w-1/3" /> <Skeleton className="h-8 w-1/2" /> <Card className="shadow-lg"> <CardHeader><Skeleton className="h-7 w-3/4" /></CardHeader> <CardContent className="space-y-4"> <Skeleton className="h-10 w-full" /> {[1, 2].map(i => ( <div key={i} className="p-3 border rounded-md space-y-3"> <Skeleton className="h-6 w-1/2" /> <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"> <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" /> </div> </div> ))} </CardContent> <CardFooter><Skeleton className="h-10 w-32" /></CardFooter> </Card> </div> );
   }
-
   if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4">
-        <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-        <h2 className="text-xl font-semibold mb-2">Error Loading Page</h2>
-        <p className="text-muted-foreground mb-4">{error}</p>
-        <Button onClick={() => router.back()} size="sm">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
-        </Button>
-      </div>
-    );
+    return ( /* Error UI */ <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4"> <AlertTriangle className="h-12 w-12 text-destructive mb-4" /> <h2 className="text-xl font-semibold mb-2">Error Loading Page</h2> <p className="text-muted-foreground mb-4">{error}</p> <Button onClick={() => router.back()} size="sm"> <ArrowLeft className="mr-2 h-4 w-4" /> Go Back </Button> </div> );
   }
-
   if (!examDetails) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4">
-        <Info className="h-12 w-12 text-muted-foreground mb-4" />
-        <p className="text-muted-foreground">Exam details could not be loaded.</p>
-         <Button onClick={() => router.back()} size="sm" className="mt-4">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
-        </Button>
-      </div>
-    );
+    return ( /* No exam details UI */ <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4"> <Info className="h-12 w-12 text-muted-foreground mb-4" /> <p className="text-muted-foreground">Exam details could not be loaded.</p> <Button onClick={() => router.back()} size="sm" className="mt-4"> <ArrowLeft className="mr-2 h-4 w-4" /> Go Back </Button> </div> );
   }
-  
-  const allAssignmentsSet = classAssignments.every(ca => ca.date && ca.time);
 
   return (
     <div className="space-y-6 p-1 sm:p-4">
@@ -297,7 +306,7 @@ export default function PublishExamPage() {
             Publish Exam: {examDetails.title}
           </h1>
           <CardDescription className="text-xs sm:text-sm mt-1">
-            Assign a date and time for each class this exam is linked to.
+            Assign a date and time for each class this exam is linked to, or set a common schedule.
           </CardDescription>
         </div>
         <Button variant="outline" onClick={() => router.back()} size="sm" className="text-xs sm:text-sm flex-shrink-0">
@@ -319,9 +328,54 @@ export default function PublishExamPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="text-lg sm:text-xl">Set Assignment Schedule</CardTitle>
+             <RadioGroup value={assignmentMode} onValueChange={(value) => handleAssignmentModeChange(value as AssignmentMode)} className="flex space-x-4 pt-2">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="individual" id="mode-individual" />
+                <Label htmlFor="mode-individual" className="text-xs sm:text-sm">Individual Schedules</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="all" id="mode-all" />
+                <Label htmlFor="mode-all" className="text-xs sm:text-sm">Same Schedule for All</Label>
+              </div>
+            </RadioGroup>
           </CardHeader>
+
           <CardContent className="space-y-4 sm:space-y-5">
-            {classAssignments.map((ca) => (
+            {assignmentMode === 'all' && (
+              <div className="p-3 sm:p-4 border rounded-md shadow-sm bg-muted/30 space-y-3">
+                <h3 className="text-sm sm:text-base font-semibold text-foreground mb-1">Common Schedule for All Classes</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="commonExamDate" className="text-xs sm:text-sm">Exam Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn("w-full justify-start text-left font-normal h-9 text-xs sm:text-sm", !commonDate && "text-muted-foreground")}
+                          disabled={isSaving}
+                        >
+                          <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                          {commonDate ? format(commonDate, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar mode="single" selected={commonDate} onSelect={setCommonDate} initialFocus disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1)) || isSaving} />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="commonExamTime" className="text-xs sm:text-sm">Exam Time (HH:mm)</Label>
+                    <Input id="commonExamTime" type="time" value={commonTime} onChange={(e) => setCommonTime(e.target.value)} className="h-9 text-xs sm:text-sm" disabled={isSaving} />
+                  </div>
+                </div>
+                <p className="text-2xs sm:text-xs text-muted-foreground pt-2">This schedule will be applied to the following classes:</p>
+                <ul className="list-disc list-inside text-2xs sm:text-xs text-muted-foreground">
+                  {classAssignments.map(ca => <li key={ca.classInfo.id}>{ca.classInfo.sectionName} ({ca.classInfo.yearGrade}) - {ca.classInfo.subjectName}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {assignmentMode === 'individual' && classAssignments.map((ca) => (
               <div key={ca.classInfo.id} className="p-3 sm:p-4 border rounded-md shadow-sm bg-muted/30">
                 <h3 className="text-sm sm:text-base font-semibold text-foreground mb-0.5">
                   {ca.classInfo.sectionName} ({ca.classInfo.yearGrade})
@@ -334,7 +388,6 @@ export default function PublishExamPage() {
                         Currently: {ca.assignmentStatus} on {format(ca.initialAssignedDateTime.toDate(), "PPP 'at' p")}
                      </p>
                 )}
-
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-1">
                     <Label htmlFor={`examDate-${ca.classInfo.id}`} className="text-xs sm:text-sm">Exam Date</Label>
@@ -342,10 +395,7 @@ export default function PublishExamPage() {
                       <PopoverTrigger asChild>
                         <Button
                           variant={"outline"}
-                          className={cn(
-                            "w-full justify-start text-left font-normal h-9 text-xs sm:text-sm",
-                            !ca.date && "text-muted-foreground"
-                          )}
+                          className={cn("w-full justify-start text-left font-normal h-9 text-xs sm:text-sm", !ca.date && "text-muted-foreground")}
                           disabled={isSaving}
                         >
                           <CalendarIcon className="mr-2 h-3.5 w-3.5" />
@@ -353,27 +403,13 @@ export default function PublishExamPage() {
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={ca.date}
-                          onSelect={(newDate) => handleDateChange(ca.classInfo.id, newDate)}
-                          initialFocus
-                          disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1)) || isSaving}
-                        />
+                        <Calendar mode="single" selected={ca.date} onSelect={(newDate) => handleIndividualDateChange(ca.classInfo.id, newDate)} initialFocus disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1)) || isSaving} />
                       </PopoverContent>
                     </Popover>
                   </div>
-
                   <div className="space-y-1">
                     <Label htmlFor={`examTime-${ca.classInfo.id}`} className="text-xs sm:text-sm">Exam Time (HH:mm)</Label>
-                    <Input
-                      id={`examTime-${ca.classInfo.id}`}
-                      type="time"
-                      value={ca.time || ''}
-                      onChange={(e) => handleTimeChange(ca.classInfo.id, e.target.value)}
-                      className="h-9 text-xs sm:text-sm"
-                      disabled={isSaving}
-                    />
+                    <Input id={`examTime-${ca.classInfo.id}`} type="time" value={ca.time || ''} onChange={(e) => handleIndividualTimeChange(ca.classInfo.id, e.target.value)} className="h-9 text-xs sm:text-sm" disabled={isSaving} />
                   </div>
                 </div>
               </div>
@@ -381,11 +417,7 @@ export default function PublishExamPage() {
           </CardContent>
           <CardFooter>
             <Button onClick={handleSaveAssignments} disabled={isSaving || classAssignments.length === 0} size="sm" className="text-xs sm:text-sm">
-              {isSaving ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
-              ) : (
-                <><Save className="mr-2 h-4 w-4" /> Save Assignments</>
-              )}
+              {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</> : <><Save className="mr-2 h-4 w-4" /> Save Assignments</>}
             </Button>
           </CardFooter>
         </Card>
@@ -393,4 +425,3 @@ export default function PublishExamPage() {
     </div>
   );
 }
-

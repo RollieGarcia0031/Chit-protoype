@@ -1,4 +1,3 @@
-
 // src/types/exam-types.ts
 import type { Timestamp } from "firebase/firestore";
 
@@ -66,7 +65,7 @@ export interface ExamBlock {
 }
 
 export interface AssignedClassSlot { // Used in create-exam page for UI state
-  key: string; 
+  key: string;
   selectedClassId: string | null;
 }
 
@@ -117,6 +116,21 @@ export interface Student {
   tempId?: string; // Used for optimistic updates to match the student before it gets a real ID
   isOptimistic?: boolean; // True if added to UI before DB confirmation
   isSaving?: boolean; // True while the student data is being saved to DB
-  score?: number | string; // For exam results page
+  
+  // Fields for exam results page
+  score?: number | null; // The last saved score for the current exam
+  currentScoreInput?: string; // Value in the input field, can be string to allow empty or non-numeric temporarily
+  isSavingScore?: boolean; // True if this student's score is currently being saved
+  scoreDocId?: string | null; // Firestore document ID of the score entry, if it exists
 }
 
+export interface StudentExamScore {
+  id?: string; // Firestore document ID, optional as it's set upon creation
+  examId: string;
+  studentId: string;
+  classId: string;
+  userId: string; // Teacher's ID
+  score: number | null; // Score can be null if not graded or cleared
+  updatedAt: Timestamp;
+  createdAt?: Timestamp; // Optional, if you want to track creation time
+}

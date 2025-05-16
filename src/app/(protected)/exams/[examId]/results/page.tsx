@@ -1,28 +1,24 @@
-
 // src/app/(protected)/exams/[examId]/results/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase/config';
-import { doc, getDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
-import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
-import type { ExamSummaryData, ClassInfoForDropdown, Student } from '@/types/exam-types';
+import { doc, getDoc, collection, getDocs, query, where, orderBy, setDoc, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME, STUDENT_EXAM_SCORES_COLLECTION_NAME } from '@/config/firebase-constants';
+import type { ExamSummaryData, ClassInfoForDropdown, Student, StudentExamScore } from '@/types/exam-types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, BarChart3, Users, AlertTriangle, Info } from 'lucide-react';
+import { ArrowLeft, BarChart3, Users, AlertTriangle, Info, Save, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-interface StudentWithScore extends Student {
-  score?: number | string; // Score can be number or a string like 'N/A'
-}
 
 interface ClassWithStudentsAndScores {
   classInfo: ClassInfoForDropdown;
-  students: StudentWithScore[];
+  students: Student[]; // Student type now includes score-related fields
 }
 
 export default function ExamResultsPage() {
@@ -37,139 +33,225 @@ export default function ExamResultsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!user || !examId) {
-      if (!authLoading && !user) {
-        router.push('/login');
-      }
-      setIsLoading(false);
-      return;
-    }
+  const fetchResultsData = useCallback(async () => {
+    if (!user || !examId) return;
 
-    const fetchResultsData = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        // 1. Fetch Exam Details
-        const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examId);
-        const examSnap = await getDoc(examDocRef);
+    setIsLoading(true);
+    setError(null);
+    try {
+      // 1. Fetch Exam Details
+      const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examId);
+      const examSnap = await getDoc(examDocRef);
 
-        if (!examSnap.exists() || examSnap.data().userId !== user.uid) {
-          setError("Exam not found or you don't have permission to view its results.");
-          toast({ title: "Error", description: "Exam not found or access denied.", variant: "destructive" });
-          setIsLoading(false);
-          return;
-        }
-        const currentExamDetails = { id: examSnap.id, ...examSnap.data() } as ExamSummaryData;
-        setExamDetails(currentExamDetails);
-
-        if (!currentExamDetails.classIds || currentExamDetails.classIds.length === 0) {
-          setError("This exam is not assigned to any classes.");
-          setIsLoading(false);
-          return;
-        }
-
-        // 2. Fetch all user subjects and their classes to map classIds to classInfo
-        const allUserClassesMap = new Map<string, ClassInfoForDropdown>();
-        const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
-        const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid));
-        const subjectsSnapshot = await getDocs(subjectsQuery);
-
-        for (const subjectDoc of subjectsSnapshot.docs) {
-          const subjectData = subjectDoc.data();
-          const classesSubCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME, subjectDoc.id, "classes");
-          const classesQuerySnapshot = await getDocs(query(classesSubCollectionRef, where("userId", "==", user.uid)));
-          classesQuerySnapshot.forEach((classDoc) => {
-            const classData = classDoc.data();
-            allUserClassesMap.set(classDoc.id, {
-              id: classDoc.id,
-              subjectId: subjectDoc.id,
-              subjectName: subjectData.name,
-              subjectCode: subjectData.code,
-              sectionName: classData.sectionName,
-              yearGrade: classData.yearGrade,
-              code: classData.code,
-            });
-          });
-        }
-        
-        // 3. Filter for classes assigned to this exam
-        const assignedClassesInfo: ClassInfoForDropdown[] = [];
-        currentExamDetails.classIds.forEach(assignedClassId => {
-          const classInfo = allUserClassesMap.get(assignedClassId);
-          if (classInfo) {
-            assignedClassesInfo.push(classInfo);
-          }
-        });
-
-        if (assignedClassesInfo.length === 0) {
-          setError("Could not find details for the classes assigned to this exam.");
-          setIsLoading(false);
-          return;
-        }
-        
-        // 4. For each assigned class, fetch its students and (mock) scores
-        const results: ClassWithStudentsAndScores[] = [];
-        for (const classInfo of assignedClassesInfo) {
-          const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, "students");
-          const studentsQuery = query(studentsRef, orderBy("lastName", "asc"), orderBy("firstName", "asc"));
-          const studentsSnapshot = await getDocs(studentsQuery);
-          
-          const studentsWithScores: StudentWithScore[] = studentsSnapshot.docs.map(studentDoc => {
-            // TODO: Replace with actual score fetching logic
-            // For now, score is 'N/A'
-            return {
-              ...(studentDoc.data() as Student),
-              id: studentDoc.id,
-              score: 'N/A', 
-            };
-          });
-          results.push({ classInfo, students: studentsWithScores });
-        }
-        setGroupedStudentScores(results);
-
-      } catch (e) {
-        console.error("Error fetching exam results data: ", e);
-        setError("Failed to load exam results. Please try again.");
-        toast({ title: "Error", description: "Could not fetch exam results.", variant: "destructive" });
-      } finally {
+      if (!examSnap.exists() || examSnap.data().userId !== user.uid) {
+        setError("Exam not found or you don't have permission to view its results.");
+        toast({ title: "Error", description: "Exam not found or access denied.", variant: "destructive" });
         setIsLoading(false);
+        return;
       }
-    };
+      const currentExamDetails = { id: examSnap.id, ...examSnap.data() } as ExamSummaryData;
+      setExamDetails(currentExamDetails);
 
-    fetchResultsData();
+      if (!currentExamDetails.classIds || currentExamDetails.classIds.length === 0) {
+        setError("This exam is not assigned to any classes.");
+        setIsLoading(false);
+        return;
+      }
 
-  }, [examId, user, authLoading, router, toast]);
+      // 2. Fetch all user subjects and their classes
+      const allUserClassesMap = new Map<string, ClassInfoForDropdown>();
+      const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
+      const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid));
+      const subjectsSnapshot = await getDocs(subjectsQuery);
+
+      for (const subjectDoc of subjectsSnapshot.docs) {
+        const subjectData = subjectDoc.data();
+        const classesSubCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME, subjectDoc.id, "classes");
+        const classesQuerySnapshot = await getDocs(query(classesSubCollectionRef, where("userId", "==", user.uid)));
+        classesQuerySnapshot.forEach((classDoc) => {
+          const classData = classDoc.data();
+          allUserClassesMap.set(classDoc.id, {
+            id: classDoc.id, subjectId: subjectDoc.id, subjectName: subjectData.name,
+            subjectCode: subjectData.code, sectionName: classData.sectionName,
+            yearGrade: classData.yearGrade, code: classData.code,
+          });
+        });
+      }
+      
+      const assignedClassesInfo: ClassInfoForDropdown[] = currentExamDetails.classIds
+        .map(id => allUserClassesMap.get(id))
+        .filter(Boolean) as ClassInfoForDropdown[];
+
+      if (assignedClassesInfo.length === 0) {
+        setError("Could not find details for the classes assigned to this exam.");
+        setIsLoading(false); return;
+      }
+      
+      // 3. Fetch existing scores for this exam
+      const scoresQuery = query(
+        collection(db, STUDENT_EXAM_SCORES_COLLECTION_NAME),
+        where("examId", "==", examId),
+        where("userId", "==", user.uid)
+      );
+      const scoresSnapshot = await getDocs(scoresQuery);
+      const scoresMap = new Map<string, { score: number | null; scoreDocId: string }>();
+      scoresSnapshot.forEach(scoreDoc => {
+        const data = scoreDoc.data() as StudentExamScore;
+        scoresMap.set(data.studentId, { score: data.score, scoreDocId: scoreDoc.id });
+      });
+
+      // 4. For each assigned class, fetch its students and merge with scores
+      const resultsPromises = assignedClassesInfo.map(async (classInfo) => {
+        const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, "students");
+        const studentsQuery = query(studentsRef, orderBy("lastName", "asc"), orderBy("firstName", "asc"));
+        const studentsSnapshot = await getDocs(studentsQuery);
+        
+        const studentsWithScores: Student[] = studentsSnapshot.docs.map(studentDoc => {
+          const studentData = studentDoc.data() as Student;
+          const existingScoreData = scoresMap.get(studentDoc.id);
+          return {
+            ...studentData,
+            id: studentDoc.id,
+            score: existingScoreData?.score ?? null,
+            currentScoreInput: existingScoreData?.score !== null && existingScoreData?.score !== undefined ? String(existingScoreData.score) : '',
+            isSavingScore: false,
+            scoreDocId: existingScoreData?.scoreDocId ?? null,
+          };
+        });
+        return { classInfo, students: studentsWithScores };
+      });
+      
+      const results = await Promise.all(resultsPromises);
+      setGroupedStudentScores(results);
+
+    } catch (e) {
+      console.error("Error fetching exam results data: ", e);
+      setError("Failed to load exam results. Please try again.");
+      toast({ title: "Error", description: "Could not fetch exam results.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examId, user, toast]); // Removed router from deps as it's stable
+
+  useEffect(() => {
+    if (!authLoading && user && examId) {
+      fetchResultsData();
+    } else if (!authLoading && !user) {
+        router.push('/login');
+    }
+  }, [examId, user, authLoading, router, fetchResultsData]);
+
+
+  const handleScoreInputChange = (classIdx: number, studentIdx: number, value: string) => {
+    setGroupedStudentScores(prev => {
+      const newGroups = [...prev];
+      if (newGroups[classIdx] && newGroups[classIdx].students[studentIdx]) {
+        newGroups[classIdx].students[studentIdx].currentScoreInput = value;
+      }
+      return newGroups;
+    });
+  };
+
+  const handleSaveScore = async (classIdx: number, studentIdx: number) => {
+    if (!user || !examDetails) return;
+
+    const student = groupedStudentScores[classIdx].students[studentIdx];
+    const classInfo = groupedStudentScores[classIdx].classInfo;
+
+    setGroupedStudentScores(prev => {
+      const newGroups = [...prev];
+      newGroups[classIdx].students[studentIdx].isSavingScore = true;
+      return newGroups;
+    });
+
+    const scoreValueRaw = student.currentScoreInput;
+    let scoreToSave: number | null = null;
+
+    if (scoreValueRaw !== undefined && scoreValueRaw.trim() !== "") {
+        const parsedScore = parseFloat(scoreValueRaw);
+        if (!isNaN(parsedScore)) {
+            scoreToSave = parsedScore;
+        } else {
+            toast({ title: "Invalid Score", description: "Score must be a number.", variant: "destructive" });
+            setGroupedStudentScores(prev => {
+                const newGroups = [...prev];
+                newGroups[classIdx].students[studentIdx].isSavingScore = false;
+                return newGroups;
+            });
+            return;
+        }
+    } // If empty, scoreToSave remains null (clearing the score)
+
+
+    try {
+      const scoreData: Omit<StudentExamScore, 'id' | 'createdAt'> = {
+        examId: examDetails.id,
+        studentId: student.id,
+        classId: classInfo.id,
+        userId: user.uid,
+        score: scoreToSave,
+        updatedAt: serverTimestamp() as Timestamp,
+      };
+
+      let scoreDocRef;
+      if (student.scoreDocId) {
+        scoreDocRef = doc(db, STUDENT_EXAM_SCORES_COLLECTION_NAME, student.scoreDocId);
+        await setDoc(scoreDocRef, scoreData, { merge: true }); 
+      } else {
+        scoreDocRef = await addDoc(collection(db, STUDENT_EXAM_SCORES_COLLECTION_NAME), {
+            ...scoreData,
+            createdAt: serverTimestamp() as Timestamp
+        });
+      }
+      
+      toast({ title: "Score Saved", description: `Score for ${student.firstName} ${student.lastName} saved successfully.` });
+      setGroupedStudentScores(prev => {
+        const newGroups = [...prev];
+        newGroups[classIdx].students[studentIdx].score = scoreToSave;
+        newGroups[classIdx].students[studentIdx].scoreDocId = scoreDocRef.id; // Update with new/existing doc ID
+        return newGroups;
+      });
+
+    } catch (e) {
+      console.error("Error saving score: ", e);
+      toast({ title: "Error Saving Score", description: "Could not save the score.", variant: "destructive" });
+    } finally {
+      setGroupedStudentScores(prev => {
+        const newGroups = [...prev];
+        if (newGroups[classIdx] && newGroups[classIdx].students[studentIdx]) {
+             newGroups[classIdx].students[studentIdx].isSavingScore = false;
+        }
+        return newGroups;
+      });
+    }
+  };
+
 
   if (isLoading || authLoading) {
     return (
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <Skeleton className="h-9 w-2/3 sm:w-1/2" />
-          <Skeleton className="h-9 w-24" />
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <div className="w-full sm:w-auto">
+            <Skeleton className="h-8 w-2/3 sm:w-80 mb-1" />
+            <Skeleton className="h-5 w-1/2 sm:w-60 ml-8 sm:ml-10" />
+          </div>
+          <Skeleton className="h-9 w-full sm:w-36" />
         </div>
-        <Card className="shadow-lg">
+        {[1,2].map(i => (
+        <Card key={i} className="shadow-lg">
           <CardHeader>
-            <Skeleton className="h-7 w-1/3 mb-1" />
-            <Skeleton className="h-5 w-1/2" />
+            <Skeleton className="h-7 w-1/2 sm:w-1/3 mb-1" />
+            <Skeleton className="h-5 w-3/4 sm:w-1/2 ml-7" />
           </CardHeader>
           <CardContent>
-            <Skeleton className="h-5 w-24 mb-4" />
-            <Skeleton className="h-10 w-full mb-2" />
-            <Skeleton className="h-10 w-full mb-2" />
-            <Skeleton className="h-10 w-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
           </CardContent>
         </Card>
-         <Card className="shadow-lg mt-4">
-          <CardHeader>
-            <Skeleton className="h-7 w-1/3 mb-1" />
-            <Skeleton className="h-5 w-1/2" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-5 w-24 mb-4" />
-            <Skeleton className="h-10 w-full mb-2" />
-          </CardContent>
-        </Card>
+        ))}
       </div>
     );
   }
@@ -208,7 +290,7 @@ export default function ExamResultsPage() {
             Results for: {examDetails.title}
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground ml-8 sm:ml-10">
-            Total Points: {examDetails.totalPoints} | Total Questions: {examDetails.totalQuestions}
+            Total Points Possible: {examDetails.totalPoints} | Total Questions: {examDetails.totalQuestions}
           </p>
         </div>
         <Button variant="outline" onClick={() => router.back()} size="sm" className="text-xs sm:text-sm w-full sm:w-auto">
@@ -227,7 +309,7 @@ export default function ExamResultsPage() {
         </Card>
       )}
 
-      {groupedStudentScores.map(({ classInfo, students }) => (
+      {groupedStudentScores.map(({ classInfo, students }, classIdx) => (
         <Card key={classInfo.id} className="shadow-lg">
           <CardHeader>
             <CardTitle className="text-lg sm:text-xl flex items-center">
@@ -243,19 +325,41 @@ export default function ExamResultsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[60%] px-2 sm:px-4 text-xs sm:text-sm">Student Name</TableHead>
-                    <TableHead className="text-right px-2 sm:px-4 text-xs sm:text-sm">Score</TableHead>
+                    <TableHead className="w-[45%] px-2 sm:px-4 text-xs sm:text-sm">Student Name</TableHead>
+                    <TableHead className="w-[30%] text-center px-2 sm:px-4 text-xs sm:text-sm">Score</TableHead>
+                    <TableHead className="w-[25%] text-right px-2 sm:px-4 text-xs sm:text-sm">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {students.map((student) => (
+                  {students.map((student, studentIdx) => (
                     <TableRow key={student.id}>
-                      <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-3">
+                      <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-3 align-middle">
                         {student.lastName}, {student.firstName} {student.middleName && `${student.middleName.charAt(0)}.`}
                       </TableCell>
-                      <TableCell className="text-right px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-3">
-                        {/* Placeholder for score - replace with actual score data when available */}
-                        {student.score !== undefined ? student.score : 'N/A'} 
+                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm py-1.5 sm:py-2 align-middle">
+                        <Input
+                          type="text" // Use text to allow empty string, parse to number on save
+                          placeholder={`Score / ${examDetails.totalPoints}`}
+                          value={student.currentScoreInput ?? ''}
+                          onChange={(e) => handleScoreInputChange(classIdx, studentIdx, e.target.value)}
+                          className="h-8 sm:h-9 text-xs sm:text-sm text-center w-full max-w-[120px] mx-auto"
+                          disabled={student.isSavingScore}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right px-2 sm:px-4 text-xs sm:text-sm py-1.5 sm:py-2 align-middle">
+                        <Button
+                          size="sm"
+                          onClick={() => handleSaveScore(classIdx, studentIdx)}
+                          disabled={student.isSavingScore}
+                          className="h-8 sm:h-9 text-2xs sm:text-xs px-2 sm:px-3"
+                        >
+                          {student.isSavingScore ? (
+                            <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                          ) : (
+                            <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                          )}
+                           <span className="hidden sm:inline ml-1 sm:ml-1.5">Save</span>
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -270,4 +374,3 @@ export default function ExamResultsPage() {
     </div>
   );
 }
-

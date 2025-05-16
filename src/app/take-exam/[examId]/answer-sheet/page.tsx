@@ -77,6 +77,7 @@ export default function AnswerSheetPage() {
   const [selectedClassNameFromSession, setSelectedClassNameFromSession] = useState<string | null>(null);
   const [selectedSubjectIdForExamFromSession, setSelectedSubjectIdForExamFromSession] = useState<string | null>(null);
 
+
   const [studentsInClass, setStudentsInClass] = useState<Student[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   
@@ -109,6 +110,7 @@ export default function AnswerSheetPage() {
         const cachedClassName = sessionStorage.getItem(`selectedClassName-${examId}`);
         const cachedSubjectId = sessionStorage.getItem(`selectedSubjectIdForExam-${examId}`);
 
+
         if (cachedExamDataString) {
           localExamData = JSON.parse(cachedExamDataString);
           setExamToDisplay(localExamData);
@@ -125,16 +127,15 @@ export default function AnswerSheetPage() {
           setIsLoading(false);
           return;
         }
-
         if (cachedClassName) {
           setSelectedClassNameFromSession(cachedClassName);
         }
-         if (cachedSubjectId) {
+        if (cachedSubjectId) {
           setSelectedSubjectIdForExamFromSession(cachedSubjectId);
         } else {
-          setError("Selected subject information for the exam not found. Please return to the exam start page.");
-          setIsLoading(false);
-          return;
+           setError("Selected subject information for the exam not found. Please return to the exam start page.");
+           setIsLoading(false);
+           return;
         }
 
 
@@ -180,10 +181,10 @@ export default function AnswerSheetPage() {
 
   useEffect(() => {
     const fetchStudents = async () => {
-      if (!selectedClassIdFromSession || !selectedSubjectIdForExamFromSession) { 
-        if (examToDisplay && !selectedSubjectIdForExamFromSession) {
-             setStudentDetailsError("Exam configuration is missing subject ID, cannot fetch student list.");
-        }
+      if (!selectedClassIdFromSession || !selectedSubjectIdForExamFromSession) {
+         if (examToDisplay && !selectedSubjectIdForExamFromSession) {
+            setStudentDetailsError("Exam configuration is missing subject ID, cannot fetch student list.");
+         }
         setIsLoadingStudents(false);
         setIsLoading(false);
         return;
@@ -196,7 +197,7 @@ export default function AnswerSheetPage() {
         const querySnapshot = await getDocs(q);
         const fetchedStudents: Student[] = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Student));
         setStudentsInClass(fetchedStudents);
-        if (fetchedStudents.length === 0) {
+         if (fetchedStudents.length === 0) {
             setStudentDetailsError("No students found for the selected class. Please check with your instructor.");
         }
       } catch (e) {
@@ -541,8 +542,8 @@ export default function AnswerSheetPage() {
                           const matchingQ = question as MatchingTypeQuestion;
                           const premiseText = matchingQ.pairs[0]?.premise || "Missing premise";
                           return (
-                            <div key={question.id} className="mb-4 pl-4 flex items-center gap-2 sm:gap-3">
-                              <p className="font-medium text-sm sm:text-base w-10 text-right">{displayLabel}.</p>
+                            <div key={question.id} className="mb-4 pl-2 flex items-center gap-2 sm:gap-3"> {/* Reduced pl-4 to pl-2 */}
+                              <p className="font-medium text-sm sm:text-base w-10 text-right shrink-0">{displayLabel}.</p>
                               <p className="font-medium text-sm sm:text-base flex-grow">{premiseText}</p>
                               <Input
                                 type="text"
@@ -663,3 +664,4 @@ export default function AnswerSheetPage() {
     </div>
   );
 }
+

@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { Sheet, SheetContent, SheetTrigger as RadixSheetTrigger } from "@/components/ui/sheet"
+import { Sheet, SheetContent } from "@/components/ui/sheet" // Removed SheetTrigger import as it's handled by SidebarTrigger
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
@@ -22,14 +22,14 @@ import {
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
-const SIDEBAR_WIDTH_ICON = "3.5rem";
+const SIDEBAR_WIDTH_ICON = "3.5rem"; // Adjusted from 3rem for slightly more space
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 type SidebarContextValue = {
   state: "expanded" | "collapsed";
-  open: boolean; // Desktop sidebar open state
+  open: boolean;
   setOpen: (open: boolean) => void;
-  openMobile: boolean; // Mobile sidebar sheet open state
+  openMobile: boolean;
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean | null;
   toggleSidebar: () => void;
@@ -49,15 +49,12 @@ const SidebarProvider = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
     defaultOpen?: boolean;
-    open?: boolean;
-    onOpenChange?: (open: boolean) => void;
+    // Removed open and onOpenChange props as state is managed internally with cookie
   }
 >(
   (
     {
       defaultOpen = true,
-      open: openProp,
-      onOpenChange: setOpenProp,
       className,
       style,
       children,
@@ -66,32 +63,24 @@ const SidebarProvider = React.forwardRef<
     ref
   ) => {
     const isMobileHookValue = useIsMobile();
+    const [open, setOpen] = React.useState(defaultOpen);
     const [openMobile, setOpenMobile] = React.useState(false);
-    
-    const [_open, _setOpen] = React.useState(defaultOpen);
-    const open = openProp ?? _open;
 
-    const setOpen = React.useCallback(
-      (value: boolean | ((currentOpen: boolean) => boolean)) => {
-        const newOpenState = typeof value === 'function' ? value(open) : value;
-        if (setOpenProp) {
-          setOpenProp(newOpenState);
-        } else {
-          _setOpen(newOpenState);
-        }
-      },
-      [setOpenProp, open]
-    );
-
-    // Initialize open state from defaultOpen on mount
+    // Cookie persistence for desktop sidebar state
     React.useEffect(() => {
-      if (setOpenProp) {
-        setOpenProp(defaultOpen);
-      } else {
-        _setOpen(defaultOpen);
+      if (isMobileHookValue === false) { // Only apply cookie logic on desktop
+        const storedState = localStorage.getItem("sidebar-open");
+        if (storedState !== null) {
+          setOpen(JSON.parse(storedState));
+        }
       }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [defaultOpen, setOpenProp]);
+    }, [isMobileHookValue]);
+
+    React.useEffect(() => {
+      if (isMobileHookValue === false) {
+        localStorage.setItem("sidebar-open", JSON.stringify(open));
+      }
+    }, [open, isMobileHookValue]);
 
 
     const toggleSidebar = React.useCallback(() => {
@@ -136,11 +125,18 @@ const SidebarProvider = React.forwardRef<
       if (wrapper) {
         if (isMobileHookValue) {
           wrapper.classList.add('is-mobile');
+          wrapper.removeAttribute('data-sidebar-collapsed'); // Ensure no collapsed state on mobile
         } else {
           wrapper.classList.remove('is-mobile');
+          if (!open) {
+            wrapper.setAttribute('data-sidebar-collapsed', 'true');
+          } else {
+            wrapper.removeAttribute('data-sidebar-collapsed');
+          }
         }
       }
-    }, [isMobileHookValue]);
+    }, [isMobileHookValue, open]);
+
 
     return (
       <SidebarContext.Provider value={contextValue}>
@@ -156,7 +152,6 @@ const SidebarProvider = React.forwardRef<
             }
             className={cn(
               "group/sidebar-provider flex min-h-svh w-full",
-              open && isMobileHookValue === false ? "" : "data-[sidebar-collapsed=true]",
               className
             )}
             ref={ref}
@@ -192,12 +187,12 @@ const Sidebar = React.forwardRef<
   ) => {
     const { isMobile, state, open, openMobile, setOpenMobile } = useSidebar();
 
-    // Initial render (SSR or client before isMobile is determined)
     if (isMobile === null) {
-      // Render a basic structure consistent with desktop, using 'open' (which is defaultOpen on server)
+      // Initial render (SSR or client before isMobile is determined)
+      // Render a basic structure consistent with desktop, using 'open' (which is defaultOpen from provider)
       const serverState = open ? "expanded" : "collapsed";
       const initialClasses = cn(
-        "fixed inset-y-0 z-20 flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border transition-all duration-300 ease-in-out",
+        "fixed inset-y-0 z-20 flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border", // No transition for initial render
         side === "left" ? "border-r" : "border-l",
         open ? "w-[var(--sidebar-width)]" : "w-[var(--sidebar-width-icon)]",
         variant === "floating" && "shadow-lg m-2 rounded-lg h-[calc(100vh-1rem)]",
@@ -208,21 +203,19 @@ const Sidebar = React.forwardRef<
         <aside 
           ref={ref} 
           className={initialClasses} 
-          data-state={serverState}
+          data-state={serverState} // Use state derived from defaultOpen
           data-collapsible-type={collapsible}
           data-variant={variant}
           {...props}
         >
-          {children}
+          {children} {/* Render children so their structure is present */}
         </aside>
       );
     }
 
-    // Client-side rendering
     if (isMobile) {
       return (
         <Sheet open={openMobile} onOpenChange={setOpenMobile}>
-          {/* The trigger is typically handled by AppTopBar or elsewhere */}
           <SheetContent
             side={side}
             className="w-[var(--sidebar-width-mobile)] bg-sidebar text-sidebar-foreground flex flex-col p-0"
@@ -244,7 +237,7 @@ const Sidebar = React.forwardRef<
       className
     );
     
-    if (variant === 'inset') {
+    if (variant === 'inset') { // This case might need more specific handling if "inset" is used differently
        return (
          <aside
             ref={ref}
@@ -286,10 +279,8 @@ const SidebarTrigger = React.forwardRef<
 >(({ className, onClick, ...props }, ref) => {
   const { toggleSidebar, isMobile, openMobile, state } = useSidebar();
 
-  // On the server, or if isMobile is still null, don't render the trigger
-  // as its behavior depends on client-side state.
-  if (isMobile === null) {
-    return null; // Or a placeholder/skeleton if needed
+  if (isMobile === null) { // Don't render on server / initial client if behavior depends on client state
+    return null;
   }
 
   return (
@@ -303,7 +294,7 @@ const SidebarTrigger = React.forwardRef<
         toggleSidebar();
       }}
       aria-expanded={isMobile ? openMobile : state === 'expanded'}
-      aria-controls={isMobile ? undefined : "app-sidebar-content"} // Adjust aria-controls if needed
+      aria-controls={isMobile ? undefined : "app-sidebar-content"}
       {...props}
     >
       <PanelLeft />
@@ -319,7 +310,7 @@ const SidebarRail = React.forwardRef<
 >(({ className, ...props }, ref) => {
   const { toggleSidebar, isMobile } = useSidebar();
 
-  if (isMobile) return null; // Only for desktop
+  if (isMobile === null || isMobile) return null;
 
   return (
     <button
@@ -366,8 +357,7 @@ const SidebarInput = React.forwardRef<
 >(({ className, ...props }, ref) => {
   const { state, isMobile } = useSidebar();
 
-  if (isMobile === null) return <Skeleton className={cn("h-8 w-full", state === 'collapsed' && "sr-only", className)} />;
-  if (isMobile) return null; // Inputs typically not in mobile sheet navigation
+  if (isMobile === null || isMobile) return null; 
 
   return (
     <Input
@@ -469,8 +459,7 @@ const SidebarGroupLabel = React.forwardRef<
   const Comp = asChild ? Slot : "div";
   const { state, isMobile } = useSidebar();
 
-  if (isMobile) return null; // Group labels often not needed in simple mobile lists
-  if (state === 'collapsed') return null; // Hide when collapsed on desktop
+  if (isMobile === null || isMobile || state === 'collapsed') return null;
 
   return (
     <Comp
@@ -493,7 +482,7 @@ const SidebarGroupAction = React.forwardRef<
   const Comp = asChild ? Slot : "button";
   const { state, isMobile } = useSidebar();
 
-  if (isMobile || state === 'collapsed') return null;
+  if (isMobile === null || isMobile || state === 'collapsed') return null;
 
   return (
     <Comp
@@ -600,18 +589,17 @@ const SidebarMenuButton = React.forwardRef<
     const Comp = asChild ? Slot : "button";
     const { isMobile, state } = useSidebar();
 
-    const isActuallyCollapsed = !isMobile && state === 'collapsed';
-
-    // If initial render and not asChild, or isMobile is null, show skeleton or nothing.
-    // This part might need careful handling to avoid hydration with asChild.
-    if (isMobile === null && !asChild) {
-        return <Skeleton className={cn(sidebarMenuButtonVariants({size, className: "bg-muted/50" }), isActuallyCollapsed && "w-[var(--sidebar-width-icon)] h-[var(--sidebar-width-icon)] px-0")} />;
-    }
-    if (isMobile === null && asChild) {
-        // For asChild, render children but make them non-interactive/invisible until mount to maintain structure.
+    // If isMobile is null (SSR or initial client render), render a skeleton or non-interactive version
+    if (isMobile === null) {
+      const isActuallyCollapsed = state === 'collapsed'; // Based on defaultOpen on server
+      if (asChild) {
+        // Render children but make them non-interactive/invisible to preserve structure
         return <Comp ref={ref} {...props} className={cn(className, "opacity-0 pointer-events-none")}>{children}</Comp>;
+      }
+      return <Skeleton className={cn(sidebarMenuButtonVariants({size, className: "bg-muted/50" }), isActuallyCollapsed && "w-[var(--sidebar-width-icon)] h-[var(--sidebar-width-icon)] px-0")} />;
     }
-
+    
+    const isActuallyCollapsed = !isMobile && state === 'collapsed';
 
     const buttonContent = (
       <Comp
@@ -747,7 +735,7 @@ const SidebarMenuSub = React.forwardRef<
 >(({ className, ...props }, ref) => {
   const { state, isMobile } = useSidebar();
 
-  if (isMobile || state === 'collapsed') return null;
+  if (isMobile === null || isMobile || state === 'collapsed') return null;
 
   return (
   <ul
@@ -779,7 +767,7 @@ const SidebarMenuSubButton = React.forwardRef<
   const Comp = asChild ? Slot : "a";
   const { state, isMobile } = useSidebar();
 
-  if (isMobile || state === 'collapsed') return null;
+  if (isMobile === null || isMobile || state === 'collapsed') return null;
 
   return (
     <Comp
@@ -826,4 +814,3 @@ export {
   SidebarTrigger,
   useSidebar,
 };
-

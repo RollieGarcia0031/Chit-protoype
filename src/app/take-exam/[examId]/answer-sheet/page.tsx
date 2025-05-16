@@ -15,8 +15,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { db } from '@/lib/firebase/config';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
+import { collection, getDocs, query, orderBy, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { SUBJECTS_COLLECTION_NAME, EXAMS_COLLECTION_NAME } from '@/config/firebase-constants';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 const getAlphabetLetter = (index: number): string => String.fromCharCode(65 + index);
 
@@ -68,6 +69,7 @@ export default function AnswerSheetPage() {
   const params = useParams();
   const examId = params.examId as string;
   const router = useRouter();
+  const { toast } = useToast();
 
   const [examToDisplay, setExamToDisplay] = useState<FullExamData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,6 +93,7 @@ export default function AnswerSheetPage() {
   const [unansweredQuestionsList, setUnansweredQuestionsList] = useState<string[]>([]);
   const [currentTimeForDialog, setCurrentTimeForDialog] = useState('');
   const [studentInfoForDialog, setStudentInfoForDialog] = useState<{ name: string; className: string; } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
 
   useEffect(() => {
@@ -122,9 +125,8 @@ export default function AnswerSheetPage() {
           return;
         }
         if (cachedClassName) {
-            setSelectedClassNameFromSession(cachedClassName);
+          setSelectedClassNameFromSession(cachedClassName);
         }
-
 
         const localStorageKey = getLocalStorageKey(examId);
         if (localStorageKey) {
@@ -279,20 +281,40 @@ export default function AnswerSheetPage() {
     setIsSubmitConfirmDialogOpen(true);
   };
 
-  const handleActualExamSubmit = () => {
-    // Placeholder for future submission logic
-    console.log("Selected Student ID:", selectedStudentIdFromDropdown);
-    console.log("Entered First Name:", enteredFirstName);
-    console.log("Entered Last Name:", enteredLastName);
-    console.log("Student Answers:", studentAnswers);
-    
-    // TODO: Clear local storage on successful submission
-    // const localStorageKey = getLocalStorageKey(examId);
-    // if (localStorageKey) localStorage.removeItem(localStorageKey);
+  const handleActualExamSubmit = async () => {
+    if (!examId || !selectedStudentIdFromDropdown || !selectedClassIdFromSession) {
+        toast({ title: "Error", description: "Missing information to submit.", variant: "destructive" });
+        return;
+    }
+    setIsSubmitting(true);
+    try {
+        const submissionData = {
+            examId,
+            studentId: selectedStudentIdFromDropdown,
+            classId: selectedClassIdFromSession,
+            answers: studentAnswers,
+            submittedAt: serverTimestamp() as Timestamp,
+        };
+        const submissionsRef = collection(db, EXAMS_COLLECTION_NAME, examId, "studentSubmissions");
+        await addDoc(submissionsRef, submissionData);
 
-    alert("Exam submitted! (This is a placeholder - actual submission logic to be implemented). Your progress (including name and answers) is saved locally in your browser. Details logged to console.");
-    setIsSubmitConfirmDialogOpen(false);
-    // router.push(`/some-confirmation-page/${examId}`); // Or redirect
+        const localStorageKey = getLocalStorageKey(examId);
+        if (localStorageKey) {
+            localStorage.removeItem(localStorageKey);
+        }
+
+        toast({ title: "Exam Submitted", description: "Your answers have been successfully submitted." });
+        setIsSubmitConfirmDialogOpen(false);
+        // Consider redirecting or clearing form/answers
+        // For now, just clear local storage and close dialog.
+        setStudentAnswers({}); // Clear answers from state
+        // router.push(`/submission-success/${examId}`); 
+    } catch (e) {
+        console.error("Error submitting exam:", e);
+        toast({ title: "Submission Failed", description: "There was an error submitting your exam. Please try again.", variant: "destructive" });
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   if (isLoading) {
@@ -555,8 +577,9 @@ export default function AnswerSheetPage() {
             onClick={handleOpenSubmitConfirmDialog} 
             size="lg" 
             className="w-full sm:w-auto mx-auto"
-            disabled={!isNameConfirmed || isLoading || isLoadingStudents}
+            disabled={!isNameConfirmed || isLoading || isLoadingStudents || isSubmitting}
           >
+            {isSubmitting && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
             <Send className="mr-2 h-5 w-5" />
             Submit Exam
           </Button>
@@ -593,8 +616,11 @@ export default function AnswerSheetPage() {
             )}
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleActualExamSubmit}>
+            <AlertDialogCancel onClick={() => setIsSubmitConfirmDialogOpen(false)} disabled={isSubmitting}>
+                Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleActualExamSubmit} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Confirm Submit
             </AlertDialogAction>
           </AlertDialogFooter>

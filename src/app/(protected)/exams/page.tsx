@@ -311,13 +311,11 @@ export default function ViewExamsPage() {
     }
   };
 
-  const handlePublishExam = () => {
-    // Placeholder for publish functionality
-    toast({
-      title: "Feature Coming Soon",
-      description: "The 'Publish Exam' feature is not yet implemented.",
-    });
-    handleCloseOptionsDialog();
+  const handleNavigateToPublish = () => {
+    if (selectedExamForOptions) {
+      router.push(`/exams/${selectedExamForOptions.id}/publish`);
+      handleCloseOptionsDialog();
+    }
   };
 
   const renderExamTable = (examList: ExamSummaryData[], context: string) => {
@@ -583,9 +581,9 @@ export default function ViewExamsPage() {
                         <BarChart3 className="mr-2 h-4 w-4" />
                         View Scores
                     </Button>
-                    <Button variant="default" onClick={handlePublishExam} size="sm" className="text-xs sm:text-sm">
+                    <Button variant="default" onClick={handleNavigateToPublish} size="sm" className="text-xs sm:text-sm">
                         <Send className="mr-2 h-4 w-4" />
-                        Publish Exam (Soon)
+                        Publish Exam
                     </Button>
                 </div>
                 <DialogFooter className="sm:justify-start">

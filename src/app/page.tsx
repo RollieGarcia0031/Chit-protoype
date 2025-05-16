@@ -2,7 +2,7 @@
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, UserCircle2 } from "lucide-react";
 
 export default function HomePage() {
   return (
@@ -87,6 +87,29 @@ export default function HomePage() {
         <p className="text-sm sm:text-base md:text-lg text-muted-foreground">
          Seamlessly get AI suggestions for smarter exams, while keeping your data safe with Firebase&apos;s secure platform.
         </p>
+      </section>
+
+      {/* Founder Section */}
+      <section className="w-full max-w-3xl py-6 sm:py-8 px-4 sm:px-6">
+        <h2 className="text-xl sm:text-2xl md:text-3xl font-semibold mb-3 sm:mb-4 text-foreground">
+          Meet the Founder
+        </h2>
+        <Link 
+          href="https://angelo-rollie.vercel.app/" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="inline-flex flex-col sm:flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-card rounded-lg shadow-sm hover:shadow-md transition-shadow group"
+        >
+          <UserCircle2 className="h-16 w-16 sm:h-20 sm:w-20 text-primary group-hover:text-primary/80 transition-colors" />
+          <div className="text-center sm:text-left">
+            <h3 className="text-lg sm:text-xl font-medium text-card-foreground group-hover:text-primary transition-colors">
+              Rollie Garcia
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Creator of Chit
+            </p>
+          </div>
+        </Link>
       </section>
 
       {/* Call to Action Section */}

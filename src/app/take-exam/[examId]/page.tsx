@@ -2,17 +2,17 @@
 // src/app/take-exam/[examId]/page.tsx
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState, useMemo } from 'react';
-import { doc, getDoc, collection, getDocs, query, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, Timestamp, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
-import type { ExamSummaryData, ExamAssignment, ClassInfoForDropdown } from '@/types/exam-types';
+import type { FullExamData, ExamAssignment, ClassInfoForDropdown, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, PooledChoicesQuestion, ExamBlock } from '@/types/exam-types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, AlertTriangle, Info, Clock } from 'lucide-react';
+import { FileText, AlertTriangle, Info, Clock, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ClassForSelection {
@@ -20,11 +20,38 @@ interface ClassForSelection {
   name: string; // e.g., "Section A (Grade 10)"
 }
 
-export default function TakeExamPage() {
+function sanitizeExamDataForStudent(fullExamData: FullExamData): FullExamData {
+  const sanitizedBlocks = fullExamData.examBlocks.map(block => {
+    const sanitizedQuestions = block.questions.map(question => {
+      const baseSanitizedQuestion = { ...question };
+      if (question.type === 'multiple-choice') {
+        (baseSanitizedQuestion as MultipleChoiceQuestion).options = (question as MultipleChoiceQuestion).options.map(opt => ({ ...opt, isCorrect: false }));
+      } else if (question.type === 'true-false') {
+        (baseSanitizedQuestion as TrueFalseQuestion).correctAnswer = null;
+      } else if (question.type === 'matching') {
+        // For matching, students need to see both premises and responses.
+        // The 'correctness' is determined by their matching activity.
+        // No direct answer to remove here from the core question data.
+      } else if (question.type === 'pooled-choices') {
+        // Students need the choice pool (on the block) but not the direct answer for each question.
+        (baseSanitizedQuestion as PooledChoicesQuestion).correctAnswersFromPool = [];
+      }
+      // Remove points if not needed by student, or keep for student reference
+      // delete baseSanitizedQuestion.points; // Example: if points are not for student view
+      return baseSanitizedQuestion;
+    });
+    return { ...block, questions: sanitizedQuestions as ExamQuestion[] }; // Ensure type cast
+  });
+  return { ...fullExamData, examBlocks: sanitizedBlocks as ExamBlock[] }; // Ensure type cast
+}
+
+
+export default function TakeExamLandingPage() {
   const params = useParams();
   const examId = params.examId as string;
+  const router = useRouter();
 
-  const [examDetails, setExamDetails] = useState<ExamSummaryData | null>(null);
+  const [examDetails, setExamDetails] = useState<FullExamData | null>(null);
   const [isLoadingExam, setIsLoadingExam] = useState(true);
   const [examError, setExamError] = useState<string | null>(null);
 
@@ -37,36 +64,64 @@ export default function TakeExamPage() {
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [accessMessage, setAccessMessage] = useState<string | null>(null);
   const [isExamTime, setIsExamTime] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date()); // For re-checking time
+  const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Fetch exam details
+  // Fetch full exam details (including blocks and questions)
   useEffect(() => {
     if (examId) {
-      const fetchExamDetails = async () => {
+      const fetchFullExamDetails = async () => {
         setIsLoadingExam(true);
         setExamError(null);
         try {
           const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examId);
           const examSnap = await getDoc(examDocRef);
+
           if (examSnap.exists()) {
-            const data = examSnap.data() as ExamSummaryData;
+            const data = examSnap.data() as Omit<FullExamData, 'id' | 'examBlocks'>;
             if (data.status !== 'Published') {
               setExamError("This exam is not currently published or active.");
               setExamDetails(null);
-            } else {
-              setExamDetails({ id: examSnap.id, ...data });
+              return;
             }
+
+            const loadedBlocks: ExamBlock[] = [];
+            const blocksCollectionRef = collection(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks");
+            const blocksQuery = query(blocksCollectionRef, orderBy("orderIndex"));
+            const blocksSnapshot = await getDocs(blocksQuery);
+
+            for (const blockDoc of blocksSnapshot.docs) {
+              const blockData = blockDoc.data();
+              const loadedQuestions: ExamQuestion[] = [];
+              const questionsCollectionRef = collection(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks", blockDoc.id, "questions");
+              const questionsQuery = query(questionsCollectionRef, orderBy("orderIndex"));
+              const questionsSnapshot = await getDocs(questionsQuery);
+
+              questionsSnapshot.forEach(questionDocSnap => {
+                loadedQuestions.push({ id: questionDocSnap.id, ...questionDocSnap.data() } as ExamQuestion);
+              });
+              loadedBlocks.push({ id: blockDoc.id, ...blockData, questions: loadedQuestions } as ExamBlock);
+            }
+            
+            const fullExamData: FullExamData = { id: examSnap.id, ...data, examBlocks: loadedBlocks };
+            setExamDetails(fullExamData);
+
+            // Sanitize and cache data for student
+            if (typeof window !== 'undefined' && fullExamData.status === 'Published') {
+              const sanitizedData = sanitizeExamDataForStudent(fullExamData);
+              sessionStorage.setItem(`examData-${examId}`, JSON.stringify(sanitizedData));
+            }
+
           } else {
             setExamError("Exam not found. The link may be invalid or the exam may have been removed.");
           }
         } catch (e) {
-          console.error("Error fetching exam details:", e);
+          console.error("Error fetching full exam details:", e);
           setExamError("An error occurred while trying to load the exam details.");
         } finally {
           setIsLoadingExam(false);
         }
       };
-      fetchExamDetails();
+      fetchFullExamDetails();
     } else {
       setExamError("No exam ID provided.");
       setIsLoadingExam(false);
@@ -95,18 +150,17 @@ export default function TakeExamPage() {
       };
       fetchAssignments();
     } else {
-      setIsLoadingAssignments(false); // No need to load if exam not published or no details
+      setIsLoadingAssignments(false);
     }
-  }, [examId, examDetails]);
+  }, [examId, examDetails?.status]);
 
-  // Populate available classes for selection based on fetched assignments and exam subject
+  // Populate available classes for selection
   useEffect(() => {
     if (assignments.length > 0 && examDetails?.subjectId) {
       const fetchClassDetailsForAssignments = async () => {
         setIsLoadingClassDetails(true);
         const classSelectionPromises = assignments.map(async (assignment) => {
           try {
-            // Assumption: All classes assigned to an exam belong to the exam's primary subjectId.
             const classDocRef = doc(db, SUBJECTS_COLLECTION_NAME, examDetails.subjectId!, "classes", assignment.classId);
             const classSnap = await getDoc(classDocRef);
             if (classSnap.exists()) {
@@ -123,7 +177,6 @@ export default function TakeExamPage() {
         });
 
         const results = (await Promise.all(classSelectionPromises)).filter(Boolean) as ClassForSelection[];
-        // Deduplicate based on class ID, in case an exam was assigned to the same class multiple times (though UI should prevent this)
         const uniqueResults = results.filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
         setAvailableClassesForSelection(uniqueResults);
         setIsLoadingClassDetails(false);
@@ -139,7 +192,6 @@ export default function TakeExamPage() {
     }
   }, [assignments, examDetails?.subjectId]);
 
-
   // Check schedule when selectedClassId or assignments change
   useEffect(() => {
     if (!selectedClassId || assignments.length === 0) {
@@ -147,7 +199,7 @@ export default function TakeExamPage() {
       if (selectedClassId && assignments.length > 0 && !isLoadingAssignments && !isLoadingClassDetails) {
         setAccessMessage("No schedule found for the selected class.");
       } else if (selectedClassId && (isLoadingAssignments || isLoadingClassDetails)) {
-        setAccessMessage("Loading schedule information...");
+        // Handled by main loading indicator
       } else {
         setAccessMessage(null);
       }
@@ -157,12 +209,12 @@ export default function TakeExamPage() {
     const assignment = assignments.find(a => a.classId === selectedClassId);
     if (assignment && assignment.assignedDateTime) {
       const assignedTime = assignment.assignedDateTime.toDate();
-      const now = new Date(); // Use current time for comparison
-      setCurrentTime(now); // Update currentTime state for potential re-renders
+      const now = new Date();
+      setCurrentTime(now);
 
       if (now >= assignedTime) {
         setIsExamTime(true);
-        setAccessMessage(null);
+        setAccessMessage(null); // Clear previous messages
       } else {
         setIsExamTime(false);
         setAccessMessage(`This exam is scheduled for your class on ${format(assignedTime, "PPP 'at' p")}. Please return at that time.`);
@@ -173,7 +225,7 @@ export default function TakeExamPage() {
     }
   }, [selectedClassId, assignments, isLoadingAssignments, isLoadingClassDetails]);
 
-  // Effect to periodically re-check time if exam is not yet active but a schedule exists
+  // Periodically re-check time
   useEffect(() => {
     if (!isExamTime && accessMessage && accessMessage.startsWith("This exam is scheduled")) {
       const interval = setInterval(() => {
@@ -188,31 +240,25 @@ export default function TakeExamPage() {
             clearInterval(interval);
           }
         } else {
-          clearInterval(interval); // Clear if assignment or selectedClassId changes
+          clearInterval(interval);
         }
-      }, 30000); // Check every 30 seconds
+      }, 30000);
       return () => clearInterval(interval);
     }
   }, [isExamTime, accessMessage, assignments, selectedClassId]);
 
   const handleStartExam = () => {
-    // Placeholder for actual exam start logic
-    alert("Starting exam... (Feature in development)");
+    if (examId && isExamTime && selectedClassId) {
+      router.push(`/take-exam/${examId}/answer-sheet`);
+    }
   };
 
   if (isLoadingExam) {
     return (
       <main className="flex flex-col items-center justify-center min-h-screen p-4">
         <Card className="w-full max-w-2xl shadow-xl">
-          <CardHeader className="text-center">
-            <Skeleton className="h-8 w-3/4 mx-auto mb-2" />
-            <Skeleton className="h-5 w-1/2 mx-auto" />
-          </CardHeader>
-          <CardContent className="py-10 text-center space-y-4">
-            <Skeleton className="h-10 w-full max-w-xs mx-auto" /> {/* Class select placeholder */}
-            <Skeleton className="h-6 w-2/3 mx-auto" /> {/* Message placeholder */}
-            <Skeleton className="h-12 w-1/2 mx-auto" /> {/* Button placeholder */}
-          </CardContent>
+          <CardHeader className="text-center"> <Skeleton className="h-8 w-3/4 mx-auto mb-2" /> <Skeleton className="h-5 w-1/2 mx-auto" /> </CardHeader>
+          <CardContent className="py-10 text-center space-y-4"> <Skeleton className="h-10 w-full max-w-xs mx-auto" /> <Skeleton className="h-6 w-2/3 mx-auto" /> <Skeleton className="h-12 w-1/2 mx-auto" /> </CardContent>
         </Card>
       </main>
     );
@@ -233,46 +279,29 @@ export default function TakeExamPage() {
       <main className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
         <FileText className="h-16 w-16 text-muted-foreground mb-4" />
         <h1 className="text-2xl font-bold mb-2">Exam Not Available</h1>
-        <p className="text-muted-foreground">The requested exam could not be loaded.</p>
+        <p className="text-muted-foreground">The requested exam could not be loaded or is not published.</p>
       </main>
     );
   }
+
+  const isPageLoading = isLoadingAssignments || isLoadingClassDetails;
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-4">
       <Card className="w-full max-w-3xl shadow-xl">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl sm:text-3xl font-bold text-primary">
-            {examDetails.title}
-          </CardTitle>
-          {examDetails.description && (
-            <CardDescription className="text-sm sm:text-base text-muted-foreground mt-2">
-              {examDetails.description}
-            </CardDescription>
-          )}
-          <CardDescription className="text-xs sm:text-sm text-muted-foreground/80 mt-1">
-            Total Points: {examDetails.totalPoints} | Total Questions: {examDetails.totalQuestions}
-          </CardDescription>
+          <CardTitle className="text-2xl sm:text-3xl font-bold text-primary"> {examDetails.title} </CardTitle>
+          {examDetails.description && ( <CardDescription className="text-sm sm:text-base text-muted-foreground mt-2"> {examDetails.description} </CardDescription> )}
+          <CardDescription className="text-xs sm:text-sm text-muted-foreground/80 mt-1"> Total Points: {examDetails.totalPoints} | Total Questions: {examDetails.totalQuestions} </CardDescription>
         </CardHeader>
         <CardContent className="py-8 sm:py-10 text-center space-y-4">
-          {isLoadingAssignments || isLoadingClassDetails ? (
-            <>
-              <Skeleton className="h-10 w-full max-w-xs mx-auto" />
-              <Skeleton className="h-5 w-1/2 mx-auto" />
-            </>
+          {isPageLoading ? (
+            <> <Skeleton className="h-10 w-full max-w-xs mx-auto" /> <Skeleton className="h-5 w-1/2 mx-auto" /> </>
           ) : availableClassesForSelection.length > 0 ? (
             <div className="w-full max-w-xs mx-auto">
-              <Select onValueChange={setSelectedClassId} value={selectedClassId || undefined}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select your class section" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableClassesForSelection.map((cls) => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+              <Select onValueChange={setSelectedClassId} value={selectedClassId || undefined} disabled={isPageLoading}>
+                <SelectTrigger className="w-full"> <SelectValue placeholder="Select your class section" /> </SelectTrigger>
+                <SelectContent> {availableClassesForSelection.map((cls) => ( <SelectItem key={cls.id} value={cls.id}> {cls.name} </SelectItem> ))} </SelectContent>
               </Select>
             </div>
           ) : (
@@ -282,7 +311,7 @@ export default function TakeExamPage() {
             </div>
           )}
 
-          {accessMessage && (
+          {accessMessage && !isPageLoading && (
             <div className={`p-3 border rounded-md text-sm ${isExamTime ? 'border-green-500 bg-green-50 text-green-700' : 'border-amber-500 bg-amber-50 text-amber-700'} flex items-center justify-center`}>
               <Clock className="h-5 w-5 mr-2" />
               <span>{accessMessage}</span>
@@ -293,18 +322,14 @@ export default function TakeExamPage() {
             size="lg"
             className="bg-primary hover:bg-primary/90 text-primary-foreground mt-4"
             onClick={handleStartExam}
-            disabled={!isExamTime || !selectedClassId || isLoadingAssignments || isLoadingClassDetails || isLoadingExam}
+            disabled={!isExamTime || !selectedClassId || isPageLoading || isLoadingExam}
           >
+            {isLoadingExam || isPageLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
             Start Exam
           </Button>
         </CardContent>
-        <CardFooter className="text-center justify-center">
-          <p className="text-xs text-muted-foreground">
-            Current time: {format(currentTime, "PPP p")}
-          </p>
-        </CardFooter>
+        <CardFooter className="text-center justify-center"> <p className="text-xs text-muted-foreground"> Current time: {format(currentTime, "PPP p")} </p> </CardFooter>
       </Card>
     </main>
   );
 }
-      

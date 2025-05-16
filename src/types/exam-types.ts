@@ -43,7 +43,7 @@ export interface MatchingTypeQuestion extends BaseQuestion {
 
 export interface PooledChoicesQuestion extends BaseQuestion {
   type: 'pooled-choices';
-  correctAnswersFromPool: string[];
+  correctAnswersFromPool: string[]; // Stores the TEXT of the correct answer(s) from the pool
 }
 
 export type ExamQuestion = MultipleChoiceQuestion | TrueFalseQuestion | MatchingTypeQuestion | PooledChoicesQuestion;
@@ -62,7 +62,7 @@ export interface ExamBlock {
   blockType: QuestionType;
   questions: ExamQuestion[];
   blockTitle?: string;
-  choicePool?: PoolOption[];
+  choicePool?: PoolOption[]; // For 'pooled-choices' blocks
 }
 
 export interface AssignedClassSlot { // Used in create-exam page for UI state
@@ -78,7 +78,7 @@ export interface ExamSummaryData {
   updatedAt: Timestamp;
   totalQuestions: number;
   totalPoints: number;
-  status: "Draft" | "Published" | "Archived"; // Added status
+  status: "Draft" | "Published" | "Archived";
   classIds: string[];
   subjectId?: string | null;
 }
@@ -95,6 +95,7 @@ export interface ClassInfoForDropdown {
   sectionName: string;
   yearGrade: string;
   code: string; // class code (specific to the class instance)
+  studentCount?: number; // Optional: for displaying number of students
 }
 
 export interface FetchedSubjectInfo {
@@ -114,34 +115,35 @@ export interface Student {
   subjectId?: string; // The ID of the subject this student's class belongs to
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
-  tempId?: string; // Used for optimistic updates to match the student before it gets a real ID
-  isOptimistic?: boolean; // True if added to UI before DB confirmation
-  isSaving?: boolean; // True while the student data is being saved to DB
+  
+  // For optimistic UI updates when adding students
+  tempId?: string; 
+  isOptimistic?: boolean;
+  isSaving?: boolean;
   
   // Fields for exam results page
-  score?: number | null; // The last saved score for the current exam
-  currentScoreInput?: string; // Value in the input field, can be string to allow empty or non-numeric temporarily
-  isSavingScore?: boolean; // True if this student's score is currently being saved
-  scoreDocId?: string | null; // Firestore document ID of the score entry, if it exists
+  score?: number | null; 
+  currentScoreInput?: string; 
+  isSavingScore?: boolean; 
+  scoreDocId?: string | null; 
 }
 
 export interface StudentExamScore {
-  // id?: string; // Firestore document ID, optional as it's set upon creation - score doc ID is its ID
+  // id is the Firestore document ID itself
   examId: string;
   studentId: string;
   userId: string; // Teacher's ID
-  score: number | null; // Score can be null if not graded or cleared
+  score: number | null; 
   updatedAt: Timestamp;
-  createdAt?: Timestamp; // Optional, if you want to track creation time
+  createdAt?: Timestamp;
 }
 
 export interface ExamAssignment {
-  id?: string; // Firestore document ID for the assignment
+  id?: string; 
   examId: string;
   classId: string;
-  // className?: string; // For display purposes, e.g., "Math 101 - Section A" - can be derived
-  // subjectName?: string; // For display - can be derived
   assignedDateTime: Timestamp;
   status: 'Scheduled' | 'Active' | 'Completed' | 'Cancelled';
-  // Potentially add accessCode or studentLink here in the future
+  // For pre-filling on publish page, not stored in DB as part of assignment directly
+  initialAssignedDateTime?: Timestamp; 
 }

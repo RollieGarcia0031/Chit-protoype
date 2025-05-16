@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, CalendarIcon, Send, AlertTriangle, Info, Save, Loader2, Link2 } from 'lucide-react'; // Added Link2
+import { ArrowLeft, CalendarIcon, Send, AlertTriangle, Info, Save, Loader2, Link2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, set } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -177,6 +177,7 @@ export default function PublishExamPage() {
     let successCount = 0;
     let errorCount = 0;
     let changesMade = false;
+    let examActuallyPublished = false;
 
     if (assignmentMode === 'all') {
       if (!commonDate || !commonTime) {
@@ -204,6 +205,7 @@ export default function PublishExamPage() {
            successCount++; continue;
         }
         changesMade = true;
+        examActuallyPublished = true;
         const assignmentData: Omit<ExamAssignment, 'id' | 'createdAt'> = {
           examId: examDetails.id,
           classId: ca.classInfo.id,
@@ -242,6 +244,7 @@ export default function PublishExamPage() {
            successCount++; continue;
         }
         changesMade = true;
+        examActuallyPublished = true;
         const assignmentData: Omit<ExamAssignment, 'id' | 'createdAt'> = {
           examId: examDetails.id,
           classId: ca.classInfo.id,
@@ -259,11 +262,23 @@ export default function PublishExamPage() {
         } catch (e) { console.error(`Error saving individual assignment for class ${ca.classInfo.id}: `, e); errorCount++; }
       }
     }
+
+    if (examActuallyPublished && errorCount === 0) {
+        try {
+            const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examDetails.id);
+            await updateDoc(examDocRef, { status: "Published", updatedAt: serverTimestamp() });
+        } catch (e) {
+            console.error("Error updating exam status to Published: ", e);
+            toast({ title: "Status Update Failed", description: "Could not update exam status to Published.", variant: "destructive" });
+        }
+    }
+
+
     setIsSaving(false);
 
     if (successCount > 0 && errorCount === 0) {
       if (changesMade) {
-        toast({ title: "Assignments Saved", description: `Successfully saved ${successCount} class assignment(s).` });
+        toast({ title: "Assignments Saved", description: `Successfully saved ${successCount} class assignment(s). Exam status updated to Published.` });
       } else {
         toast({ title: "No Changes", description: "No changes detected in assignments." });
       }

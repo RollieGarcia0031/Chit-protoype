@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowRight, Edit3, Trash2, AlertTriangle, Loader2, Layers, BookOpen, Users2Icon, BarChart3, Send, Link2 } from "lucide-react"; // Added Link2
+import { ArrowRight, Edit3, Trash2, AlertTriangle, Loader2, Layers, BookOpen, Users2Icon, BarChart3, Send, Link2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
@@ -278,6 +278,14 @@ export default function ViewExamsPage() {
             }
             await deleteDoc(doc(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks", blockDoc.id));
         }
+        
+        // Also delete assignments subcollection
+        const assignmentsRef = collection(db, EXAMS_COLLECTION_NAME, examId, "assignments");
+        const assignmentsSnapshot = await getDocsFromServer(assignmentsRef);
+        for (const assignmentDoc of assignmentsSnapshot.docs) {
+            await deleteDoc(doc(db, EXAMS_COLLECTION_NAME, examId, "assignments", assignmentDoc.id));
+        }
+
         await deleteDoc(doc(db, EXAMS_COLLECTION_NAME, examId));
         toast({ title: "Exam Deleted", description: "The exam and its associated data have been successfully deleted." });
         setExams(prevExams => prevExams.filter(exam => exam.id !== examId));
@@ -613,3 +621,4 @@ export default function ViewExamsPage() {
     </div>
   );
 }
+

@@ -78,7 +78,7 @@ export interface ExamSummaryData {
   updatedAt: Timestamp;
   totalQuestions: number;
   totalPoints: number;
-  status: "Draft" | "Published" | "Archived";
+  status: "Draft" | "Published" | "Archived"; // Added status
   classIds: string[];
   subjectId?: string | null;
 }
@@ -126,10 +126,9 @@ export interface Student {
 }
 
 export interface StudentExamScore {
-  id?: string; // Firestore document ID, optional as it's set upon creation
+  // id?: string; // Firestore document ID, optional as it's set upon creation - score doc ID is its ID
   examId: string;
   studentId: string;
-  // classId: string; // No longer needed here, part of path in chit1_subjects/{subjectId}/classes/{classId}/scores
   userId: string; // Teacher's ID
   score: number | null; // Score can be null if not graded or cleared
   updatedAt: Timestamp;
@@ -140,8 +139,8 @@ export interface ExamAssignment {
   id?: string; // Firestore document ID for the assignment
   examId: string;
   classId: string;
-  className?: string; // For display purposes, e.g., "Math 101 - Section A"
-  subjectName?: string; // For display
+  // className?: string; // For display purposes, e.g., "Math 101 - Section A" - can be derived
+  // subjectName?: string; // For display - can be derived
   assignedDateTime: Timestamp;
   status: 'Scheduled' | 'Active' | 'Completed' | 'Cancelled';
   // Potentially add accessCode or studentLink here in the future

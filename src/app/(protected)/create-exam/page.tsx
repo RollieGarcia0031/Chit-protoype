@@ -818,7 +818,7 @@ export default function CreateExamPage() {
                 ...examCoreData,
                 userId: user.uid,
                 createdAt: serverTimestamp(),
-                status: "Draft",
+                status: "Draft", // Set default status to Draft for new exams
             });
         }
 
@@ -861,7 +861,7 @@ export default function CreateExamPage() {
             toast({ title: "Exam Updated", description: `Exam "${examTitle}" updated successfully.` });
             router.push('/exams'); 
         } else {
-            toast({ title: "Exam Saved", description: `Exam "${examTitle}" saved. Local draft cleared.` });
+            toast({ title: "Exam Saved", description: `Exam "${examTitle}" saved as Draft. Local draft cleared.` });
             resetForm(); 
         }
     } catch (e) {

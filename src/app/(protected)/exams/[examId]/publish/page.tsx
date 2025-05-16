@@ -278,7 +278,7 @@ export default function PublishExamPage() {
 
     if (successCount > 0 && errorCount === 0) {
       if (changesMade) {
-        toast({ title: "Assignments Saved", description: `Successfully saved ${successCount} class assignment(s). Exam status updated to Published.` });
+        toast({ title: "Assignments Saved & Exam Published", description: `Successfully saved ${successCount} class assignment(s). Exam status updated to Published.` });
       } else {
         toast({ title: "No Changes", description: "No changes detected in assignments." });
       }
@@ -289,7 +289,7 @@ export default function PublishExamPage() {
       toast({ title: "Saving Failed", description: `Could not save assignments for ${errorCount} class(es). Please try again.`, variant: "destructive" });
     } else if (successCount === 0 && errorCount === 0 && (assignmentMode === 'all' ? (commonDate && commonTime) : classAssignments.some(ca => ca.date && ca.time))) {
       if (changesMade) { 
-        toast({ title: "Assignments Saved", description: "All assignments were up to date or successfully saved." });
+        toast({ title: "Assignments Saved & Exam Published", description: "All assignments were up to date or successfully saved." });
       } else {
         toast({title: "No Changes", description: "No changes detected in assignments."});
       }
@@ -483,7 +483,7 @@ export default function PublishExamPage() {
           </CardContent>
           <CardFooter>
             <Button onClick={handleSaveAssignments} disabled={isSaving || classAssignments.length === 0} size="sm" className="text-xs sm:text-sm">
-              {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</> : <><Save className="mr-2 h-4 w-4" /> Save Assignments</>}
+              {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publishing...</> : <><Send className="mr-2 h-4 w-4" /> Publish</>}
             </Button>
           </CardFooter>
         </Card>

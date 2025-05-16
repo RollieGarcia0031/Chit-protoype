@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useEffect, useState } from 'react';
-import type { FullExamData, ExamBlock, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, Student, MatchingTypeQuestion } from '@/types/exam-types';
+import type { FullExamData, ExamBlock, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, Student, MatchingTypeQuestion, PooledChoicesQuestion } from '@/types/exam-types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FileText, AlertTriangle, Send, ArrowLeft, Info, UserCheck, Loader2 } from 'lucide-react';
 import { QUESTION_TYPES } from '@/types/exam-types';
@@ -17,6 +17,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { db } from '@/lib/firebase/config';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { format } from 'date-fns';
 
 const getAlphabetLetter = (index: number): string => String.fromCharCode(65 + index);
 
@@ -63,6 +74,7 @@ export default function AnswerSheetPage() {
   const [error, setError] = useState<string | null>(null);
   
   const [selectedClassIdFromSession, setSelectedClassIdFromSession] = useState<string | null>(null);
+  const [selectedClassNameFromSession, setSelectedClassNameFromSession] = useState<string | null>(null);
   const [studentsInClass, setStudentsInClass] = useState<Student[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   
@@ -75,8 +87,12 @@ export default function AnswerSheetPage() {
   const [studentAnswers, setStudentAnswers] = useState<StudentAnswers>({});
   let globalQuestionNumber = 1;
 
+  const [isSubmitConfirmDialogOpen, setIsSubmitConfirmDialogOpen] = useState(false);
+  const [unansweredQuestionsList, setUnansweredQuestionsList] = useState<string[]>([]);
+  const [currentTimeForDialog, setCurrentTimeForDialog] = useState('');
+  const [studentInfoForDialog, setStudentInfoForDialog] = useState<{ name: string; className: string; } | null>(null);
 
-  // Effect to load exam data from sessionStorage and student progress from localStorage
+
   useEffect(() => {
     if (typeof window !== 'undefined' && examId) {
       setIsLoading(true);
@@ -87,6 +103,7 @@ export default function AnswerSheetPage() {
       try {
         const cachedExamDataString = sessionStorage.getItem(`examData-${examId}`);
         const cachedClassId = sessionStorage.getItem(`selectedClassId-${examId}`);
+        const cachedClassName = sessionStorage.getItem(`selectedClassName-${examId}`);
 
         if (cachedExamDataString) {
           localExamData = JSON.parse(cachedExamDataString);
@@ -104,8 +121,11 @@ export default function AnswerSheetPage() {
           setIsLoading(false);
           return;
         }
+        if (cachedClassName) {
+            setSelectedClassNameFromSession(cachedClassName);
+        }
 
-        // Load student progress from localStorage
+
         const localStorageKey = getLocalStorageKey(examId);
         if (localStorageKey) {
           const savedProgressString = localStorage.getItem(localStorageKey);
@@ -139,8 +159,6 @@ export default function AnswerSheetPage() {
         setError("There was an issue loading exam or progress information. Please try again.");
         const lsKey = getLocalStorageKey(examId);
         if(lsKey) localStorage.removeItem(lsKey);
-      } finally {
-        // setIsLoading will be set to false after students are fetched or if an error occurs in student fetching
       }
     } else if (!examId) {
       setError("No exam ID provided.");
@@ -148,7 +166,6 @@ export default function AnswerSheetPage() {
     }
   }, [examId]);
 
-  // Effect to fetch students for the selected class
   useEffect(() => {
     const fetchStudents = async () => {
       if (!selectedClassIdFromSession || !examToDisplay?.subjectId) {
@@ -156,7 +173,7 @@ export default function AnswerSheetPage() {
              setStudentDetailsError("Exam configuration is missing subject ID, cannot fetch student list.");
         }
         setIsLoadingStudents(false);
-        setIsLoading(false); // Also stop main loading if this critical info is missing
+        setIsLoading(false);
         return;
       }
       setIsLoadingStudents(true);
@@ -175,22 +192,19 @@ export default function AnswerSheetPage() {
         setStudentDetailsError("Could not load the student list for your class.");
       } finally {
         setIsLoadingStudents(false);
-        setIsLoading(false); // Indicate main loading is complete
+        setIsLoading(false); 
       }
     };
 
     if (selectedClassIdFromSession && examToDisplay) {
       fetchStudents();
     } else if (!selectedClassIdFromSession && examToDisplay) {
-      // This case means exam data is loaded, but no class ID was found in session, which is an error path handled by the first effect.
-      // Setting isLoading to false here if it wasn't already set by an error condition earlier.
       setIsLoading(false);
     }
   }, [selectedClassIdFromSession, examToDisplay]);
 
-  // Effect to save student progress to localStorage
   useEffect(() => {
-    if (examId && examToDisplay && !isLoading && typeof window !== 'undefined') { // Only save if exam is loaded and not in initial loading phase
+    if (examId && examToDisplay && !isLoading && typeof window !== 'undefined') {
       const localStorageKey = getLocalStorageKey(examId);
       if (localStorageKey) {
         const progressToSave = {
@@ -210,8 +224,8 @@ export default function AnswerSheetPage() {
     enteredLastName,
     isNameConfirmed,
     studentAnswers,
-    examToDisplay, // Ensure exam is loaded before trying to save
-    isLoading      // Ensure initial loading is complete
+    examToDisplay,
+    isLoading
   ]);
 
 
@@ -236,18 +250,49 @@ export default function AnswerSheetPage() {
     }
   };
 
-  const handleSubmitExam = () => {
+  const checkUnansweredQuestions = () => {
+    if (!examToDisplay) return [];
+    const unanswered: string[] = [];
+    let currentQNumber = 1;
+    examToDisplay.examBlocks.forEach(block => {
+      block.questions.forEach(question => {
+        const questionLabel = question.points > 1 ? `${currentQNumber}-${currentQNumber + question.points - 1}` : `${currentQNumber}`;
+        if (!studentAnswers[question.id] || studentAnswers[question.id]?.trim() === "") {
+          unanswered.push(questionLabel);
+        }
+        currentQNumber += question.points;
+      });
+    });
+    return unanswered;
+  };
+
+  const handleOpenSubmitConfirmDialog = () => {
+    const unanswered = checkUnansweredQuestions();
+    setUnansweredQuestionsList(unanswered);
+
+    const student = studentsInClass.find(s => s.id === selectedStudentIdFromDropdown);
+    const studentName = student ? `${student.firstName} ${student.lastName}` : "N/A";
+    const className = selectedClassNameFromSession || "N/A";
+
+    setStudentInfoForDialog({ name: studentName, className });
+    setCurrentTimeForDialog(format(new Date(), "PPP p"));
+    setIsSubmitConfirmDialogOpen(true);
+  };
+
+  const handleActualExamSubmit = () => {
     // Placeholder for future submission logic
     console.log("Selected Student ID:", selectedStudentIdFromDropdown);
     console.log("Entered First Name:", enteredFirstName);
     console.log("Entered Last Name:", enteredLastName);
     console.log("Student Answers:", studentAnswers);
     
-    // TODO: On actual submission, clear local storage:
+    // TODO: Clear local storage on successful submission
     // const localStorageKey = getLocalStorageKey(examId);
     // if (localStorageKey) localStorage.removeItem(localStorageKey);
 
-    alert("Exam submission functionality is coming soon! Your progress (including name and answers) is saved locally in your browser. Details logged to console.");
+    alert("Exam submitted! (This is a placeholder - actual submission logic to be implemented). Your progress (including name and answers) is saved locally in your browser. Details logged to console.");
+    setIsSubmitConfirmDialogOpen(false);
+    // router.push(`/some-confirmation-page/${examId}`); // Or redirect
   };
 
   if (isLoading) {
@@ -302,7 +347,6 @@ export default function AnswerSheetPage() {
           )}
         </CardHeader>
         <CardContent className="p-4 sm:p-6 md:p-8">
-          {/* Student Identification Section */}
           {!isNameConfirmed && (
             <Card className="mb-6 shadow-md bg-muted/30">
               <CardHeader>
@@ -508,16 +552,55 @@ export default function AnswerSheetPage() {
         </CardContent>
         <CardFooter className="border-t pt-6">
           <Button 
-            onClick={handleSubmitExam} 
+            onClick={handleOpenSubmitConfirmDialog} 
             size="lg" 
             className="w-full sm:w-auto mx-auto"
             disabled={!isNameConfirmed || isLoading || isLoadingStudents}
           >
             <Send className="mr-2 h-5 w-5" />
-            Submit Exam (Coming Soon)
+            Submit Exam
           </Button>
         </CardFooter>
       </Card>
+
+      <AlertDialog open={isSubmitConfirmDialogOpen} onOpenChange={setIsSubmitConfirmDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Submission</AlertDialogTitle>
+            <AlertDialogDescription>
+              Please review your details and ensure all answers are final.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 text-sm">
+            {studentInfoForDialog && (
+              <>
+                <p><strong>Student:</strong> {studentInfoForDialog.name}</p>
+                <p><strong>Class:</strong> {studentInfoForDialog.className}</p>
+              </>
+            )}
+            <p><strong>Submission Time:</strong> {currentTimeForDialog}</p>
+            {unansweredQuestionsList.length > 0 ? (
+              <div>
+                <p className="text-destructive font-semibold">You have unanswered questions:</p>
+                <ul className="list-disc list-inside text-destructive text-xs max-h-24 overflow-y-auto">
+                  {unansweredQuestionsList.map((qNum, index) => (
+                    <li key={index}>Question {qNum}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-green-600">All questions appear to be answered. Good job!</p>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleActualExamSubmit}>
+              Confirm Submit
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }

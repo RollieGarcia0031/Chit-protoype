@@ -1,3 +1,4 @@
+
 // src/app/(protected)/exams/[examId]/results/page.tsx
 'use client';
 
@@ -8,12 +9,12 @@ import { db } from '@/lib/firebase/config';
 import { doc, getDoc, collection, getDocs, query, where, orderBy, setDoc, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 import type { ExamSummaryData, ClassInfoForDropdown, Student, StudentExamScore } from '@/types/exam-types';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, BarChart3, Users, AlertTriangle, Info, Save, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, BarChart3, Users, AlertTriangle, Info, Save, Loader2, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +23,17 @@ const SCORES_SUBCOLLECTION_NAME = 'scores';
 interface ClassWithStudentsAndScores {
   classInfo: ClassInfoForDropdown;
   students: Student[];
+}
+
+type ScoreStatus = 'saved' | 'dirty' | 'invalid' | 'emptyAndUnchanged' | 'emptyAndDirty';
+
+interface ScoreStatusDetails {
+  status: ScoreStatus;
+  icon: React.ElementType | null;
+  color?: string;
+  isSavable: boolean;
+  parsedScore: number | null;
+  tooltip: string;
 }
 
 export default function ExamResultsPage() {
@@ -36,11 +48,13 @@ export default function ExamResultsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [collapsedStates, setCollapsedStates] = useState<Record<string, boolean>>({});
+  const [isSavingAllInProgress, setIsSavingAllInProgress] = useState<Record<string, boolean>>({});
+
 
   const toggleCollapse = (classId: string) => {
     setCollapsedStates(prev => ({
       ...prev,
-      [classId]: !(prev[classId] ?? false) // Default to expanded (false), so first click collapses
+      [classId]: !(prev[classId] ?? false)
     }));
   };
 
@@ -50,7 +64,6 @@ export default function ExamResultsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // 1. Fetch Exam Details
       const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examId);
       const examSnap = await getDoc(examDocRef);
 
@@ -69,7 +82,6 @@ export default function ExamResultsPage() {
         return;
       }
 
-      // 2. Fetch all user subjects and their classes to map classIds to full ClassInfoForDropdown
       const allUserClassesMap = new Map<string, ClassInfoForDropdown>();
       const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
       const subjectsQuery = query(subjectsCollectionRef, where("userId", "==", user.uid));
@@ -98,7 +110,6 @@ export default function ExamResultsPage() {
         setIsLoading(false); return;
       }
       
-      // 3. Fetch existing scores for this exam FOR EACH ASSIGNED CLASS
       const scoresMap = new Map<string, { score: number | null; scoreDocId: string }>();
       for (const classInfo of assignedClassesInfo) {
         const scoresRef = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, SCORES_SUBCOLLECTION_NAME);
@@ -110,7 +121,6 @@ export default function ExamResultsPage() {
         });
       }
 
-      // 4. For each assigned class, fetch its students and merge with scores
       const resultsPromises = assignedClassesInfo.map(async (classInfo) => {
         const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, "students");
         const studentsQuery = query(studentsRef, orderBy("lastName", "asc"), orderBy("firstName", "asc"));
@@ -163,81 +173,125 @@ export default function ExamResultsPage() {
     });
   };
 
-  const handleSaveScore = async (classIdx: number, studentIdx: number) => {
-    if (!user || !examDetails) return;
+  const getScoreStatus = (student: Student): ScoreStatusDetails => {
+    const { currentScoreInput, score } = student;
+    const inputTrimmed = currentScoreInput?.trim();
 
-    const student = groupedStudentScores[classIdx].students[studentIdx];
-    const classInfo = groupedStudentScores[classIdx].classInfo;
-
-    setGroupedStudentScores(prev => {
-      const newGroups = [...prev];
-      newGroups[classIdx].students[studentIdx].isSavingScore = true;
-      return newGroups;
-    });
-
-    const scoreValueRaw = student.currentScoreInput;
-    let scoreToSave: number | null = null;
-
-    if (scoreValueRaw !== undefined && scoreValueRaw.trim() !== "") {
-        const parsedScore = parseFloat(scoreValueRaw);
-        if (!isNaN(parsedScore)) {
-            scoreToSave = parsedScore;
-        } else {
-            toast({ title: "Invalid Score", description: "Score must be a number.", variant: "destructive" });
-            setGroupedStudentScores(prev => {
-                const newGroups = [...prev];
-                newGroups[classIdx].students[studentIdx].isSavingScore = false;
-                return newGroups;
-            });
-            return;
-        }
+    if (inputTrimmed === undefined || inputTrimmed === "") {
+      if (score === null) {
+        return { status: 'emptyAndUnchanged', icon: null, isSavable: false, parsedScore: null, tooltip: "No score entered." };
+      }
+      return { status: 'emptyAndDirty', icon: Save, color: "text-amber-600", isSavable: true, parsedScore: null, tooltip: "Score will be cleared." };
     }
 
+    const parsedInput = parseFloat(inputTrimmed);
 
-    try {
-      const scoreData: Omit<StudentExamScore, 'id' | 'createdAt'> = {
-        examId: examDetails.id,
-        studentId: student.id,
-        userId: user.uid,
-        score: scoreToSave,
-        updatedAt: serverTimestamp() as Timestamp,
-      };
+    if (isNaN(parsedInput)) {
+      return { status: 'invalid', icon: AlertTriangle, color: "text-destructive", isSavable: false, parsedScore: null, tooltip: "Invalid input. Score must be a number." };
+    }
 
-      let newScoreDocId = student.scoreDocId;
+    if (parsedInput === score) {
+      return { status: 'saved', icon: CheckCircle2, color: "text-green-600", isSavable: false, parsedScore: parsedInput, tooltip: "Score saved." };
+    }
 
-      const scoresCollectionPath = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, SCORES_SUBCOLLECTION_NAME);
+    return { status: 'dirty', icon: Save, color: "text-amber-600", isSavable: true, parsedScore: parsedInput, tooltip: "Unsaved changes." };
+  };
+  
+  const handleSaveAllScoresForClass = async (classIdx: number) => {
+    if (!user || !examDetails) return;
 
-      if (student.scoreDocId) {
-        const scoreDocRef = doc(scoresCollectionPath, student.scoreDocId);
-        await setDoc(scoreDocRef, scoreData, { merge: true }); 
-      } else {
-        const newDocRef = await addDoc(scoresCollectionPath, {
-            ...scoreData,
-            createdAt: serverTimestamp() as Timestamp
-        });
-        newScoreDocId = newDocRef.id;
-      }
-      
-      toast({ title: "Score Saved", description: `Score for ${student.firstName} ${student.lastName} saved successfully.` });
-      setGroupedStudentScores(prev => {
+    const classGroup = groupedStudentScores[classIdx];
+    const { classInfo, students } = classGroup;
+
+    setIsSavingAllInProgress(prev => ({ ...prev, [classInfo.id]: true }));
+    setGroupedStudentScores(prev => {
         const newGroups = [...prev];
-        newGroups[classIdx].students[studentIdx].score = scoreToSave;
-        newGroups[classIdx].students[studentIdx].scoreDocId = newScoreDocId;
+        newGroups[classIdx].students = newGroups[classIdx].students.map(s => ({...s, isSavingScore: false })); // Reset individual saving flags first
         return newGroups;
-      });
+    });
 
-    } catch (e) {
-      console.error("Error saving score: ", e);
-      toast({ title: "Error Saving Score", description: "Could not save the score.", variant: "destructive" });
-    } finally {
+    const savableStudentsPromises = students.map(async (student, studentIdx) => {
+      const scoreStatusDetails = getScoreStatus(student);
+      if (!scoreStatusDetails.isSavable) {
+        return { studentId: student.id, success: true, noChange: true }; // No change to save
+      }
+
+      // Set individual student saving flag for UI feedback
       setGroupedStudentScores(prev => {
         const newGroups = [...prev];
         if (newGroups[classIdx] && newGroups[classIdx].students[studentIdx]) {
-             newGroups[classIdx].students[studentIdx].isSavingScore = false;
+          newGroups[classIdx].students[studentIdx].isSavingScore = true;
         }
         return newGroups;
       });
+      
+      const scoreToSave = scoreStatusDetails.parsedScore;
+
+      try {
+        const scoreData: Omit<StudentExamScore, 'id' | 'createdAt'> = {
+          examId: examDetails.id,
+          studentId: student.id,
+          userId: user.uid,
+          score: scoreToSave,
+          updatedAt: serverTimestamp() as Timestamp,
+        };
+
+        const scoresCollectionPath = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, SCORES_SUBCOLLECTION_NAME);
+        let newScoreDocId = student.scoreDocId;
+
+        if (student.scoreDocId) {
+          const scoreDocRef = doc(scoresCollectionPath, student.scoreDocId);
+          await setDoc(scoreDocRef, scoreData, { merge: true });
+        } else {
+          const newDocRef = await addDoc(scoresCollectionPath, { ...scoreData, createdAt: serverTimestamp() as Timestamp });
+          newScoreDocId = newDocRef.id;
+        }
+        return { studentId: student.id, success: true, newScore: scoreToSave, newScoreDocId };
+      } catch (e) {
+        console.error(`Error saving score for ${student.firstName} ${student.lastName}:`, e);
+        return { studentId: student.id, success: false, error: e };
+      }
+    });
+
+    const results = await Promise.allSettled(savableStudentsPromises);
+    let allSuccessful = true;
+    let changesMade = false;
+
+    setGroupedStudentScores(prev => {
+      const newGroups = [...prev];
+      const studentsToUpdate = newGroups[classIdx].students.map(s => {
+        const result = results.find(r => r.status === 'fulfilled' && r.value.studentId === s.id);
+        if (result && result.status === 'fulfilled' && result.value.success) {
+          if (!result.value.noChange) changesMade = true;
+          return {
+            ...s,
+            score: result.value.newScore !== undefined ? result.value.newScore : s.score,
+            scoreDocId: result.value.newScoreDocId || s.scoreDocId,
+            currentScoreInput: result.value.newScore !== undefined && result.value.newScore !== null ? String(result.value.newScore) : (result.value.newScore === null ? "" : s.currentScoreInput),
+            isSavingScore: false,
+          };
+        } else if (result && result.status === 'fulfilled' && !result.value.success) {
+          allSuccessful = false;
+          return { ...s, isSavingScore: false }; // Error occurred, stop saving visual for this student
+        } else if (result && result.status === 'rejected') {
+          allSuccessful = false;
+          return { ...s, isSavingScore: false };
+        }
+        return { ...s, isSavingScore: false }; // Ensure all saving flags are reset
+      });
+      newGroups[classIdx].students = studentsToUpdate;
+      return newGroups;
+    });
+
+    if (allSuccessful && changesMade) {
+      toast({ title: "Scores Saved", description: `All changes for ${classInfo.sectionName} saved successfully.` });
+    } else if (!changesMade && allSuccessful) {
+      toast({ title: "No Changes", description: `No scores needed saving for ${classInfo.sectionName}.`});
+    } else if (!allSuccessful) {
+      toast({ title: "Partial Save", description: `Some scores for ${classInfo.sectionName} could not be saved. Please check individual statuses.`, variant: "destructive" });
     }
+    
+    setIsSavingAllInProgress(prev => ({ ...prev, [classInfo.id]: false }));
   };
 
 
@@ -323,7 +377,9 @@ export default function ExamResultsPage() {
       )}
 
       {groupedStudentScores.map(({ classInfo, students }, classIdx) => {
-        const isCollapsed = collapsedStates[classInfo.id] ?? false; // Default to expanded
+        const isCollapsed = collapsedStates[classInfo.id] ?? false;
+        const classIsSaving = isSavingAllInProgress[classInfo.id] || false;
+        const hasSavableChanges = students.some(s => getScoreStatus(s).isSavable);
 
         return (
           <Card key={classInfo.id} className="shadow-lg">
@@ -353,56 +409,76 @@ export default function ExamResultsPage() {
               id={`class-content-${classInfo.id}`}
               className={cn(
                 "overflow-hidden transition-all duration-300 ease-in-out",
-                "px-2 sm:px-4", // Keep horizontal padding consistent
+                "px-2 sm:px-4", 
                 isCollapsed 
                   ? "max-h-0 py-0 opacity-0" 
                   : "max-h-[100dvh] overflow-y-auto pt-0 pb-4 sm:pb-6 opacity-100" 
               )}
             >
               {students.length > 0 ? (
+                <>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[45%] px-2 sm:px-4 text-xs sm:text-sm">Student Name</TableHead>
+                      <TableHead className="w-[50%] px-2 sm:px-4 text-xs sm:text-sm">Student Name</TableHead>
                       <TableHead className="w-[30%] text-center px-2 sm:px-4 text-xs sm:text-sm">Score</TableHead>
-                      <TableHead className="w-[25%] text-right px-2 sm:px-4 text-xs sm:text-sm">Actions</TableHead>
+                      <TableHead className="w-[20%] text-center px-2 sm:px-4 text-xs sm:text-sm">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {students.map((student, studentIdx) => (
-                      <TableRow key={student.id}>
-                        <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-3 align-middle">
-                          {student.lastName}, {student.firstName} {student.middleName && `${student.middleName.charAt(0)}.`}
-                        </TableCell>
-                        <TableCell className="px-2 sm:px-4 text-xs sm:text-sm py-1.5 sm:py-2 align-middle">
-                          <Input
-                            type="text" 
-                            placeholder={`Score / ${examDetails.totalPoints}`}
-                            value={student.currentScoreInput ?? ''}
-                            onChange={(e) => handleScoreInputChange(classIdx, studentIdx, e.target.value)}
-                            className="h-8 sm:h-9 text-xs sm:text-sm text-center w-full max-w-[120px] mx-auto"
-                            disabled={student.isSavingScore}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right px-2 sm:px-4 text-xs sm:text-sm py-1.5 sm:py-2 align-middle">
-                          <Button
-                            size="sm"
-                            onClick={() => handleSaveScore(classIdx, studentIdx)}
-                            disabled={student.isSavingScore}
-                            className="h-8 sm:h-9 text-2xs sm:text-xs px-2 sm:px-3"
-                          >
-                            {student.isSavingScore ? (
-                              <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
-                            ) : (
-                              <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                            )}
-                             <span className="hidden sm:inline ml-1 sm:ml-1.5">Save</span>
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {students.map((student, studentIdx) => {
+                      const scoreStatus = getScoreStatus(student);
+                      const IconComponent = scoreStatus.icon;
+                      return (
+                        <TableRow key={student.id} className={cn(student.isSavingScore && "opacity-50 bg-muted/30")}>
+                          <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-3 align-middle">
+                            {student.lastName}, {student.firstName} {student.middleName && `${student.middleName.charAt(0)}.`}
+                          </TableCell>
+                          <TableCell className="px-2 sm:px-4 text-xs sm:text-sm py-1.5 sm:py-2 align-middle">
+                            <Input
+                              type="text" 
+                              placeholder={`Score / ${examDetails.totalPoints}`}
+                              value={student.currentScoreInput ?? ''}
+                              onChange={(e) => handleScoreInputChange(classIdx, studentIdx, e.target.value)}
+                              className={cn(
+                                "h-8 sm:h-9 text-xs sm:text-sm text-center w-full max-w-[120px] mx-auto",
+                                scoreStatus.status === 'invalid' && "border-destructive focus-visible:ring-destructive"
+                              )}
+                              disabled={classIsSaving || student.isSavingScore}
+                            />
+                          </TableCell>
+                          <TableCell className="text-center px-2 sm:px-4 text-xs sm:text-sm py-1.5 sm:py-2 align-middle">
+                            <div className="flex items-center justify-center" title={scoreStatus.tooltip}>
+                              {student.isSavingScore ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              ): IconComponent ? (
+                                <IconComponent className={cn("h-4 w-4", scoreStatus.color)} />
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
+                <CardFooter className="mt-4 px-0 py-0 justify-end">
+                    <Button
+                        size="sm"
+                        onClick={() => handleSaveAllScoresForClass(classIdx)}
+                        disabled={classIsSaving || !hasSavableChanges}
+                        className="text-xs sm:text-sm"
+                    >
+                        {classIsSaving ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <Save className="mr-2 h-4 w-4" />
+                        )}
+                        Save All Scores for this Class
+                    </Button>
+                </CardFooter>
+                </>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-4">No students found in this class.</p>
               )}
@@ -413,3 +489,4 @@ export default function ExamResultsPage() {
     </div>
   );
 }
+

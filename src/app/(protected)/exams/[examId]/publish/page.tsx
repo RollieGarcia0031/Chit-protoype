@@ -289,13 +289,51 @@ export default function PublishExamPage() {
   };
 
   if (isLoading || authLoading) {
-    return ( /* Skeleton UI */ <div className="space-y-6 p-4"> <Skeleton className="h-10 w-1/3" /> <Skeleton className="h-8 w-1/2" /> <Card className="shadow-lg"> <CardHeader><Skeleton className="h-7 w-3/4" /></CardHeader> <CardContent className="space-y-4"> <Skeleton className="h-10 w-full" /> {[1, 2].map(i => ( <div key={i} className="p-3 border rounded-md space-y-3"> <Skeleton className="h-6 w-1/2" /> <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"> <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" /> </div> </div> ))} </CardContent> <CardFooter><Skeleton className="h-10 w-32" /></CardFooter> </Card> </div> );
+    return ( 
+      <div className="space-y-6 p-4"> 
+        <Skeleton className="h-10 w-1/3" /> 
+        <Skeleton className="h-8 w-1/2" /> 
+        <Card className="shadow-lg"> 
+          <CardHeader><Skeleton className="h-7 w-3/4" /></CardHeader> 
+          <CardContent className="space-y-4"> 
+            <Skeleton className="h-10 w-full" /> 
+            {[1, 2].map(i => ( 
+              <div key={i} className="p-3 border rounded-md space-y-3"> 
+                <Skeleton className="h-6 w-1/2" /> 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"> 
+                  <Skeleton className="h-10 w-full" /> 
+                  <Skeleton className="h-10 w-full" /> 
+                </div> 
+              </div> 
+            ))} 
+          </CardContent> 
+          <CardFooter><Skeleton className="h-10 w-32" /></CardFooter> 
+        </Card> 
+      </div> 
+    );
   }
   if (error) {
-    return ( /* Error UI */ <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4"> <AlertTriangle className="h-12 w-12 text-destructive mb-4" /> <h2 className="text-xl font-semibold mb-2">Error Loading Page</h2> <p className="text-muted-foreground mb-4">{error}</p> <Button onClick={() => router.back()} size="sm"> <ArrowLeft className="mr-2 h-4 w-4" /> Go Back </Button> </div> );
+    return ( 
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4"> 
+        <AlertTriangle className="h-12 w-12 text-destructive mb-4" /> 
+        <h2 className="text-xl font-semibold mb-2">Error Loading Page</h2> 
+        <p className="text-muted-foreground mb-4">{error}</p> 
+        <Button onClick={() => router.back()} size="sm"> 
+          <ArrowLeft className="mr-2 h-4 w-4" /> Go Back 
+        </Button> 
+      </div> 
+    );
   }
   if (!examDetails) {
-    return ( /* No exam details UI */ <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4"> <Info className="h-12 w-12 text-muted-foreground mb-4" /> <p className="text-muted-foreground">Exam details could not be loaded.</p> <Button onClick={() => router.back()} size="sm" className="mt-4"> <ArrowLeft className="mr-2 h-4 w-4" /> Go Back </Button> </div> );
+    return ( 
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center p-4"> 
+        <Info className="h-12 w-12 text-muted-foreground mb-4" /> 
+        <p className="text-muted-foreground">Exam details could not be loaded.</p> 
+        <Button onClick={() => router.back()} size="sm" className="mt-4"> 
+          <ArrowLeft className="mr-2 h-4 w-4" /> Go Back 
+        </Button> 
+      </div> 
+    );
   }
 
   return (
@@ -425,3 +463,4 @@ export default function PublishExamPage() {
     </div>
   );
 }
+

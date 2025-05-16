@@ -5,11 +5,13 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import type { FullExamData, ExamBlock, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, PooledChoicesQuestion } from '@/types/exam-types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FileText, AlertTriangle, Send, ArrowLeft, Info } from 'lucide-react';
-import { QUESTION_TYPES } from '@/types/exam-types'; // Ensure this is imported
+import { QUESTION_TYPES } from '@/types/exam-types';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 const getAlphabetLetter = (index: number): string => String.fromCharCode(65 + index);
 
@@ -36,6 +38,9 @@ const getQuestionTypeLabel = (type: ExamQuestion['type']): string => {
     return qType ? qType.label : type;
 };
 
+interface StudentAnswers {
+  [questionId: string]: string | null; // Store optionId for MCQ, or other answer format
+}
 
 export default function AnswerSheetPage() {
   const params = useParams();
@@ -45,7 +50,8 @@ export default function AnswerSheetPage() {
   const [examToDisplay, setExamToDisplay] = useState<FullExamData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  let globalQuestionNumber = 1; // For continuous numbering
+  const [studentAnswers, setStudentAnswers] = useState<StudentAnswers>({});
+  let globalQuestionNumber = 1;
 
   useEffect(() => {
     if (typeof window !== 'undefined' && examId) {
@@ -70,9 +76,14 @@ export default function AnswerSheetPage() {
     }
   }, [examId]);
 
+  const handleAnswerChange = (questionId: string, answer: string) => {
+    setStudentAnswers(prev => ({ ...prev, [questionId]: answer }));
+  };
+
   const handleSubmitExam = () => {
     // Placeholder for future submission logic
-    alert("Exam submission functionality is coming soon!");
+    console.log("Student Answers:", studentAnswers);
+    alert("Exam submission functionality is coming soon! Answers logged to console.");
   };
 
   if (isLoading) {
@@ -150,26 +161,77 @@ export default function AnswerSheetPage() {
 
                 {block.questions.map((question) => {
                   const questionDisplayNumber = globalQuestionNumber;
-                  globalQuestionNumber += question.points; // Increment for the next question based on current question's points
+                  globalQuestionNumber += question.points; 
                   const displayLabel = question.points > 1 ? `${questionDisplayNumber}-${globalQuestionNumber - 1}` : `${questionDisplayNumber}`;
-                  const answerPrefix = (question.type === 'true-false' || question.type === 'pooled-choices') ? '____ ' : '';
-
+                  
                   return (
-                    <div key={question.id} className="mb-3 pl-4">
-                      <p className="font-medium">
-                        {answerPrefix}{displayLabel}. {question.questionText}
+                    <div key={question.id} className="mb-4 pl-4">
+                      <p className="font-medium mb-1">
+                        {displayLabel}. {question.questionText}
                       </p>
                       {question.type === 'multiple-choice' && (
-                        <ul className="list-none pl-5 mt-1 space-y-0.5">
+                        <RadioGroup
+                          name={question.id}
+                          value={studentAnswers[question.id] || ""}
+                          onValueChange={(value) => handleAnswerChange(question.id, value)}
+                          className="space-y-1 pl-5 mt-1"
+                        >
                           {(question as MultipleChoiceQuestion).options.map((opt, optIndex) => (
-                            <li key={opt.id}>{getAlphabetLetter(optIndex)}. {opt.text}</li>
+                            <div key={opt.id} className="flex items-center space-x-2">
+                              <RadioGroupItem value={opt.id} id={`option-${question.id}-${opt.id}`} />
+                              <Label htmlFor={`option-${question.id}-${opt.id}`} className="font-normal cursor-pointer">
+                                {getAlphabetLetter(optIndex)}. {opt.text}
+                              </Label>
+                            </div>
                           ))}
-                        </ul>
+                        </RadioGroup>
                       )}
-                      {question.type === 'matching' && block.blockType === 'matching' && (
-                         <div className="text-sm text-muted-foreground pl-5 mt-1"> (Match with choices provided for this section)</div>
+                      {question.type === 'true-false' && (
+                        <RadioGroup
+                          name={question.id}
+                          value={studentAnswers[question.id] || ""}
+                          onValueChange={(value) => handleAnswerChange(question.id, value)}
+                          className="flex space-x-4 pl-5 mt-1"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="true" id={`true-${question.id}`} />
+                            <Label htmlFor={`true-${question.id}`} className="font-normal cursor-pointer">True</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="false" id={`false-${question.id}`} />
+                            <Label htmlFor={`false-${question.id}`} className="font-normal cursor-pointer">False</Label>
+                          </div>
+                        </RadioGroup>
                       )}
-                       {/* Placeholder for actual answer input fields - to be added later */}
+                      {question.type === 'matching' && (
+                        <div className="pl-5 mt-1">
+                          {/* Placeholder for matching input: e.g., a text input or dropdown for each premise */}
+                          <input 
+                            type="text" 
+                            placeholder="Enter matching letter" 
+                            className="input input-bordered input-sm w-full max-w-xs" // Basic styling
+                            onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                            value={studentAnswers[question.id] || ""}
+                          />
+                        </div>
+                      )}
+                       {question.type === 'pooled-choices' && (
+                        <div className="pl-5 mt-1">
+                           {/* Placeholder for pooled choices input: e.g., a dropdown with letters A, B, C... */}
+                           <select 
+                             className="select select-bordered select-sm w-full max-w-xs" // Basic styling
+                             value={studentAnswers[question.id] || ""}
+                             onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                           >
+                            <option value="" disabled>Select an answer</option>
+                            {block.choicePool?.map((_poolOpt, poolOptIndex) => (
+                                <option key={poolOptIndex} value={getAlphabetLetter(poolOptIndex)}>
+                                    {getAlphabetLetter(poolOptIndex)}
+                                </option>
+                            ))}
+                           </select>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -178,8 +240,8 @@ export default function AnswerSheetPage() {
                         <h4 className="font-medium text-sm mb-1">Match From:</h4>
                         <ul className="list-none pl-0 columns-1 sm:columns-2 gap-x-4">
                             {(block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs.map(p => p.response))
-                                .filter((value, index, self) => self.indexOf(value) === index) // Unique responses
-                                .sort((a,b) => { // Sort by letter if available, otherwise text
+                                .filter((value, index, self) => self.indexOf(value) === index) 
+                                .sort((a,b) => { 
                                     const letterA = (block.questions as MatchingTypeQuestion[]).find(q => q.pairs.find(p => p.response === a))?.pairs.find(p => p.response === a)?.responseLetter || '';
                                     const letterB = (block.questions as MatchingTypeQuestion[]).find(q => q.pairs.find(p => p.response === b))?.pairs.find(p => p.response === b)?.responseLetter || '';
                                     if (letterA && letterB) return letterA.localeCompare(letterB);
@@ -187,7 +249,7 @@ export default function AnswerSheetPage() {
                                 })
                                 .map((response, index) => {
                                      const originalPair = (block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs).find(p => p.response === response);
-                                     const letter = originalPair?.responseLetter || getAlphabetLetter(index); // Fallback if no letter
+                                     const letter = originalPair?.responseLetter || getAlphabetLetter(index);
                                      return <li key={`match-resp-${index}`} className="text-sm break-inside-avoid-column">{letter}. {response}</li>;
                                 })
                             }

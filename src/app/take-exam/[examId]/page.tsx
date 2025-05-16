@@ -5,7 +5,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { doc, getDoc, collection, getDocs, query, Timestamp, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
@@ -29,20 +29,15 @@ function sanitizeExamDataForStudent(fullExamData: FullExamData): FullExamData {
       } else if (question.type === 'true-false') {
         (baseSanitizedQuestion as TrueFalseQuestion).correctAnswer = null;
       } else if (question.type === 'matching') {
-        // For matching, students need to see both premises and responses.
-        // The 'correctness' is determined by their matching activity.
-        // No direct answer to remove here from the core question data.
+        // Matching pairs are needed for students to see and match.
       } else if (question.type === 'pooled-choices') {
-        // Students need the choice pool (on the block) but not the direct answer for each question.
         (baseSanitizedQuestion as PooledChoicesQuestion).correctAnswersFromPool = [];
       }
-      // Remove points if not needed by student, or keep for student reference
-      // delete baseSanitizedQuestion.points; // Example: if points are not for student view
       return baseSanitizedQuestion;
     });
-    return { ...block, questions: sanitizedQuestions as ExamQuestion[] }; // Ensure type cast
+    return { ...block, questions: sanitizedQuestions as ExamQuestion[] };
   });
-  return { ...fullExamData, examBlocks: sanitizedBlocks as ExamBlock[] }; // Ensure type cast
+  return { ...fullExamData, examBlocks: sanitizedBlocks as ExamBlock[] };
 }
 
 
@@ -65,8 +60,9 @@ export default function TakeExamLandingPage() {
   const [accessMessage, setAccessMessage] = useState<string | null>(null);
   const [isExamTime, setIsExamTime] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [isNavigating, setIsNavigating] = useState(false);
 
-  // Fetch full exam details (including blocks and questions)
+
   useEffect(() => {
     if (examId) {
       const fetchFullExamDetails = async () => {
@@ -105,7 +101,6 @@ export default function TakeExamLandingPage() {
             const fullExamData: FullExamData = { id: examSnap.id, ...data, examBlocks: loadedBlocks };
             setExamDetails(fullExamData);
 
-            // Sanitize and cache data for student
             if (typeof window !== 'undefined' && fullExamData.status === 'Published') {
               const sanitizedData = sanitizeExamDataForStudent(fullExamData);
               sessionStorage.setItem(`examData-${examId}`, JSON.stringify(sanitizedData));
@@ -128,7 +123,6 @@ export default function TakeExamLandingPage() {
     }
   }, [examId]);
 
-  // Fetch assignments for the exam
   useEffect(() => {
     if (examId && examDetails?.status === 'Published') {
       const fetchAssignments = async () => {
@@ -154,7 +148,6 @@ export default function TakeExamLandingPage() {
     }
   }, [examId, examDetails?.status]);
 
-  // Populate available classes for selection
   useEffect(() => {
     if (assignments.length > 0 && examDetails?.subjectId) {
       const fetchClassDetailsForAssignments = async () => {
@@ -192,7 +185,6 @@ export default function TakeExamLandingPage() {
     }
   }, [assignments, examDetails?.subjectId]);
 
-  // Check schedule when selectedClassId or assignments change
   useEffect(() => {
     if (!selectedClassId || assignments.length === 0) {
       setIsExamTime(false);
@@ -214,7 +206,7 @@ export default function TakeExamLandingPage() {
 
       if (now >= assignedTime) {
         setIsExamTime(true);
-        setAccessMessage(null); // Clear previous messages
+        setAccessMessage(null);
       } else {
         setIsExamTime(false);
         setAccessMessage(`This exam is scheduled for your class on ${format(assignedTime, "PPP 'at' p")}. Please return at that time.`);
@@ -225,7 +217,6 @@ export default function TakeExamLandingPage() {
     }
   }, [selectedClassId, assignments, isLoadingAssignments, isLoadingClassDetails]);
 
-  // Periodically re-check time
   useEffect(() => {
     if (!isExamTime && accessMessage && accessMessage.startsWith("This exam is scheduled")) {
       const interval = setInterval(() => {
@@ -249,7 +240,9 @@ export default function TakeExamLandingPage() {
 
   const handleStartExam = () => {
     if (examId && isExamTime && selectedClassId) {
+      setIsNavigating(true);
       router.push(`/take-exam/${examId}/answer-sheet`);
+      // setIsNavigating(false) will happen implicitly on unmount or can be set if navigation fails
     }
   };
 
@@ -285,6 +278,7 @@ export default function TakeExamLandingPage() {
   }
 
   const isPageLoading = isLoadingAssignments || isLoadingClassDetails;
+  const isStartButtonDisabled = !isExamTime || !selectedClassId || isPageLoading || isLoadingExam || isNavigating;
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-4">
@@ -299,7 +293,7 @@ export default function TakeExamLandingPage() {
             <> <Skeleton className="h-10 w-full max-w-xs mx-auto" /> <Skeleton className="h-5 w-1/2 mx-auto" /> </>
           ) : availableClassesForSelection.length > 0 ? (
             <div className="w-full max-w-xs mx-auto">
-              <Select onValueChange={setSelectedClassId} value={selectedClassId || undefined} disabled={isPageLoading}>
+              <Select onValueChange={setSelectedClassId} value={selectedClassId || undefined} disabled={isPageLoading || isNavigating}>
                 <SelectTrigger className="w-full"> <SelectValue placeholder="Select your class section" /> </SelectTrigger>
                 <SelectContent> {availableClassesForSelection.map((cls) => ( <SelectItem key={cls.id} value={cls.id}> {cls.name} </SelectItem> ))} </SelectContent>
               </Select>
@@ -322,10 +316,12 @@ export default function TakeExamLandingPage() {
             size="lg"
             className="bg-primary hover:bg-primary/90 text-primary-foreground mt-4"
             onClick={handleStartExam}
-            disabled={!isExamTime || !selectedClassId || isPageLoading || isLoadingExam}
+            disabled={isStartButtonDisabled}
           >
-            {isLoadingExam || isPageLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
-            Start Exam
+            {isNavigating ? (
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            ) : null}
+            {isNavigating ? "Starting..." : "Start Exam"}
           </Button>
         </CardContent>
         <CardFooter className="text-center justify-center"> <p className="text-xs text-muted-foreground"> Current time: {format(currentTime, "PPP p")} </p> </CardFooter>
@@ -333,3 +329,4 @@ export default function TakeExamLandingPage() {
     </main>
   );
 }
+

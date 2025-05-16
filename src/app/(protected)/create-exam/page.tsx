@@ -381,7 +381,9 @@ export default function CreateExamPage() {
 
     if (examIdFromUrl) {
       setEditingExamId(examIdFromUrl);
+      // Data fetching for existing exam will be handled by the next useEffect
     } else {
+      // This is a new exam
       if (typeof window !== 'undefined') { 
         if (isInitialClientLoadRef.current) { 
           const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -444,26 +446,28 @@ export default function CreateExamPage() {
               setAssignedClassSlots([{ key: generateId('error-reset-class-slot'), selectedClassId: null }]);
             }
           } else {
+              // No saved data, initialize with defaults
               setSelectedSubjectIdForFilter(null);
               setAssignedClassSlots([{ key: generateId('init-class-slot-no-data'), selectedClassId: null }]);
           }
           isInitialClientLoadRef.current = false; 
         }
-        setIsInitialLoadComplete(true); 
+        setIsInitialLoadComplete(true); // Initial setup complete
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, user]);
+  }, [searchParams, user]); // Dependencies for setting editingExamId or loading from localStorage
 
   useEffect(() => {
     const fetchExamForEditing = async () => {
       if (!editingExamId || !user) return;
       
       setIsLoadingExamData(true); // Set loading true at the start of fetching
+      // Reset form fields before loading
       setExamTitle("");
       setExamDescription("");
       setSelectedSubjectIdForFilter(null);
-      setAssignedClassSlots([]); 
+      setAssignedClassSlots([]); // Will be populated with fetched data
       setExamBlocks([]);
       setAiFeedbackList([]);
       
@@ -474,7 +478,7 @@ export default function CreateExamPage() {
         if (!examSnap.exists() || examSnap.data().userId !== user.uid) {
           toast({ title: "Error", description: "Exam not found or you don't have permission to edit it.", variant: "destructive" });
           router.push('/exams');
-          return; // Make sure to return after redirect or error
+          return; 
         }
 
         const examData = examSnap.data();
@@ -567,7 +571,7 @@ export default function CreateExamPage() {
           });
         }
         setExamBlocks(loadedBlocks);
-        localStorage.removeItem(LOCAL_STORAGE_KEY); 
+        localStorage.removeItem(LOCAL_STORAGE_KEY); // Clear local draft when editing a saved exam
         toast({ title: "Exam Loaded", description: `Editing "${examData.title}". Your changes will be saved to the database.` });
 
       } catch (error) {
@@ -576,16 +580,17 @@ export default function CreateExamPage() {
         router.push('/exams');
       } finally {
         setIsLoadingExamData(false); 
-        setIsInitialLoadComplete(true); 
+        setIsInitialLoadComplete(true); // Data loading (from Firestore) is complete
       }
     };
 
-    if (editingExamId && user && !isLoadingUserClasses && !isLoadingUserSubjectsForDropdown) {
+    if (editingExamId && user && !isLoadingUserClasses && !isLoadingUserSubjectsForDropdown) { // Ensure supporting data is also ready
       fetchExamForEditing();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingExamId, user, isLoadingUserClasses, isLoadingUserSubjectsForDropdown, router, toast]); // Removed isInitialLoadComplete and isLoadingExamData
+  }, [editingExamId, user, router, toast, isLoadingUserClasses, isLoadingUserSubjectsForDropdown]);
 
+  // Effect for saving to localStorage (for new exams only)
   useEffect(() => {
     if (editingExamId || !isInitialLoadComplete || typeof window === 'undefined' || isLoadingExamData) {
       return;
@@ -629,7 +634,7 @@ export default function CreateExamPage() {
     newBlocks[blockIndex] = {
       ...currentBlock,
       blockType: newType,
-      questions: [initialQuestion],
+      questions: [initialQuestion], // Reset questions for new type
       choicePool: newType === 'pooled-choices' ? (currentBlock.choicePool && currentBlock.blockType === newType ? currentBlock.choicePool : [{id: generateId('pool-opt'), text: ""}, {id: generateId('pool-opt'), text: ""}]) : undefined,
     };
     setExamBlocks(newBlocks);
@@ -772,12 +777,10 @@ export default function CreateExamPage() {
             totalPoints: calculatedTotalPoints,
             classIds: validAssignedClassIds, 
             subjectId: selectedSubjectIdForFilter, 
-            userId: user.uid, 
         };
 
         if (editingExamId) {
             batch.update(examDocRef, examCoreData);
-
             const existingBlocksRef = collection(db, EXAMS_COLLECTION_NAME, editingExamId, "questionBlocks");
             const existingBlocksSnap = await getDocs(existingBlocksRef);
             for (const blockDocSnap of existingBlocksSnap.docs) {
@@ -791,6 +794,7 @@ export default function CreateExamPage() {
         } else {
             batch.set(examDocRef, {
                 ...examCoreData,
+                userId: user.uid,
                 createdAt: serverTimestamp(),
                 status: "Draft", 
             });
@@ -834,6 +838,7 @@ export default function CreateExamPage() {
         if (editingExamId) {
             toast({ title: "Exam Updated", description: `Exam "${examTitle}" updated successfully. Triggering score recalculation...` });
             try {
+                // Call the API to recalculate scores
                 const response = await fetch('/api/recalculate-scores', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

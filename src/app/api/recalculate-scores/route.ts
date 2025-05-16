@@ -5,7 +5,7 @@ import admin from 'firebase-admin';
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 import type { FullExamData, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, PooledChoicesQuestion, StudentAnswers, StudentExamScore, ExamBlock } from '@/types/exam-types';
 
-// Ensure Firebase Admin SDK is initialized (similar to /api/score/route.ts)
+// Ensure Firebase Admin SDK is initialized
 try {
   if (!admin.apps.length) {
     if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
@@ -34,7 +34,7 @@ function getAlphabetLetter(index: number): string {
   return String.fromCharCode(65 + index);
 }
 
-// Scoring logic (can be extracted to a shared utility if used in multiple places)
+// Scoring logic (should be identical to the one in /api/score/route.ts)
 function calculateScore(fullExam: FullExamData, studentAnswers: StudentAnswers): { achievedScore: number; maxPossibleScore: number } {
   let totalAchievedScore = 0;
   let maxPossibleScore = 0;
@@ -106,11 +106,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing examId' }, { status: 400 });
     }
 
-    // 1. Fetch the updated exam data
+    // 1. Fetch the updated exam data (including correct answers and points)
     const examDocRef = firestore.collection(EXAMS_COLLECTION_NAME).doc(examId);
     const examSnap = await examDocRef.get();
     if (!examSnap.exists) {
-      return NextResponse.json({ error: 'Updated exam not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Updated exam not found for recalculation' }, { status: 404 });
     }
     const examData = examSnap.data() as Omit<FullExamData, 'id' | 'examBlocks'>;
     const blocksCollectionRef = examDocRef.collection("questionBlocks");
@@ -125,7 +125,8 @@ export async function POST(request: NextRequest) {
     }
     const updatedFullExam: FullExamData = { ...examData, id: examId, examBlocks: fetchedBlocks };
 
-    // 2. Query for all score documents related to this exam
+    // 2. Query for all score documents related to this exam using a collection group query
+    // This queries all 'scores' subcollections across all subjects/classes for the given examId
     const scoresQuery = firestore.collectionGroup('scores').where('examId', '==', examId);
     const scoresSnapshot = await scoresQuery.get();
 
@@ -138,12 +139,12 @@ export async function POST(request: NextRequest) {
 
     scoresSnapshot.forEach(scoreDoc => {
       const scoreData = scoreDoc.data() as StudentExamScore;
-      if (scoreData.answers) { 
+      if (scoreData.answers) { // Only recalculate if there are answers stored
         const { achievedScore, maxPossibleScore } = calculateScore(updatedFullExam, scoreData.answers);
         
         const updatedScoreFields = {
           score: achievedScore,
-          maxPossibleScore: maxPossibleScore,
+          maxPossibleScore: maxPossibleScore, // Update max possible score too
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
         batch.update(scoreDoc.ref, updatedScoreFields);

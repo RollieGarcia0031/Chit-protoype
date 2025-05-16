@@ -9,12 +9,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, PlusCircle, Edit3, Trash2, List, Loader2, AlertTriangle, BookOpen, LayoutGrid, UserPlus, Users2, ArrowLeft } from "lucide-react";
+import { Users, PlusCircle, Edit3, Trash2, List, Loader2, AlertTriangle, BookOpen, LayoutGrid, UserPlus, Users2, ArrowLeft, UploadCloud } from "lucide-react";
 import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase/config';
 import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 import type { Timestamp } from "firebase/firestore";
-import { collection, query, where, getDocs, orderBy, doc, addDoc, updateDoc, deleteDoc, serverTimestamp, getCountFromServer } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, doc, addDoc, updateDoc, deleteDoc, serverTimestamp, getCountFromServer, writeBatch } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -79,14 +79,17 @@ export default function StudentsPage() {
   const [managingStudentsForClass, setManagingStudentsForClass] = useState<ClassInfo | null>(null);
   const [studentsForSelectedClass, setStudentsForSelectedClass] = useState<Student[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
-  // isSavingStudent (for the main button) can be removed or kept if you want to disable the main "Add" button during any save.
-  // For per-item saving, student.isSaving will be used.
-  // const [isSavingStudent, setIsSavingStudent] = useState(false); 
   const [deletingStudentId, setDeletingStudentId] = useState<string | null>(null);
 
   const [newStudentFirstName, setNewStudentFirstName] = useState('');
   const [newStudentLastName, setNewStudentLastName] = useState('');
   const [newStudentMiddleName, setNewStudentMiddleName] = useState('');
+
+  // State for Import Students Dialog
+  const [isImportStudentsDialogOpen, setIsImportStudentsDialogOpen] = useState(false);
+  const [potentialSourceClassesForImport, setPotentialSourceClassesForImport] = useState<ClassInfo[]>([]);
+  const [selectedSourceClassIdForImport, setSelectedSourceClassIdForImport] = useState<string | null>(null);
+  const [isImportingStudents, setIsImportingStudents] = useState(false);
 
 
   const fetchPageData = async () => {
@@ -242,11 +245,16 @@ export default function StudentsPage() {
     if (!user) return;
     setDeletingClassId(classToDelete.id);
     try {
+      // Delete all students in the class first
       const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, classToDelete.subjectId, "classes", classToDelete.id, "students");
       const studentsSnap = await getDocs(studentsRef);
-      for (const studentDoc of studentsSnap.docs) {
-          await deleteDoc(studentDoc.ref);
-      }
+      const batch = writeBatch(db);
+      studentsSnap.forEach(studentDoc => {
+          batch.delete(studentDoc.ref);
+      });
+      await batch.commit();
+
+      // Then delete the class itself
       const classDocRef = doc(db, SUBJECTS_COLLECTION_NAME, classToDelete.subjectId, "classes", classToDelete.id);
       await deleteDoc(classDocRef);
       toast({ title: "Class Deleted", description: `Class "${classToDelete.subjectName} - ${classToDelete.sectionName}" and its students have been removed.` });
@@ -309,6 +317,9 @@ export default function StudentsPage() {
     setNewStudentFirstName('');
     setNewStudentLastName('');
     setNewStudentMiddleName('');
+    setIsImportStudentsDialogOpen(false);
+    setPotentialSourceClassesForImport([]);
+    setSelectedSourceClassIdForImport(null);
   };
 
   const fetchStudentsForClass = async (classInfo: ClassInfo) => {
@@ -340,7 +351,7 @@ export default function StudentsPage() {
 
     const tempId = generateId('student-optimistic');
     const optimisticStudent: Student = {
-      id: tempId, // Use tempId as id for UI key during saving
+      id: tempId, 
       tempId: tempId,
       firstName: newStudentFirstName.trim(),
       lastName: newStudentLastName.trim(),
@@ -406,7 +417,6 @@ export default function StudentsPage() {
       await deleteDoc(studentDocRef);
       toast({ title: "Student Removed", description: `${studentToDelete.firstName} ${studentToDelete.lastName} removed.` });
       
-      // Optimistically remove or refetch
       setStudentsForSelectedClass(prev => prev.filter(s => s.id !== studentToDelete.id));
       
       if (managingStudentsForClass) {
@@ -421,6 +431,95 @@ export default function StudentsPage() {
       setDeletingStudentId(null);
     }
   };
+
+  const openImportStudentsDialog = () => {
+    if (!managingStudentsForClass) return;
+    const sources = classes.filter(cls =>
+        cls.sectionName === managingStudentsForClass.sectionName &&
+        cls.yearGrade === managingStudentsForClass.yearGrade &&
+        cls.subjectId !== managingStudentsForClass.subjectId &&
+        cls.id !== managingStudentsForClass.id &&
+        cls.userId === user?.uid
+    );
+    setPotentialSourceClassesForImport(sources);
+    setSelectedSourceClassIdForImport(null);
+    setIsImportStudentsDialogOpen(true);
+  };
+
+  const handleImportStudents = async () => {
+    if (!user || !managingStudentsForClass || !selectedSourceClassIdForImport) {
+      toast({ title: "Import Error", description: "Target class or source class not selected.", variant: "destructive" });
+      return;
+    }
+    setIsImportingStudents(true);
+    let importedCount = 0;
+    let skippedCount = 0;
+
+    try {
+      const sourceClass = potentialSourceClassesForImport.find(c => c.id === selectedSourceClassIdForImport);
+      if (!sourceClass) {
+        toast({ title: "Import Error", description: "Source class details not found.", variant: "destructive" });
+        setIsImportingStudents(false);
+        return;
+      }
+
+      const sourceStudentsRef = collection(db, SUBJECTS_COLLECTION_NAME, sourceClass.subjectId, "classes", sourceClass.id, "students");
+      const sourceStudentsSnap = await getDocs(sourceStudentsRef);
+
+      const targetStudentsRef = collection(db, SUBJECTS_COLLECTION_NAME, managingStudentsForClass.subjectId, "classes", managingStudentsForClass.id, "students");
+      const batch = writeBatch(db);
+
+      for (const studentDoc of sourceStudentsSnap.docs) {
+        const studentData = studentDoc.data();
+        const alreadyExists = studentsForSelectedClass.some(
+          s => s.firstName.toLowerCase() === studentData.firstName.toLowerCase() && 
+               s.lastName.toLowerCase() === studentData.lastName.toLowerCase() &&
+               (s.middleName || "").toLowerCase() === (studentData.middleName || "").toLowerCase()
+        );
+
+        if (alreadyExists) {
+          skippedCount++;
+          continue;
+        }
+
+        const newStudentDocRef = doc(targetStudentsRef); // Generate new ID for target
+        batch.set(newStudentDocRef, {
+          firstName: studentData.firstName,
+          lastName: studentData.lastName,
+          middleName: studentData.middleName || "",
+          userId: user.uid,
+          classId: managingStudentsForClass.id,
+          subjectId: managingStudentsForClass.subjectId,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        importedCount++;
+      }
+
+      await batch.commit();
+
+      toast({
+        title: "Import Complete",
+        description: `${importedCount} student(s) imported. ${skippedCount} duplicate(s) skipped.`,
+      });
+
+      await fetchStudentsForClass(managingStudentsForClass); // Refresh target student list
+      if (managingStudentsForClass) { // Update target class student count
+         const updatedCount = (managingStudentsForClass.studentCount || 0) + importedCount;
+         const updatedTargetClass = { ...managingStudentsForClass, studentCount: updatedCount };
+         setManagingStudentsForClass(updatedTargetClass);
+         setClasses(prev => prev.map(c => c.id === updatedTargetClass.id ? updatedTargetClass : c));
+      }
+
+    } catch (error) {
+      console.error("Error importing students:", error);
+      toast({ title: "Import Failed", description: "An error occurred during student import.", variant: "destructive" });
+    } finally {
+      setIsImportingStudents(false);
+      setIsImportStudentsDialogOpen(false);
+    }
+  };
+
 
   const renderClassItem = (cls: ClassInfo) => (
     <Card key={cls.id} className="shadow-md w-full">
@@ -489,7 +588,7 @@ export default function StudentsPage() {
                 Manage Students: {managingStudentsForClass.subjectName} - {managingStudentsForClass.sectionName} ({managingStudentsForClass.yearGrade})
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                Add or remove students for this class. Class Code: {managingStudentsForClass.code}
+                Class Code: {managingStudentsForClass.code}
               </CardDescription>
             </div>
             <Button variant="outline" size="sm" onClick={closeStudentManagementView} className="text-xs sm:text-sm">
@@ -498,32 +597,99 @@ export default function StudentsPage() {
           </div>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
-          <div className="md:col-span-1">
-            <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4 border-b pb-2">Add New Student</h3>
-            <form onSubmit={handleAddStudent} className="space-y-3 sm:space-y-4">
-              <div>
-                <Label htmlFor="studentFirstName" className="text-xs sm:text-sm">First Name</Label>
-                <Input id="studentFirstName" value={newStudentFirstName} onChange={(e) => setNewStudentFirstName(e.target.value)} required className="h-8 sm:h-9 text-xs sm:text-sm"/>
-              </div>
-              <div>
-                <Label htmlFor="studentLastName" className="text-xs sm:text-sm">Last Name</Label>
-                <Input id="studentLastName" value={newStudentLastName} onChange={(e) => setNewStudentLastName(e.target.value)} required className="h-8 sm:h-9 text-xs sm:text-sm"/>
-              </div>
-              <div>
-                <Label htmlFor="studentMiddleName" className="text-xs sm:text-sm">Middle Name (Optional)</Label>
-                <Input id="studentMiddleName" value={newStudentMiddleName} onChange={(e) => setNewStudentMiddleName(e.target.value)} className="h-8 sm:h-9 text-xs sm:text-sm"/>
-              </div>
-              <Button type="submit" disabled={isLoadingStudents || studentsForSelectedClass.some(s => s.isSaving)} size="sm" className="w-full text-xs sm:text-sm">
-                {studentsForSelectedClass.some(s => s.isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} 
-                Add Student
-              </Button>
-            </form>
+          <div className="md:col-span-1 space-y-4">
+            <div>
+                <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4 border-b pb-2">Add New Student</h3>
+                <form onSubmit={handleAddStudent} className="space-y-3 sm:space-y-4">
+                <div>
+                    <Label htmlFor="studentFirstName" className="text-xs sm:text-sm">First Name</Label>
+                    <Input id="studentFirstName" value={newStudentFirstName} onChange={(e) => setNewStudentFirstName(e.target.value)} required className="h-8 sm:h-9 text-xs sm:text-sm"/>
+                </div>
+                <div>
+                    <Label htmlFor="studentLastName" className="text-xs sm:text-sm">Last Name</Label>
+                    <Input id="studentLastName" value={newStudentLastName} onChange={(e) => setNewStudentLastName(e.target.value)} required className="h-8 sm:h-9 text-xs sm:text-sm"/>
+                </div>
+                <div>
+                    <Label htmlFor="studentMiddleName" className="text-xs sm:text-sm">Middle Name (Optional)</Label>
+                    <Input id="studentMiddleName" value={newStudentMiddleName} onChange={(e) => setNewStudentMiddleName(e.target.value)} className="h-8 sm:h-9 text-xs sm:text-sm"/>
+                </div>
+                <Button type="submit" disabled={isLoadingStudents || studentsForSelectedClass.some(s => s.isSaving)} size="sm" className="w-full text-xs sm:text-sm">
+                    {studentsForSelectedClass.some(s => s.isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} 
+                    Add Student
+                </Button>
+                </form>
+            </div>
+            <div>
+                <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4 border-b pb-2">Import Students</h3>
+                 <Dialog open={isImportStudentsDialogOpen} onOpenChange={setIsImportStudentsDialogOpen}>
+                    <DialogTrigger asChild>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="w-full text-xs sm:text-sm" 
+                            onClick={openImportStudentsDialog}
+                            disabled={isImportingStudents}
+                        >
+                            <UploadCloud className="mr-2 h-4 w-4" /> Import from another class...
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle className="text-base sm:text-lg">Import Students</DialogTitle>
+                            <DialogDescription className="text-xs sm:text-sm">
+                                Select a class with the same section and year/grade from a different subject to import students.
+                                Duplicates (based on full name) will be skipped.
+                            </DialogDescription>
+                        </DialogHeader>
+                        {potentialSourceClassesForImport.length > 0 ? (
+                            <div className="space-y-3 py-2">
+                                <Label htmlFor="sourceClassImport" className="text-xs sm:text-sm">Source Class</Label>
+                                <Select
+                                    value={selectedSourceClassIdForImport || ""}
+                                    onValueChange={setSelectedSourceClassIdForImport}
+                                    disabled={isImportingStudents}
+                                >
+                                    <SelectTrigger id="sourceClassImport" className="h-9 text-xs sm:text-sm">
+                                        <SelectValue placeholder="Select source class" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {potentialSourceClassesForImport.map(cls => (
+                                            <SelectItem key={cls.id} value={cls.id} className="text-xs sm:text-sm">
+                                                {cls.subjectName} ({cls.subjectCode}) - {cls.sectionName} ({cls.yearGrade})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-muted-foreground py-4 text-center">
+                                No other classes found with the same section/year ({managingStudentsForClass?.sectionName} - {managingStudentsForClass?.yearGrade}) in a different subject.
+                            </p>
+                        )}
+                        <DialogFooter>
+                            <DialogClose asChild>
+                                <Button type="button" variant="outline" size="sm" className="text-xs sm:text-sm" disabled={isImportingStudents}>Cancel</Button>
+                            </DialogClose>
+                            <Button 
+                                type="button" 
+                                onClick={handleImportStudents} 
+                                size="sm" 
+                                className="text-xs sm:text-sm" 
+                                disabled={isImportingStudents || !selectedSourceClassIdForImport || potentialSourceClassesForImport.length === 0}
+                            >
+                                {isImportingStudents && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Import
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </div>
           </div>
           <div className="md:col-span-2 flex flex-col">
             <h3 className="text-md sm:text-lg font-semibold mb-3 sm:mb-4 border-b pb-2 shrink-0">
               Enrolled Students ({studentsForSelectedClass.filter(s => !s.isOptimistic || (s.isOptimistic && !s.isSaving)).length})
             </h3>
-            {isLoadingStudents && studentsForSelectedClass.length === 0 ? ( // Show main loader only if list is empty and loading
+            {isLoadingStudents && studentsForSelectedClass.length === 0 ? ( 
               <div className="flex-grow flex items-center justify-center py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
@@ -617,3 +783,4 @@ export default function StudentsPage() {
   );
 }
 
+    

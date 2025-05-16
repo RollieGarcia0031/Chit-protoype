@@ -186,7 +186,6 @@ export default function ExamResultsPage() {
 
 
     try {
-      // StudentExamScore no longer includes classId or subjectId in its type definition
       const scoreData: Omit<StudentExamScore, 'id' | 'createdAt'> = {
         examId: examDetails.id,
         studentId: student.id,
@@ -197,15 +196,12 @@ export default function ExamResultsPage() {
 
       let newScoreDocId = student.scoreDocId;
 
-      // Path to the scores subcollection for this specific class
       const scoresCollectionPath = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, SCORES_SUBCOLLECTION_NAME);
 
       if (student.scoreDocId) {
-        // Update existing score document
         const scoreDocRef = doc(scoresCollectionPath, student.scoreDocId);
         await setDoc(scoreDocRef, scoreData, { merge: true }); 
       } else {
-        // Add new score document
         const newDocRef = await addDoc(scoresCollectionPath, {
             ...scoreData,
             createdAt: serverTimestamp() as Timestamp

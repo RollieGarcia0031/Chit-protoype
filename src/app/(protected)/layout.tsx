@@ -7,6 +7,8 @@ import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton'; // Or a more sophisticated loader
 
+// This layout protects all routes within the (protected) group.
+// It checks for an authenticated user and redirects to /login if not found.
 export default function ProtectedLayout({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();

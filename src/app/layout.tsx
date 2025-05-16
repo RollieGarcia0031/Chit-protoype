@@ -7,11 +7,10 @@ import './globals.css';
 import { AppFooter } from '@/components/layout/footer';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { AppTopBar } from '@/components/layout/app-top-bar';
-// Toaster removed as it's not used here based on previous context,
-// but if needed, it should be placed within the conditional main app shell.
 import { AuthProvider } from '@/contexts/auth-context';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { usePathname } from 'next/navigation'; // Import usePathname
+import { usePathname } from 'next/navigation';
+import { Toaster } from '@/components/ui/toaster';
 
 // Metadata must be exported from the top level of the file for client components
 export const metadataPlain: Metadata = {
@@ -22,7 +21,6 @@ export const metadataPlain: Metadata = {
     icon: '/favicon.ico',
     apple: '/icons/apple-icon-180.png',
     appleStartupImages: [
-      // Existing appleStartupImages...
       { url: 'public/icons/apple-splash-2048-2732.jpg', media: '(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)' },
       { url: 'public/icons/apple-splash-2732-2048.jpg', media: '(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)' },
       { url: 'public/icons/apple-splash-1668-2388.jpg', media: '(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)' },
@@ -79,18 +77,19 @@ export default function RootLayout({
 
   return (
     <html lang="en" className={`${GeistSans.variable}`}>
-      <body className={isTakeExamRoute ? "antialiased bg-slate-50 dark:bg-slate-900" : "antialiased"}>
+      <body className={isTakeExamRoute ? "take-exam-body antialiased bg-slate-50 dark:bg-slate-900" : "app-body antialiased"}>
         <AuthProvider>
           {isTakeExamRoute ? (
-            // Minimal structure for /take-exam routes
+            // Minimal structure for /take-exam routes. No sidebar, topbar, or main app footer.
+            // AuthProvider is included to allow optional sign-in/session management if needed later for exam submissions,
+            // but it does not inherently protect the route.
             <main className="min-h-screen">
               {children}
             </main>
           ) : (
             // Full app shell for all other routes
-            <SidebarProvider defaultOpen={true}> {/* Desktop sidebar initially open */}
+            <SidebarProvider defaultOpen={true}>
               <AppSidebar />
-              {/* This div is the main content area to the right of the sidebar */}
               <div className="flex flex-col flex-1 min-h-screen md:ml-[var(--sidebar-width)] data-[sidebar-collapsed=true]:md:ml-[var(--sidebar-width-icon)] group-[.is-mobile]/sidebar-provider:ml-0 transition-[margin-left] duration-300 ease-in-out">
                 <AppTopBar />
                 <main className="flex-grow">
@@ -102,6 +101,7 @@ export default function RootLayout({
               </div>
             </SidebarProvider>
           )}
+          <Toaster />
         </AuthProvider>
       </body>
     </html>

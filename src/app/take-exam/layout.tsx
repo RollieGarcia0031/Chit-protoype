@@ -3,9 +3,9 @@
 
 // This layout is now significantly simplified because RootLayout handles the shell switching.
 // It still exists to define segment-specific metadata.
+// Importantly, this layout does NOT enforce authentication, making /take-exam routes public.
 
 import type { Metadata } from 'next';
-// We don't need to import GeistSans or globals.css here if RootLayout handles it.
 
 export const metadata: Metadata = {
   title: 'Take Exam - Chit',

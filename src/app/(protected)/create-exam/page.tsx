@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { useState, type FormEvent, useEffect, useCallback, useMemo, useRef } from "react";
-import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair, PooledChoicesQuestion, PoolOption, ClassInfoForDropdown, FetchedSubjectInfo } from "@/types/exam-types";
+import type { ExamBlock, ExamQuestion, QuestionType, Option, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, MatchingPair, PooledChoicesQuestion, PoolOption, ClassInfoForDropdown, FetchedSubjectInfo, AssignedClassSlot as AssignedClassSlotType } from "@/types/exam-types";
 import { generateId, debounce } from "@/lib/utils";
 import { ExamQuestionGroupBlock } from "@/components/exam/ExamQuestionGroupBlock";
 import { TotalPointsDisplay } from "@/components/exam/TotalPointsDisplay";
@@ -31,8 +31,8 @@ const LOCAL_STORAGE_KEY = 'pendingExamData';
 
 type AISuggestion = AnalyzeExamOutput['suggestions'][0];
 
-interface AssignedClassSlot {
-  key: string; // For React list key
+interface AssignedClassSlot extends AssignedClassSlotType { 
+  key: string; 
   selectedClassId: string | null;
 }
 
@@ -96,7 +96,7 @@ export default function CreateExamPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
-  const [isLoadingExamData, setIsLoadingExamData] = useState(false); // True when loading an exam for editing from DB
+  const [isLoadingExamData, setIsLoadingExamData] = useState(false); 
 
   const [aiSuggestionsEnabled, setAiSuggestionsEnabled] = useState(false);
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
@@ -112,7 +112,7 @@ export default function CreateExamPage() {
   const [allUserClasses, setAllUserClasses] = useState<ClassInfoForDropdown[]>([]);
   const [isLoadingUserClasses, setIsLoadingUserClasses] = useState(true);
 
-  const isInitialClientLoadRef = useRef(true); // Ref to track if initial client-side load from localStorage has happened
+  const isInitialClientLoadRef = useRef(true); 
 
 
   const totalPoints = useMemo(() => {
@@ -205,7 +205,6 @@ export default function CreateExamPage() {
   const handleSubjectFilterChange = (subjectIdValue: string) => {
     const newSubjectId = subjectIdValue === "none" ? null : subjectIdValue;
     setSelectedSubjectIdForFilter(newSubjectId);
-    // Reset class assignments when subject changes, as available classes will change.
     setAssignedClassSlots([{ key: generateId('class-slot-subject-change'), selectedClassId: null }]);
   };
   
@@ -214,7 +213,10 @@ export default function CreateExamPage() {
   };
 
   const handleRemoveClassAssignmentSlot = (keyToRemove: string) => {
-    setAssignedClassSlots(prev => prev.filter(slot => slot.key !== keyToRemove));
+    setAssignedClassSlots(prev => {
+        const newSlots = prev.filter(slot => slot.key !== keyToRemove);
+        return newSlots.length > 0 ? newSlots : [{ key: generateId('class-slot-default'), selectedClassId: null }];
+    });
   };
 
   const handleAssignedClassChange = (keyToUpdate: string, newClassId: string | null) => {
@@ -224,7 +226,6 @@ export default function CreateExamPage() {
       )
     );
   };
-
 
   const performAIAnalysis = useCallback(async () => {
     if (!aiSuggestionsEnabled || !user || isSaving || isLoadingExamData) {
@@ -375,18 +376,14 @@ export default function CreateExamPage() {
     }
   }, [aiSuggestionsEnabled, examTitle, examDescription, examBlocks, assignedClassSlots, isInitialLoadComplete, isLoadingExamData, isSaving, debouncedAIAnalysis]);
 
-
-  // Effect for loading data from localStorage (for new exams) or triggering DB fetch (for editing exams)
   useEffect(() => {
     const examIdFromUrl = searchParams.get('examId');
 
     if (examIdFromUrl) {
       setEditingExamId(examIdFromUrl);
-      // setIsLoadingExamData(true); // This will be set inside fetchExamForEditing
     } else {
-      // This is the path for new exams / loading from localStorage
-      if (typeof window !== 'undefined') { // Ensure client-side
-        if (isInitialClientLoadRef.current) { // Only run localStorage logic once on initial client load
+      if (typeof window !== 'undefined') { 
+        if (isInitialClientLoadRef.current) { 
           const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
           if (savedData) {
             try {
@@ -398,16 +395,11 @@ export default function CreateExamPage() {
                 parsedData.hasOwnProperty('selectedSubjectIdForFilter') ? parsedData.selectedSubjectIdForFilter : null
               );
 
-              if (parsedData.assignedClassSlots && Array.isArray(parsedData.assignedClassSlots)) {
-                  if (parsedData.assignedClassSlots.length > 0) {
-                      setAssignedClassSlots(parsedData.assignedClassSlots.map((slot: any) => ({
-                          key: slot.key || generateId('loaded-class-slot'),
-                          selectedClassId: slot.selectedClassId || null,
-                      })));
-                  } else {
-                       // If saved as empty array, keep it empty, otherwise default to one slot
-                       setAssignedClassSlots([]); // Keep empty if saved as empty
-                  }
+              if (parsedData.assignedClassSlots && Array.isArray(parsedData.assignedClassSlots) && parsedData.assignedClassSlots.length > 0) {
+                  setAssignedClassSlots(parsedData.assignedClassSlots.map((slot: any) => ({
+                      key: slot.key || generateId('loaded-class-slot'),
+                      selectedClassId: slot.selectedClassId || null,
+                  })));
               } else {
                    setAssignedClassSlots([{ key: generateId('default-class-slot-no-saved'), selectedClassId: null }]);
               }
@@ -452,27 +444,22 @@ export default function CreateExamPage() {
               setAssignedClassSlots([{ key: generateId('error-reset-class-slot'), selectedClassId: null }]);
             }
           } else {
-              // No saved data in local storage, initialize with defaults
               setSelectedSubjectIdForFilter(null);
               setAssignedClassSlots([{ key: generateId('init-class-slot-no-data'), selectedClassId: null }]);
           }
-          isInitialClientLoadRef.current = false; // Mark initial load from localStorage as done
+          isInitialClientLoadRef.current = false; 
         }
-        // For new exams, once the above block has run (or was skipped if not initial client load),
-        // and we are not editing, set initial load complete.
         setIsInitialLoadComplete(true); 
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, user]);
 
-
-  // Effect for fetching an existing exam for editing
   useEffect(() => {
     const fetchExamForEditing = async () => {
-      if (!editingExamId || !user) return; // Guard against missing IDs or user
+      if (!editingExamId || !user) return;
       
-      setIsLoadingExamData(true);
+      setIsLoadingExamData(true); // Set loading true at the start of fetching
       setExamTitle("");
       setExamDescription("");
       setSelectedSubjectIdForFilter(null);
@@ -487,38 +474,30 @@ export default function CreateExamPage() {
         if (!examSnap.exists() || examSnap.data().userId !== user.uid) {
           toast({ title: "Error", description: "Exam not found or you don't have permission to edit it.", variant: "destructive" });
           router.push('/exams');
-          return;
+          return; // Make sure to return after redirect or error
         }
 
         const examData = examSnap.data();
         setExamTitle(examData.title);
         setExamDescription(examData.description || "");
-
-        if (examData.subjectId) {
-            // Wait for userSubjectsForDropdown to be loaded before setting this,
-            // to ensure the Select component populates correctly.
-            // This will be handled by the loading check below.
-        } else {
-            setSelectedSubjectIdForFilter(null); 
-        }
         
         if (examData.classIds && Array.isArray(examData.classIds)) {
             if (examData.classIds.length > 0) {
                  setAssignedClassSlots(
                     examData.classIds.map((id: string) => ({ key: generateId('loaded-slot'), selectedClassId: id }))
                  );
-            } else {
-                setAssignedClassSlots([]); 
+            } else { 
+                setAssignedClassSlots([{ key: generateId('default-fetch-slot-empty-db'), selectedClassId: null }]);
             }
-        } else {
-          setAssignedClassSlots([{ key: generateId('default-fetch-slot'), selectedClassId: null }]);
+        } else { 
+          setAssignedClassSlots([{ key: generateId('default-fetch-slot-no-field'), selectedClassId: null }]);
         }
 
-        // Set subjectId after classes are potentially set, especially if userSubjectsForDropdown isn't ready
         if (examData.subjectId) {
             setSelectedSubjectIdForFilter(examData.subjectId);
+        } else {
+             setSelectedSubjectIdForFilter(null);
         }
-
 
         const loadedBlocks: ExamBlock[] = [];
         const blocksCollectionRef = collection(db, EXAMS_COLLECTION_NAME, editingExamId, "questionBlocks");
@@ -601,15 +580,12 @@ export default function CreateExamPage() {
       }
     };
 
-    // Trigger fetch only if editingExamId is set and other dependent data is ready
     if (editingExamId && user && !isLoadingUserClasses && !isLoadingUserSubjectsForDropdown) {
       fetchExamForEditing();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingExamId, user, isLoadingUserClasses, isLoadingUserSubjectsForDropdown, router, toast]); 
+  }, [editingExamId, user, isLoadingUserClasses, isLoadingUserSubjectsForDropdown, router, toast]); // Removed isInitialLoadComplete and isLoadingExamData
 
-
-  // Effect for saving to localStorage (for new exams only)
   useEffect(() => {
     if (editingExamId || !isInitialLoadComplete || typeof window === 'undefined' || isLoadingExamData) {
       return;
@@ -624,7 +600,6 @@ export default function CreateExamPage() {
     };
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(examDataToSave));
   }, [examTitle, examDescription, selectedSubjectIdForFilter, assignedClassSlots, examBlocks, editingExamId, isInitialLoadComplete, isLoadingExamData]);
-
 
   const handleAddExamBlock = () => {
     let newBlockType: QuestionType = 'multiple-choice';
@@ -797,8 +772,8 @@ export default function CreateExamPage() {
             totalPoints: calculatedTotalPoints,
             classIds: validAssignedClassIds, 
             subjectId: selectedSubjectIdForFilter, 
+            userId: user.uid, 
         };
-
 
         if (editingExamId) {
             batch.update(examDocRef, examCoreData);
@@ -816,9 +791,8 @@ export default function CreateExamPage() {
         } else {
             batch.set(examDocRef, {
                 ...examCoreData,
-                userId: user.uid,
                 createdAt: serverTimestamp(),
-                status: "Draft", // Set default status to Draft for new exams
+                status: "Draft", 
             });
         }
 
@@ -858,7 +832,23 @@ export default function CreateExamPage() {
         await batch.commit();
         
         if (editingExamId) {
-            toast({ title: "Exam Updated", description: `Exam "${examTitle}" updated successfully.` });
+            toast({ title: "Exam Updated", description: `Exam "${examTitle}" updated successfully. Triggering score recalculation...` });
+            try {
+                const response = await fetch('/api/recalculate-scores', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ examId: editingExamId }),
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    toast({ title: "Score Recalculation", description: result.message || "Scores are being recalculated." });
+                } else {
+                    toast({ title: "Score Recalculation Failed", description: result.error || "Could not trigger score recalculation.", variant: "destructive" });
+                }
+            } catch (recalcError) {
+                console.error("Error calling recalculate API:", recalcError);
+                toast({ title: "Score Recalculation Error", description: "Failed to initiate score recalculation.", variant: "destructive" });
+            }
             router.push('/exams'); 
         } else {
             toast({ title: "Exam Saved", description: `Exam "${examTitle}" saved as Draft. Local draft cleared.` });
@@ -871,7 +861,6 @@ export default function CreateExamPage() {
         setIsSaving(false);
     }
   };
-
 
   if (isLoadingExamData && editingExamId && (!isInitialLoadComplete || isLoadingUserClasses || isLoadingUserSubjectsForDropdown) && examBlocks.length === 0) {
     return (
@@ -916,7 +905,7 @@ export default function CreateExamPage() {
   const isClassAddButtonDisabled = !selectedSubjectIdForFilter || 
                                  isLoadingUserClasses || 
                                  (filteredClassesForDropdown.length === 0) ||
-                                 (assignedClassSlots.filter(slot => slot.selectedClassId !== null).length >= filteredClassesForDropdown.length);
+                                 (assignedClassSlots.filter(slot => slot.selectedClassId !== null).length >= filteredClassesForDropdown.length && filteredClassesForDropdown.length > 0); 
 
   return (
     <div className="space-y-6">
@@ -1017,11 +1006,9 @@ export default function CreateExamPage() {
                   <li key={index} className="text-xs sm:text-sm text-foreground p-2 sm:p-3 bg-muted/50 rounded-md shadow-sm">
                     <p className="font-medium">Suggestion:</p>
                     <ul className="list-disc pl-4 sm:pl-5 mt-1 text-muted-foreground">
-                       {feedback.suggestionText.split('\n').map((line, lineIndex) => {
-                          if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
-                            return <li key={lineIndex}>{line.trim().substring(2)}</li>;
-                          }
-                          return line.trim() ? <li key={lineIndex}>{line.trim()}</li> : null;
+                       {feedback.suggestionText.split('\\n').map((line, lineIndex) => { 
+                          const cleanLine = line.replace(/^-\s*/, '').trim();
+                          return cleanLine ? <li key={lineIndex}>{cleanLine}</li> : null;
                        }).filter(Boolean)}
                     </ul>
                     {feedback.elementPath && (
@@ -1170,9 +1157,7 @@ export default function CreateExamPage() {
                          { !selectedSubjectIdForFilter ? "Select a subject above to see available classes." : "No classes available for the selected subject."}
                      </p>
                  )}
-
               </div>
-
 
               <div className="space-y-1 sm:space-y-2">
                 <Label htmlFor="examDescription" className="text-sm sm:text-base">Description (Optional)</Label>
@@ -1267,6 +1252,3 @@ export default function CreateExamPage() {
     </div>
   );
 }
-    
-
-    

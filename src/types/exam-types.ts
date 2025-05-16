@@ -81,6 +81,7 @@ export interface ExamSummaryData {
   status: "Draft" | "Published" | "Archived";
   classIds: string[];
   subjectId?: string | null;
+  userId?: string; // Added to ensure we know the creator
 }
 
 export interface FullExamData extends ExamSummaryData {
@@ -116,25 +117,29 @@ export interface Student {
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
   
-  // For optimistic UI updates when adding students
   tempId?: string; 
   isOptimistic?: boolean;
   isSaving?: boolean;
   
-  // Fields for exam results page
   score?: number | null; 
   currentScoreInput?: string; 
   isSavingScore?: boolean; 
   scoreDocId?: string | null; 
 }
 
+export interface StudentAnswers { // To type the answers object
+  [questionId: string]: string | string[] | null; // string[] for potential multi-select in future
+}
+
 export interface StudentExamScore {
-  // id is the Firestore document ID itself
   examId: string;
   studentId: string;
-  userId: string; // Teacher's ID
+  userId: string; // Teacher's ID who created the exam
   score: number | null; 
-  updatedAt: Timestamp;
+  maxPossibleScore: number;
+  answers: StudentAnswers; // To store the raw answers
+  submittedAt: Timestamp;
+  updatedAt?: Timestamp; // For subsequent updates like recalculation
   createdAt?: Timestamp;
 }
 
@@ -144,6 +149,5 @@ export interface ExamAssignment {
   classId: string;
   assignedDateTime: Timestamp;
   status: 'Scheduled' | 'Active' | 'Completed' | 'Cancelled';
-  // For pre-filling on publish page, not stored in DB as part of assignment directly
   initialAssignedDateTime?: Timestamp; 
 }

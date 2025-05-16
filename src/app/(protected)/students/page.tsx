@@ -433,7 +433,7 @@ export default function StudentsPage() {
   };
 
   const openImportStudentsDialog = () => {
-    if (!managingStudentsForClass) return;
+    if (!managingStudentsForClass || !user) return;
     const sources = classes.filter(cls =>
         cls.sectionName === managingStudentsForClass.sectionName &&
         cls.yearGrade === managingStudentsForClass.yearGrade &&
@@ -613,8 +613,8 @@ export default function StudentsPage() {
                     <Label htmlFor="studentMiddleName" className="text-xs sm:text-sm">Middle Name (Optional)</Label>
                     <Input id="studentMiddleName" value={newStudentMiddleName} onChange={(e) => setNewStudentMiddleName(e.target.value)} className="h-8 sm:h-9 text-xs sm:text-sm"/>
                 </div>
-                <Button type="submit" disabled={isLoadingStudents || studentsForSelectedClass.some(s => s.isSaving)} size="sm" className="w-full text-xs sm:text-sm">
-                    {studentsForSelectedClass.some(s => s.isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} 
+                <Button type="submit" disabled={isLoadingStudents || studentsForSelectedClass.some(s => !!s.isSaving)} size="sm" className="w-full text-xs sm:text-sm">
+                    {studentsForSelectedClass.some(s => !!s.isSaving) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} 
                     Add Student
                 </Button>
                 </form>
@@ -626,11 +626,11 @@ export default function StudentsPage() {
                         <Button 
                             variant="outline" 
                             size="sm" 
-                            className="w-full text-xs sm:text-sm" 
+                            className="w-auto text-xs sm:text-sm px-3"
                             onClick={openImportStudentsDialog}
                             disabled={isImportingStudents}
                         >
-                            <UploadCloud className="mr-2 h-4 w-4" /> Import from another class...
+                            <UploadCloud className="mr-1.5 h-3.5 w-3.5" />Import
                         </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-md">
@@ -718,7 +718,7 @@ export default function StudentsPage() {
                             variant="ghost" 
                             size="icon" 
                             className="h-7 w-7 text-muted-foreground hover:text-destructive" 
-                            disabled={deletingStudentId === student.id || student.isSaving}
+                            disabled={deletingStudentId === student.id || !!student.isSaving}
                         >
                           {deletingStudentId === student.id && !student.isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                         </Button>

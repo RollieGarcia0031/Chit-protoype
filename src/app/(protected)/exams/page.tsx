@@ -12,7 +12,7 @@ import Link from "next/link";
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { db } from "@/lib/firebase/config";
-import { collection, query, where, getDocs, Timestamp, orderBy, doc, deleteDoc, getDocsFromServer } from "firebase/firestore";
+import { collection, query, where, getDocs, Timestamp, orderBy, doc, deleteDoc, getDocsFromServer, writeBatch, collectionGroup } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from "@/config/firebase-constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ExamSummaryData, FetchedSubjectInfo, ClassInfoForDropdown } from "@/types/exam-types";
@@ -265,32 +265,48 @@ export default function ViewExamsPage() {
   }, [displayMode, exams, allUserClasses, isLoadingClasses, isLoadingExams]);
 
 
-  const handleDeleteExam = async (examId: string) => {
-    setDeletingExamId(examId);
+  const handleDeleteExam = async (examIdToDelete: string) => {
+    if (!user) return;
+    setDeletingExamId(examIdToDelete);
+    const batch = writeBatch(db);
+
     try {
-        const questionBlocksRef = collection(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks");
+        // Delete questionBlocks and their nested questions
+        const questionBlocksRef = collection(db, EXAMS_COLLECTION_NAME, examIdToDelete, "questionBlocks");
         const questionBlocksSnapshot = await getDocsFromServer(questionBlocksRef);
         for (const blockDoc of questionBlocksSnapshot.docs) {
-            const questionsRef = collection(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks", blockDoc.id, "questions");
+            const questionsRef = collection(db, EXAMS_COLLECTION_NAME, examIdToDelete, "questionBlocks", blockDoc.id, "questions");
             const questionsSnapshot = await getDocsFromServer(questionsRef);
             for (const questionDoc of questionsSnapshot.docs) {
-                await deleteDoc(doc(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks", blockDoc.id, "questions", questionDoc.id));
+                batch.delete(questionDoc.ref);
             }
-            await deleteDoc(doc(db, EXAMS_COLLECTION_NAME, examId, "questionBlocks", blockDoc.id));
+            batch.delete(blockDoc.ref);
         }
         
-        // Also delete assignments subcollection
-        const assignmentsRef = collection(db, EXAMS_COLLECTION_NAME, examId, "assignments");
+        // Delete assignments subcollection
+        const assignmentsRef = collection(db, EXAMS_COLLECTION_NAME, examIdToDelete, "assignments");
         const assignmentsSnapshot = await getDocsFromServer(assignmentsRef);
         for (const assignmentDoc of assignmentsSnapshot.docs) {
-            await deleteDoc(doc(db, EXAMS_COLLECTION_NAME, examId, "assignments", assignmentDoc.id));
+            batch.delete(assignmentDoc.ref);
         }
 
-        await deleteDoc(doc(db, EXAMS_COLLECTION_NAME, examId));
-        toast({ title: "Exam Deleted", description: "The exam and its associated data have been successfully deleted." });
-        setExams(prevExams => prevExams.filter(exam => exam.id !== examId));
+        // Delete student scores associated with this exam (collection group query)
+        const scoresQuery = query(collectionGroup(db, 'scores'), where("examId", "==", examIdToDelete), where("userId", "==", user.uid));
+        const scoresSnapshot = await getDocs(scoresQuery);
+        scoresSnapshot.forEach(scoreDoc => {
+            batch.delete(scoreDoc.ref);
+        });
+        
+        // Delete the main exam document
+        const examDocRef = doc(db, EXAMS_COLLECTION_NAME, examIdToDelete);
+        batch.delete(examDocRef);
+
+        await batch.commit();
+        
+        toast({ title: "Exam Deleted", description: "The exam and all its associated data have been successfully deleted." });
+        setExams(prevExams => prevExams.filter(exam => exam.id !== examIdToDelete));
     } catch (e) {
-        console.error("Error deleting exam: ", e);
+        console.error("Error deleting exam and associated data: ", e);
         toast({ title: "Error Deleting Exam", description: "Could not delete the exam. Please try again.", variant: "destructive" });
     } finally {
         setDeletingExamId(null);
@@ -391,7 +407,7 @@ export default function ViewExamsPage() {
                         <AlertDialogTitle className="text-base sm:text-lg">Are you sure?</AlertDialogTitle>
                         <AlertDialogDescription className="text-xs sm:text-sm">
                             This action cannot be undone. This will permanently delete the exam
-                            &quot;{exam.title}&quot; and all its associated questions and data.
+                            &quot;{exam.title}&quot; and all its associated data (questions, assignments, and student scores).
                         </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">

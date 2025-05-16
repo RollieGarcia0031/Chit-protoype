@@ -3,24 +3,24 @@
 
 import * as React from "react"
 
-const MOBILE_BREAKPOINT = 768
+const MOBILE_BREAKPOINT = 768 // Standard md breakpoint
 
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | null>(null); // Initialize to null
+  const [isMobile, setIsMobile] = React.useState<boolean | null>(null);
 
   React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    }
-    
-    // Set initial value after mount
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    
-    mql.addEventListener("change", onChange)
-    
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
+    const checkDevice = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+
+    // Initial check
+    checkDevice();
+
+    window.addEventListener("resize", checkDevice);
+    return () => window.removeEventListener("resize", checkDevice);
+  }, []);
 
   return isMobile;
 }
+
+    

@@ -2,7 +2,7 @@
 // src/app/(protected)/exams/[examId]/results/page.tsx
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase/config';
@@ -61,6 +61,7 @@ export default function ExamResultsPage() {
   const [collapsedStates, setCollapsedStates] = useState<Record<string, boolean>>({});
   const [isSavingAllInProgress, setIsSavingAllInProgress] = useState<Record<string, boolean>>({});
   const [classIdToResetConfirm, setClassIdToResetConfirm] = useState<string | null>(null);
+  const [isBackConfirmDialogOpen, setIsBackConfirmDialogOpen] = useState(false);
 
 
   const toggleCollapse = (classId: string) => {
@@ -69,6 +70,37 @@ export default function ExamResultsPage() {
       [classId]: !(prev[classId] ?? false)
     }));
   };
+
+  const getScoreStatus = useCallback((student: Student): ScoreStatusDetails => {
+    const { currentScoreInput, score } = student;
+    const inputTrimmed = currentScoreInput?.trim();
+
+    if (inputTrimmed === undefined || inputTrimmed === "") {
+      if (score === null || score === undefined) { // Ensure score can be explicitly null or undefined
+        return { status: 'emptyAndUnchanged', icon: null, isSavable: false, parsedScore: null, tooltip: "No score entered." };
+      }
+      // If input is empty, but there was a saved score, it means we are clearing it.
+      return { status: 'emptyAndDirty', icon: Save, color: "text-amber-600", isSavable: true, parsedScore: null, tooltip: "Score will be cleared." };
+    }
+
+    const parsedInput = parseFloat(inputTrimmed);
+
+    if (isNaN(parsedInput)) {
+      return { status: 'invalid', icon: AlertTriangle, color: "text-destructive", isSavable: false, parsedScore: null, tooltip: "Invalid input. Score must be a number." };
+    }
+    
+    // Handle case where original score was null/undefined and new score is 0
+    if ((score === null || score === undefined) && parsedInput === 0) {
+        return { status: 'dirty', icon: Save, color: "text-amber-600", isSavable: true, parsedScore: parsedInput, tooltip: "Unsaved changes." };
+    }
+
+    if (parsedInput === score) {
+      return { status: 'saved', icon: CheckCircle2, color: "text-green-600", isSavable: false, parsedScore: parsedInput, tooltip: "Score saved." };
+    }
+
+    return { status: 'dirty', icon: Save, color: "text-amber-600", isSavable: true, parsedScore: parsedInput, tooltip: "Unsaved changes." };
+  }, []);
+
 
   const fetchResultsData = useCallback(async () => {
     if (!user || !examId) return;
@@ -184,30 +216,6 @@ export default function ExamResultsPage() {
       return newGroups;
     });
   };
-
-  const getScoreStatus = (student: Student): ScoreStatusDetails => {
-    const { currentScoreInput, score } = student;
-    const inputTrimmed = currentScoreInput?.trim();
-
-    if (inputTrimmed === undefined || inputTrimmed === "") {
-      if (score === null) {
-        return { status: 'emptyAndUnchanged', icon: null, isSavable: false, parsedScore: null, tooltip: "No score entered." };
-      }
-      return { status: 'emptyAndDirty', icon: Save, color: "text-amber-600", isSavable: true, parsedScore: null, tooltip: "Score will be cleared." };
-    }
-
-    const parsedInput = parseFloat(inputTrimmed);
-
-    if (isNaN(parsedInput)) {
-      return { status: 'invalid', icon: AlertTriangle, color: "text-destructive", isSavable: false, parsedScore: null, tooltip: "Invalid input. Score must be a number." };
-    }
-
-    if (parsedInput === score) {
-      return { status: 'saved', icon: CheckCircle2, color: "text-green-600", isSavable: false, parsedScore: parsedInput, tooltip: "Score saved." };
-    }
-
-    return { status: 'dirty', icon: Save, color: "text-amber-600", isSavable: true, parsedScore: parsedInput, tooltip: "Unsaved changes." };
-  };
   
   const handleSaveAllScoresForClass = async (classIdx: number) => {
     if (!user || !examDetails) return;
@@ -243,7 +251,7 @@ export default function ExamResultsPage() {
           examId: examDetails.id,
           studentId: student.id,
           userId: user.uid,
-          score: scoreToSave,
+          score: scoreToSave, // This can be null if clearing a score
           updatedAt: serverTimestamp() as Timestamp,
         };
 
@@ -254,6 +262,8 @@ export default function ExamResultsPage() {
           const scoreDocRef = doc(scoresCollectionPath, student.scoreDocId);
           await setDoc(scoreDocRef, scoreData, { merge: true });
         } else {
+          // If saving null for a new score, we might not want to create a doc,
+          // or create it with score: null. Current logic creates it.
           const newDocRef = await addDoc(scoresCollectionPath, { ...scoreData, createdAt: serverTimestamp() as Timestamp });
           newScoreDocId = newDocRef.id;
         }
@@ -325,6 +335,19 @@ export default function ExamResultsPage() {
     setClassIdToResetConfirm(null);
   };
 
+  const hasAnyUnsavedChanges = useMemo(() => {
+    return groupedStudentScores.some(classGroup => 
+      classGroup.students.some(student => getScoreStatus(student).isSavable)
+    );
+  }, [groupedStudentScores, getScoreStatus]);
+
+  const handleBackClick = () => {
+    if (hasAnyUnsavedChanges) {
+      setIsBackConfirmDialogOpen(true);
+    } else {
+      router.back();
+    }
+  };
 
   if (isLoading || authLoading) {
     return (
@@ -391,10 +414,28 @@ export default function ExamResultsPage() {
             Total Points Possible: {examDetails.totalPoints} | Total Questions: {examDetails.totalQuestions}
           </p>
         </div>
-        <Button variant="outline" onClick={() => router.back()} size="sm" className="text-xs sm:text-sm w-full sm:w-auto">
+        <Button variant="outline" onClick={handleBackClick} size="sm" className="text-xs sm:text-sm w-full sm:w-auto">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Exams List
         </Button>
       </div>
+      
+      <AlertDialog open={isBackConfirmDialogOpen} onOpenChange={setIsBackConfirmDialogOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+            <AlertDialogDescription>
+                You have unsaved scores. Are you sure you want to leave this page? Your changes will be lost.
+            </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsBackConfirmDialogOpen(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { router.back(); setIsBackConfirmDialogOpen(false); }} className="bg-destructive hover:bg-destructive/90">
+                Leave Page
+            </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
 
       {groupedStudentScores.length === 0 && !isLoading && (
         <Card className="shadow-md">
@@ -410,7 +451,7 @@ export default function ExamResultsPage() {
       {groupedStudentScores.map(({ classInfo, students }, classIdx) => {
         const isCollapsed = collapsedStates[classInfo.id] ?? false;
         const classIsSaving = isSavingAllInProgress[classInfo.id] || false;
-        const hasSavableChanges = students.some(s => getScoreStatus(s).isSavable);
+        const hasSavableChangesForThisClass = students.some(s => getScoreStatus(s).isSavable);
 
         return (
           <Card key={classInfo.id} className="shadow-lg">
@@ -501,7 +542,7 @@ export default function ExamResultsPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => setClassIdToResetConfirm(classInfo.id)}
-                                disabled={classIsSaving || !hasSavableChanges}
+                                disabled={classIsSaving || !hasSavableChangesForThisClass}
                                 className="text-xs sm:text-sm"
                             >
                                 <RotateCcw className="mr-2 h-3.5 w-3.5" /> Reset
@@ -525,7 +566,7 @@ export default function ExamResultsPage() {
                     <Button
                         size="sm"
                         onClick={() => handleSaveAllScoresForClass(classIdx)}
-                        disabled={classIsSaving || !hasSavableChanges}
+                        disabled={classIsSaving || !hasSavableChangesForThisClass}
                         className="text-xs sm:text-sm"
                     >
                         {classIsSaving ? (

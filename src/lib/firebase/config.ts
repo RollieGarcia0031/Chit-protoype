@@ -24,6 +24,9 @@ const auth: Auth = getAuth(app);
 const db: Firestore = getFirestore(app); // Initialize Firestore instance
 
 // Enable Firestore offline persistence
+// This setting applies globally to this Firestore instance (db).
+// All data fetched through this instance (exams, subjects, classes, students, scores, etc.)
+// will automatically benefit from local caching and offline capabilities.
 if (typeof window !== 'undefined') { // Ensure this runs only on the client-side
   enableIndexedDbPersistence(db, { cacheSizeBytes: CACHE_SIZE_UNLIMITED })
     .then(() => {
@@ -44,3 +47,4 @@ if (typeof window !== 'undefined') { // Ensure this runs only on the client-side
 }
 
 export { app, auth, db };
+

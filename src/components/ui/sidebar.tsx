@@ -33,6 +33,7 @@ type SidebarContextValue = {
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean | null;
   toggleSidebar: () => void;
+  hasMounted: boolean; 
 };
 
 const SidebarContext = React.createContext<SidebarContextValue | null>(null);
@@ -61,9 +62,14 @@ const SidebarProvider = React.forwardRef<
     },
     ref
   ) => {
-    const isMobileHookValue = useIsMobile(); // Returns null initially, then true/false
-    const [open, setOpen] = React.useState(defaultOpen); // For desktop state
-    const [openMobile, setOpenMobile] = React.useState(false); // For mobile sheet state
+    const isMobileHookValue = useIsMobile();
+    const [open, setOpen] = React.useState(defaultOpen);
+    const [openMobile, setOpenMobile] = React.useState(false);
+    const [hasMounted, setHasMounted] = React.useState(false);
+
+    React.useEffect(() => {
+      setHasMounted(true); 
+    }, []);
 
     const toggleSidebar = React.useCallback(() => {
       if (isMobileHookValue) {
@@ -74,6 +80,7 @@ const SidebarProvider = React.forwardRef<
     }, [isMobileHookValue, setOpen, setOpenMobile]);
 
     React.useEffect(() => {
+      if (!hasMounted) return; 
       const handleKeyDown = (event: KeyboardEvent) => {
         if (
           event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
@@ -85,25 +92,26 @@ const SidebarProvider = React.forwardRef<
       };
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [toggleSidebar]);
+    }, [toggleSidebar, hasMounted]);
     
-    // Determine state based on 'open' for desktop, not relevant for mobile sheet directly
     const desktopState = open ? "expanded" : "collapsed"; 
 
     const contextValue = React.useMemo<SidebarContextValue>(
       () => ({
-        state: desktopState, // This state is primarily for desktop logic
-        open,               // Desktop open state
+        state: desktopState,
+        open,
         setOpen,
         isMobile: isMobileHookValue,
-        openMobile,         // Mobile sheet open state
+        openMobile,
         setOpenMobile,
         toggleSidebar,
+        hasMounted, 
       }),
-      [desktopState, open, setOpen, isMobileHookValue, openMobile, setOpenMobile, toggleSidebar]
+      [desktopState, open, setOpen, isMobileHookValue, openMobile, setOpenMobile, toggleSidebar, hasMounted]
     );
     
     React.useEffect(() => {
+      if (!hasMounted) return; 
       const wrapper = document.querySelector('.group\\/sidebar-provider');
       if (wrapper) {
         if (isMobileHookValue) {
@@ -111,14 +119,14 @@ const SidebarProvider = React.forwardRef<
           wrapper.removeAttribute('data-sidebar-collapsed');
         } else {
           wrapper.classList.remove('is-mobile');
-          if (!open) { // 'open' here refers to the desktop sidebar's state
+          if (!open) {
             wrapper.setAttribute('data-sidebar-collapsed', 'true');
           } else {
             wrapper.removeAttribute('data-sidebar-collapsed');
           }
         }
       }
-    }, [isMobileHookValue, open]);
+    }, [isMobileHookValue, open, hasMounted]);
 
 
     return (
@@ -168,35 +176,34 @@ const Sidebar = React.forwardRef<
     },
     ref
   ) => {
-    const { isMobile, open, state, openMobile, setOpenMobile } = useSidebar();
+    const { isMobile, open, state, openMobile, setOpenMobile, hasMounted } = useSidebar();
 
-    if (isMobile === null) {
-      // Server-side render and initial client render before isMobile is determined
-      // Always render the desktop <aside> structure based on `open` (which is `defaultOpen` from provider)
-      const serverState = open ? "expanded" : "collapsed";
-      const initialClasses = cn(
-        "fixed inset-y-0 z-20 flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border", // No transition for initial render
-        side === "left" ? "border-r" : "border-l",
-        open ? "w-[var(--sidebar-width)]" : "w-[var(--sidebar-width-icon)]", // Width based on defaultOpen
-        variant === "floating" && "shadow-lg m-2 rounded-lg h-[calc(100vh-1rem)]",
-        variant === "inset" && "relative",
-        className
-      );
-      return (
-        <aside 
-          ref={ref} 
-          className={initialClasses} 
-          data-state={serverState} // Use state derived from defaultOpen
-          data-collapsible-type={collapsible}
-          data-variant={variant}
-          {...props}
-        >
-          {children} {/* Children sub-components will handle their own isMobile === null state */}
-        </aside>
-      );
+    if (!hasMounted) {
+      // Render null on the server and for the initial client render.
+      // This ensures no mismatch for the <aside> tag itself.
+      // The AppSidebar component in layout.tsx will still be rendered,
+      // but this specific Sidebar rendering its complex structure will wait for mount.
+      // If this causes layout shift, a simple static placeholder could be used instead of null.
+      // For example, a div with a fixed width matching the collapsed sidebar.
+      // However, for fixed/floating sidebars, `null` is often the safest first step.
+      // For 'inset' variant, we might need to render a placeholder to occupy space.
+      if (variant === 'inset') {
+          const initialOpenState = useSidebar().open; // This will be defaultOpen on server
+          const initialInsetClasses = cn(
+              "h-full flex-col bg-sidebar text-sidebar-foreground",
+              initialOpenState ? "w-[var(--sidebar-width)]" : "w-[var(--sidebar-width-icon)]",
+              className
+          );
+           return (
+             <aside ref={ref} className={initialInsetClasses} data-variant={variant} data-state={initialOpenState ? "expanded" : "collapsed"}>
+                {/* Minimal skeleton for children if necessary */}
+             </aside>
+           );
+      }
+      return null; 
     }
 
-    // Client-side rendering (isMobile is true or false)
+    // Client-side rendering (hasMounted is true)
     if (isMobile) {
       return (
         <Sheet open={openMobile} onOpenChange={setOpenMobile}>
@@ -210,19 +217,18 @@ const Sidebar = React.forwardRef<
       );
     }
 
-    // Desktop rendering (isMobile is false)
-    // `state` here is the current client-side desktop state
+    // Desktop rendering (hasMounted is true, isMobile is false)
     const desktopSidebarClasses = cn(
       "fixed inset-y-0 z-20 flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border transition-all duration-300 ease-in-out",
       side === "left" ? "border-r" : "border-l",
       state === "expanded" ? "w-[var(--sidebar-width)]" : "w-[var(--sidebar-width-icon)]",
       collapsible === "offcanvas" && state === "collapsed" ? (side === "left" ? "-translate-x-full" : "translate-x-full") : "translate-x-0",
       variant === "floating" && "shadow-lg m-2 rounded-lg h-[calc(100vh-1rem)]",
-      variant === "inset" && "relative",
+      // variant === "inset" is handled separately if it's the primary mode
       className
     );
     
-    if (variant === 'inset') {
+    if (variant === 'inset') { 
        return (
          <aside
             ref={ref}
@@ -262,10 +268,10 @@ const SidebarTrigger = React.forwardRef<
   React.ElementRef<typeof Button>,
   React.ComponentProps<typeof Button>
 >(({ className, onClick, ...props }, ref) => {
-  const { toggleSidebar, isMobile, openMobile, state } = useSidebar();
+  const { toggleSidebar, isMobile, openMobile, state, hasMounted } = useSidebar();
 
-  if (isMobile === null) { // Don't render on server if behavior depends on client state
-    return null;
+  if (!hasMounted) { 
+    return <Button variant="ghost" size="icon" className={cn("h-8 w-8 opacity-0 pointer-events-none", className)}><PanelLeft /></Button>; // Render a placeholder
   }
 
   return (
@@ -279,7 +285,7 @@ const SidebarTrigger = React.forwardRef<
         toggleSidebar();
       }}
       aria-expanded={isMobile ? openMobile : state === 'expanded'}
-      aria-controls={isMobile ? undefined : "app-sidebar-content"}
+      aria-controls={isMobile ? undefined : "app-sidebar-content"} // Assuming app-sidebar-content is an ID for the sidebar's main content area
       {...props}
     >
       <PanelLeft />
@@ -293,9 +299,9 @@ const SidebarRail = React.forwardRef<
   HTMLButtonElement,
   React.ComponentProps<"button">
 >(({ className, ...props }, ref) => {
-  const { toggleSidebar, isMobile } = useSidebar();
+  const { toggleSidebar, isMobile, hasMounted } = useSidebar();
 
-  if (isMobile === null || isMobile) return null;
+  if (!hasMounted || isMobile) return null;
 
   return (
     <button
@@ -340,9 +346,9 @@ const SidebarInput = React.forwardRef<
   React.ElementRef<typeof Input>,
   React.ComponentProps<typeof Input>
 >(({ className, ...props }, ref) => {
-  const { state, isMobile } = useSidebar();
+  const { state, isMobile, hasMounted } = useSidebar();
 
-  if (isMobile === null || isMobile || state === 'collapsed') return null; 
+  if (!hasMounted || isMobile || state === 'collapsed') return <Skeleton className={cn("h-8 w-full my-1 mx-2", state === 'collapsed' && "hidden", className)} />; 
 
   return (
     <Input
@@ -441,9 +447,9 @@ const SidebarGroupLabel = React.forwardRef<
   React.ComponentProps<"div"> & { asChild?: boolean }
 >(({ className, asChild = false, ...props }, ref) => {
   const Comp = asChild ? Slot : "div";
-  const { state, isMobile } = useSidebar();
+  const { state, isMobile, hasMounted } = useSidebar();
 
-  if (isMobile === null || isMobile || state === 'collapsed') return null;
+  if (!hasMounted || isMobile || state === 'collapsed') return null;
 
   return (
     <Comp
@@ -464,9 +470,9 @@ const SidebarGroupAction = React.forwardRef<
   React.ComponentProps<"button"> & { asChild?: boolean }
 >(({ className, asChild = false, ...props }, ref) => {
   const Comp = asChild ? Slot : "button";
-  const { state, isMobile } = useSidebar();
+  const { state, isMobile, hasMounted } = useSidebar();
 
-  if (isMobile === null || isMobile || state === 'collapsed') return null;
+  if (!hasMounted || isMobile || state === 'collapsed') return null;
 
   return (
     <Comp
@@ -571,35 +577,43 @@ const SidebarMenuButton = React.forwardRef<
     ref
   ) => {
     const Comp = asChild ? Slot : "button";
-    const { isMobile, open, state: sidebarContextState } = useSidebar();
+    const { isMobile, open: contextOpen, state: sidebarContextState, hasMounted } = useSidebar();
 
-    // Determine the state to use for rendering.
-    // On server (isMobile === null), `open` from context is `defaultOpen`.
-    // On client, `sidebarContextState` is the actual current state.
-    const effectiveState = isMobile === null ? (open ? "expanded" : "collapsed") : sidebarContextState;
+    if (!hasMounted) {
+       // If used as a child (e.g., with Link), render its children but hide them to preserve structure.
+      if (asChild) {
+        return <Comp className={cn(className, "opacity-0 pointer-events-none")}>{children}</Comp>;
+      }
+      // Otherwise, render a skeleton.
+      const isLikelyCollapsedServer = !contextOpen; 
+      return (
+        <Skeleton
+          className={cn(
+            sidebarMenuButtonVariants({ size, justify: isLikelyCollapsedServer ? 'center' : 'start'}),
+            isLikelyCollapsedServer && 'px-0 w-[var(--sidebar-width-icon)] h-[var(--sidebar-width-icon)]',
+            className
+          )}
+        />
+      );
+    }
     
-    // Determine if we are rendering the collapsed icon-only version for desktop
-    // `isMobile` being false means desktop.
-    const renderAsCollapsedIconDesktop = effectiveState === "collapsed" && (isMobile === false);
-
-    // For SSR and initial client render (isMobile === null), also treat as desktop for class calculation
-    const renderAsCollapsedIconInitial = effectiveState === "collapsed" && (isMobile === null);
-
+    const effectiveState = isMobile ? "expanded" : sidebarContextState;
+    const renderAsCollapsedIconDesktop = effectiveState === "collapsed" && !isMobile;
 
     const buttonClasses = cn(
       sidebarMenuButtonVariants({
         variant,
         size,
-        justify: (renderAsCollapsedIconDesktop || renderAsCollapsedIconInitial) ? 'center' : 'start',
+        justify: renderAsCollapsedIconDesktop ? 'center' : 'start',
       }),
-      (renderAsCollapsedIconDesktop || renderAsCollapsedIconInitial) && 'px-0 w-[var(--sidebar-width-icon)] h-[var(--sidebar-width-icon)]',
+      renderAsCollapsedIconDesktop && 'px-0 w-[var(--sidebar-width-icon)] h-[var(--sidebar-width-icon)]',
       className
     );
 
     const dataAttributes = {
       'data-sidebar': "menu-button",
       'data-size': size,
-      'data-active': isActive, // isActive is a prop, should be consistent server/client
+      'data-active': isActive,
     };
 
     const elementProps = {
@@ -612,11 +626,10 @@ const SidebarMenuButton = React.forwardRef<
     const buttonElement = asChild ? (
       <Comp {...elementProps}>{children}</Comp>
     ) : (
-      <button {...elementProps}>{children}</button>
+      <button type="button" {...elementProps}>{children}</button>
     );
     
-    // Tooltip logic: only on desktop (isMobile === false) and when collapsed
-    if (tooltip && isMobile === false && effectiveState === "collapsed") {
+    if (tooltip && !isMobile && effectiveState === "collapsed") {
       const tooltipProps = typeof tooltip === 'string' ? { children: tooltip } : tooltip;
       return (
         <Tooltip>
@@ -639,9 +652,9 @@ const SidebarMenuAction = React.forwardRef<
   }
 >(({ className, asChild = false, showOnHover = false, ...props }, ref) => {
   const Comp = asChild ? Slot : "button";
-  const { state, isMobile } = useSidebar();
+  const { state, isMobile, hasMounted } = useSidebar();
 
-  if (isMobile === null || isMobile || state === 'collapsed') return null;
+  if (!hasMounted || isMobile || state === 'collapsed') return null;
 
 
   return (
@@ -665,9 +678,9 @@ const SidebarMenuBadge = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
 >(({ className, ...props }, ref) => {
-  const { state, isMobile } = useSidebar();
+  const { state, isMobile, hasMounted } = useSidebar();
 
-  if (isMobile === null || isMobile || state === 'collapsed') return null;
+  if (!hasMounted || isMobile || state === 'collapsed') return null;
 
   return (
   <div
@@ -688,7 +701,55 @@ const SidebarMenuSkeleton = React.forwardRef<
     showIcon?: boolean;
   }
 >(({ className, showIcon = true, ...props }, ref) => {
-  const { state } = useSidebar();
+  const { state: sidebarState, isMobile, hasMounted, open: sidebarOpen  } = useSidebar(); 
+  
+  if (!hasMounted) {
+      const isLikelyCollapsedInitial = !sidebarOpen; 
+      const width = React.useMemo(() => {
+        return `${Math.floor(Math.random() * 40) + 50}%`;
+      }, []);
+      return (
+        <div
+          ref={ref}
+          data-sidebar="menu-skeleton"
+          className={cn("rounded-md h-10 flex gap-2 px-2 items-center", isLikelyCollapsedInitial && "justify-center", className)}
+          {...props}
+        >
+          {showIcon && (
+            <Skeleton
+              className="size-5 rounded-md shrink-0"
+              data-sidebar="menu-skeleton-icon"
+            />
+          )}
+          {!isLikelyCollapsedInitial && ( 
+            <Skeleton
+                className="h-4 flex-1 max-w-[--skeleton-width]"
+                data-sidebar="menu-skeleton-text"
+                style={{ "--skeleton-width": width } as React.CSSProperties}
+            />
+          )}
+        </div>
+      );
+  }
+
+  if (isMobile || (sidebarState === "collapsed" && !isMobile)) {
+    return (
+        <div
+          ref={ref}
+          data-sidebar="menu-skeleton"
+          className={cn("rounded-md h-10 flex gap-2 px-2 items-center justify-center", className)}
+          {...props}
+        >
+          {showIcon && (
+            <Skeleton
+              className="size-5 rounded-md shrink-0"
+              data-sidebar="menu-skeleton-icon"
+            />
+          )}
+        </div>
+    );
+  }
+
   const width = React.useMemo(() => {
     return `${Math.floor(Math.random() * 40) + 50}%`;
   }, []);
@@ -706,17 +767,11 @@ const SidebarMenuSkeleton = React.forwardRef<
           data-sidebar="menu-skeleton-icon"
         />
       )}
-      {state === "expanded" && (
-        <Skeleton
-            className="h-4 flex-1 max-w-[--skeleton-width]"
-            data-sidebar="menu-skeleton-text"
-            style={
-            {
-                "--skeleton-width": width,
-            } as React.CSSProperties
-            }
-        />
-      )}
+      <Skeleton
+          className="h-4 flex-1 max-w-[--skeleton-width]"
+          data-sidebar="menu-skeleton-text"
+          style={{ "--skeleton-width": width } as React.CSSProperties}
+      />
     </div>
   );
 });
@@ -726,9 +781,9 @@ const SidebarMenuSub = React.forwardRef<
   HTMLUListElement,
   React.ComponentProps<"ul">
 >(({ className, ...props }, ref) => {
-  const { state, isMobile } = useSidebar();
+  const { state, isMobile, hasMounted } = useSidebar();
 
-  if (isMobile === null || isMobile || state === 'collapsed') return null;
+  if (!hasMounted || isMobile || state === 'collapsed') return null;
 
   return (
   <ul
@@ -758,9 +813,9 @@ const SidebarMenuSubButton = React.forwardRef<
   }
 >(({ asChild = false, size = "default", isActive, className, ...props }, ref) => {
   const Comp = asChild ? Slot : "a";
-  const { state, isMobile } = useSidebar();
+  const { state, isMobile, hasMounted } = useSidebar();
 
-  if (isMobile === null || isMobile || state === 'collapsed') return null;
+  if (!hasMounted || isMobile || state === 'collapsed') return null;
 
   return (
     <Comp
@@ -808,3 +863,5 @@ export {
   useSidebar,
 };
 
+
+    

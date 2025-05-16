@@ -33,6 +33,7 @@ function sanitizeExamDataForStudent(fullExamData: FullExamData): FullExamData {
       else if (question.type === 'pooled-choices') {
         (baseSanitizedQuestion as PooledChoicesQuestion).correctAnswersFromPool = [];
       }
+      // Matching questions already have premises and responses visible, no specific answer to hide in the question structure itself.
       return baseSanitizedQuestion;
     });
     return { ...block, questions: sanitizedQuestions as ExamQuestion[] };
@@ -103,6 +104,7 @@ export default function TakeExamLandingPage() {
             setExamDetails(fullExamData);
 
             if (typeof window !== 'undefined' && fullExamData.status === 'Published') {
+              // Sanitize and store in session storage
               const sanitizedData = sanitizeExamDataForStudent(fullExamData);
               sessionStorage.setItem(`examData-${examId}`, JSON.stringify(sanitizedData));
             }
@@ -154,8 +156,10 @@ export default function TakeExamLandingPage() {
       const fetchClassDetailsForAssignments = async () => {
         setIsLoadingClassDetails(true);
         const classSelectionPromises = assignments.map(async (assignment) => {
+          // Ensure examDetails and examDetails.subjectId are valid before proceeding
+          if (!examDetails || !examDetails.subjectId) return null; 
           try {
-            const classDocRef = doc(db, SUBJECTS_COLLECTION_NAME, examDetails.subjectId!, "classes", assignment.classId);
+            const classDocRef = doc(db, SUBJECTS_COLLECTION_NAME, examDetails.subjectId, "classes", assignment.classId);
             const classSnap = await getDoc(classDocRef);
             if (classSnap.exists()) {
               const classData = classSnap.data();
@@ -184,7 +188,7 @@ export default function TakeExamLandingPage() {
       setAvailableClassesForSelection([]);
       setIsLoadingClassDetails(false);
     }
-  }, [assignments, examDetails?.subjectId]);
+  }, [assignments, examDetails]); // Added examDetails to dependency array
 
   useEffect(() => {
     if (!selectedClassId || assignments.length === 0) {
@@ -194,7 +198,7 @@ export default function TakeExamLandingPage() {
       } else if (selectedClassId && (isLoadingAssignments || isLoadingClassDetails)) {
         // Loading message handled by main loading indicator
       } else {
-        setAccessMessage(null);
+        setAccessMessage(null); // Clear message if no class is selected
       }
       return;
     }
@@ -203,7 +207,7 @@ export default function TakeExamLandingPage() {
     if (assignment && assignment.assignedDateTime) {
       const assignedTime = assignment.assignedDateTime.toDate();
       const now = new Date();
-      setCurrentTime(now);
+      setCurrentTime(now); // Update current time
 
       if (now >= assignedTime) {
         setIsExamTime(true);
@@ -217,39 +221,48 @@ export default function TakeExamLandingPage() {
       setAccessMessage("No specific schedule found for your selected class in this exam.");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClassId, assignments, isLoadingAssignments, isLoadingClassDetails]);
+  }, [selectedClassId, assignments, isLoadingAssignments, isLoadingClassDetails]); // currentTime removed, handled by interval
 
   useEffect(() => {
+    // Timer to update current time for display and potentially re-check schedule
     if (!isExamTime && accessMessage && accessMessage.startsWith("This exam is scheduled")) {
       const interval = setInterval(() => {
         const assignment = assignments.find(a => a.classId === selectedClassId);
         if (assignment && assignment.assignedDateTime) {
           const assignedTime = assignment.assignedDateTime.toDate();
           const now = new Date();
-          setCurrentTime(now);
+          setCurrentTime(now); // Update currentTime state
           if (now >= assignedTime) {
             setIsExamTime(true);
             setAccessMessage(null);
-            clearInterval(interval);
+            clearInterval(interval); // Stop interval once exam time is reached
           }
         } else {
-          clearInterval(interval);
+          clearInterval(interval); // Stop if assignment or class changes
         }
-      }, 30000);
+      }, 30000); // Check every 30 seconds
       return () => clearInterval(interval);
     }
   }, [isExamTime, accessMessage, assignments, selectedClassId]);
 
   const handleStartExam = () => {
     if (examId && isExamTime && selectedClassId && examDetails) {
+      if (!examDetails.subjectId) {
+        setExamError("This exam is not properly configured (missing subject information). Please contact your instructor to resolve this issue.");
+        setIsNavigating(false);
+        return;
+      }
+
       setIsNavigating(true);
       if (typeof window !== 'undefined') {
+        // Exam data is already sanitized and stored in sessionStorage by the fetchFullExamDetails effect
         sessionStorage.setItem(`selectedClassId-${examId}`, selectedClassId);
         const selectedClassDetail = availableClassesForSelection.find(c => c.id === selectedClassId);
         if (selectedClassDetail) {
           sessionStorage.setItem(`selectedClassName-${examId}`, selectedClassDetail.name);
         }
-        // Exam data is already saved in sessionStorage by the fetchFullExamDetails effect
+        // examDetails.subjectId is confirmed to exist here due to the check above
+        sessionStorage.setItem(`selectedSubjectIdForExam-${examId}`, examDetails.subjectId);
       }
       router.push(`/take-exam/${examId}/answer-sheet`);
     }
@@ -257,7 +270,7 @@ export default function TakeExamLandingPage() {
 
   if (isLoadingExam) {
     return (
-      <main className="flex flex-col items-center justify-center min-h-screen p-4">
+      <main className="flex flex-col items-center justify-center min-h-screen p-4 bg-slate-50 dark:bg-slate-900">
         <Card className="w-full max-w-2xl shadow-xl">
           <CardHeader className="text-center">
             <Skeleton className="h-8 w-3/4 mx-auto mb-2" />
@@ -275,7 +288,7 @@ export default function TakeExamLandingPage() {
 
   if (examError) {
     return (
-      <main className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+      <main className="flex flex-col items-center justify-center min-h-screen p-4 text-center bg-slate-50 dark:bg-slate-900">
         <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-bold text-destructive mb-2">Error</h1>
         <p className="text-muted-foreground max-w-md">{examError}</p>
@@ -285,7 +298,7 @@ export default function TakeExamLandingPage() {
 
   if (!examDetails) {
     return (
-      <main className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+      <main className="flex flex-col items-center justify-center min-h-screen p-4 text-center bg-slate-50 dark:bg-slate-900">
         <FileText className="h-16 w-16 text-muted-foreground mb-4" />
         <h1 className="text-2xl font-bold mb-2">Exam Not Available</h1>
         <p className="text-muted-foreground">The requested exam could not be loaded or is not published.</p>
@@ -297,7 +310,7 @@ export default function TakeExamLandingPage() {
   const isStartButtonDisabled = !isExamTime || !selectedClassId || isPageLoading || isLoadingExam || isNavigating;
 
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen p-4">
+    <main className="flex flex-col items-center justify-center min-h-screen p-4 bg-slate-50 dark:bg-slate-900">
       <Card className="w-full max-w-3xl shadow-xl">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl sm:text-3xl font-bold text-primary">

@@ -161,7 +161,7 @@ export function ExamQuestionGroupBlock({
         "space-y-3 sm:space-y-4 transition-all duration-300 ease-in-out",
         isCollapsed 
           ? "max-h-0 opacity-0 py-0 overflow-hidden" 
-          : "max-h-[none] opacity-100 pt-3 sm:pt-4 pb-3 sm:pb-4"
+          : "max-h-[none] opacity-100 pt-3 sm:pt-4 pb-3 sm:pb-4" 
       )}>
         <div>
           <Label htmlFor={`blockTitle-${block.id}`} className="mb-1 block text-xs sm:text-sm">
@@ -239,7 +239,7 @@ export function ExamQuestionGroupBlock({
           className="w-full md:w-auto text-xs sm:text-sm"
           disabled={disabled}
         >
-          <PlusCircle className="mr-2 h-4 w-4" /> Add Question to this Block
+          <PlusCircle className="mr-2 h-4 w-4" /> Add Question
         </Button>
       </CardFooter>
     </Card>

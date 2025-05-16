@@ -230,54 +230,54 @@ export function ExamItemBlock({
         )}
 
         {questionType === 'pooled-choices' && item.type === 'pooled-choices' && (
-          <div className="space-y-2">
-            <div className="flex items-start gap-2 sm:gap-3">
-              <div className="flex-shrink-0 w-20 sm:w-24">
-                <Label htmlFor={`pooled-choice-answer-trigger-${item.id}`} className="block text-xs sm:text-sm font-medium mb-1">Answer</Label>
-                <Select
-                  value={getSelectedLetterFromPool()}
-                  onValueChange={handlePooledChoiceAnswerChange}
-                  disabled={disabled || !choicePool || choicePool.length === 0}
-                >
-                  <SelectTrigger
-                    id={`pooled-choice-answer-trigger-${item.id}`}
-                    className="h-9 w-full text-xs sm:text-sm px-2"
-                    aria-label="Select correct answer from pool"
-                  >
-                    <SelectValue placeholder="Ans." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(choicePool || []).map((_poolOpt, poolOptIndex) => (
-                      <SelectItem key={_poolOpt.id} value={getAlphabetLetter(poolOptIndex)} className="text-xs sm:text-sm">
-                        {getAlphabetLetter(poolOptIndex)}. {_poolOpt.text}
-                      </SelectItem>
-                    ))}
-                    {(!choicePool || choicePool.length === 0) && (
-                      <SelectItem value="no-options" disabled className="text-xs sm:text-sm">No choices in pool</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+                <div className="flex items-end gap-2 sm:gap-3"> {/* Changed items-start to items-end for better alignment */}
+                    <div className="flex-shrink-0 w-20 sm:w-24">
+                        <Label htmlFor={`pooled-choice-answer-trigger-${item.id}`} className="block text-xs sm:text-sm font-medium mb-1">Answer</Label>
+                        <Select
+                        value={getSelectedLetterFromPool()}
+                        onValueChange={handlePooledChoiceAnswerChange}
+                        disabled={disabled || !choicePool || choicePool.length === 0}
+                        >
+                        <SelectTrigger
+                            id={`pooled-choice-answer-trigger-${item.id}`}
+                            className="h-9 w-full text-xs sm:text-sm px-2"
+                            aria-label="Select correct answer from pool"
+                        >
+                            <SelectValue placeholder="Ans." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {(choicePool || []).map((_poolOpt, poolOptIndex) => (
+                            <SelectItem key={_poolOpt.id} value={getAlphabetLetter(poolOptIndex)} className="text-xs sm:text-sm">
+                                {getAlphabetLetter(poolOptIndex)}. {_poolOpt.text}
+                            </SelectItem>
+                            ))}
+                            {(!choicePool || choicePool.length === 0) && (
+                            <SelectItem value="no-options" disabled className="text-xs sm:text-sm">No choices in pool</SelectItem>
+                            )}
+                        </SelectContent>
+                        </Select>
+                    </div>
 
-              <div className="flex-grow space-y-1">
-                <Label htmlFor={`questionText-${item.id}`} className="block text-xs sm:text-sm font-medium">Question Text</Label>
-                <div className="flex items-start gap-2">
-                    <span className="text-xs sm:text-sm font-medium pt-2 sm:pt-2.5">{itemIndex + 1}.</span>
-                    <Textarea
-                    id={`questionText-${item.id}`}
-                    value={item.questionText}
-                    onChange={handleQuestionTextChange}
-                    placeholder="e.g., Which of the following is a primary color?"
-                    className="flex-grow min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm"
-                    disabled={disabled}
-                    />
+                    <div className="flex-grow space-y-1">
+                        <Label htmlFor={`questionText-${item.id}`} className="block text-xs sm:text-sm font-medium">Question Text</Label>
+                        <div className="flex items-start gap-2">
+                            <span className="text-xs sm:text-sm font-medium pt-2 sm:pt-2.5">{itemIndex + 1}.</span>
+                            <Textarea
+                            id={`questionText-${item.id}`}
+                            value={item.questionText}
+                            onChange={handleQuestionTextChange}
+                            placeholder="e.g., Which of the following is a primary color?"
+                            className="flex-grow min-h-[60px] sm:min-h-[70px] text-xs sm:text-sm" // Reduced min-height slightly
+                            disabled={disabled}
+                            />
+                        </div>
+                    </div>
                 </div>
-              </div>
+                {!choicePool || choicePool.length === 0 && (
+                    <p className="text-2xs sm:text-xs text-muted-foreground">No choices in the pool. Add choices in the block settings above.</p>
+                )}
             </div>
-            {!choicePool || choicePool.length === 0 && (
-                <p className="text-2xs sm:text-xs text-muted-foreground">No choices in the pool. Add choices in the block settings above.</p>
-            )}
-          </div>
         )}
 
 

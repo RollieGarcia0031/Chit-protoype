@@ -1226,7 +1226,7 @@ export default function CreateExamPage() {
             })}
             <Button type="button" variant="outline" onClick={handleAddExamBlock} className="w-full text-xs sm:text-sm" size="sm" disabled={isSaving || isLoadingExamData}>
               <PlusCircle className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-              Add Question Block
+              Add Block
             </Button>
           </CardContent>
         </Card>
@@ -1257,3 +1257,4 @@ export default function CreateExamPage() {
     </div>
   );
 }
+

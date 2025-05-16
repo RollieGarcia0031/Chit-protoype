@@ -14,7 +14,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, BarChart3, Users, AlertTriangle, Info, Save, Loader2, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, BarChart3, Users, AlertTriangle, Info, Save, Loader2, ChevronDown, ChevronUp, CheckCircle2, RotateCcw } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -49,6 +60,7 @@ export default function ExamResultsPage() {
   const [error, setError] = useState<string | null>(null);
   const [collapsedStates, setCollapsedStates] = useState<Record<string, boolean>>({});
   const [isSavingAllInProgress, setIsSavingAllInProgress] = useState<Record<string, boolean>>({});
+  const [classIdToResetConfirm, setClassIdToResetConfirm] = useState<string | null>(null);
 
 
   const toggleCollapse = (classId: string) => {
@@ -206,17 +218,16 @@ export default function ExamResultsPage() {
     setIsSavingAllInProgress(prev => ({ ...prev, [classInfo.id]: true }));
     setGroupedStudentScores(prev => {
         const newGroups = [...prev];
-        newGroups[classIdx].students = newGroups[classIdx].students.map(s => ({...s, isSavingScore: false })); // Reset individual saving flags first
+        newGroups[classIdx].students = newGroups[classIdx].students.map(s => ({...s, isSavingScore: false })); 
         return newGroups;
     });
 
     const savableStudentsPromises = students.map(async (student, studentIdx) => {
       const scoreStatusDetails = getScoreStatus(student);
       if (!scoreStatusDetails.isSavable) {
-        return { studentId: student.id, success: true, noChange: true }; // No change to save
+        return { studentId: student.id, success: true, noChange: true }; 
       }
 
-      // Set individual student saving flag for UI feedback
       setGroupedStudentScores(prev => {
         const newGroups = [...prev];
         if (newGroups[classIdx] && newGroups[classIdx].students[studentIdx]) {
@@ -272,12 +283,12 @@ export default function ExamResultsPage() {
           };
         } else if (result && result.status === 'fulfilled' && !result.value.success) {
           allSuccessful = false;
-          return { ...s, isSavingScore: false }; // Error occurred, stop saving visual for this student
+          return { ...s, isSavingScore: false }; 
         } else if (result && result.status === 'rejected') {
           allSuccessful = false;
           return { ...s, isSavingScore: false };
         }
-        return { ...s, isSavingScore: false }; // Ensure all saving flags are reset
+        return { ...s, isSavingScore: false }; 
       });
       newGroups[classIdx].students = studentsToUpdate;
       return newGroups;
@@ -292,6 +303,26 @@ export default function ExamResultsPage() {
     }
     
     setIsSavingAllInProgress(prev => ({ ...prev, [classInfo.id]: false }));
+  };
+
+  const handleConfirmResetScores = (classIdToReset: string) => {
+    setGroupedStudentScores(prevGroups => 
+      prevGroups.map(group => {
+        if (group.classInfo.id === classIdToReset) {
+          return {
+            ...group,
+            students: group.students.map(student => ({
+              ...student,
+              currentScoreInput: student.score !== null && student.score !== undefined ? String(student.score) : '',
+            })),
+          };
+        }
+        return group;
+      })
+    );
+    const classInfoForToast = groupedStudentScores.find(g => g.classInfo.id === classIdToReset)?.classInfo;
+    toast({ title: "Changes Discarded", description: `Unsaved scores for ${classInfoForToast?.sectionName || 'the class'} have been reverted.` });
+    setClassIdToResetConfirm(null);
   };
 
 
@@ -463,7 +494,34 @@ export default function ExamResultsPage() {
                     })}
                   </TableBody>
                 </Table>
-                <CardFooter className="mt-4 px-0 py-0 justify-end">
+                <CardFooter className="mt-4 px-0 py-0 flex justify-end gap-2">
+                    <AlertDialog open={classIdToResetConfirm === classInfo.id} onOpenChange={(isOpen) => !isOpen && setClassIdToResetConfirm(null)}>
+                        <AlertDialogTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setClassIdToResetConfirm(classInfo.id)}
+                                disabled={classIsSaving || !hasSavableChanges}
+                                className="text-xs sm:text-sm"
+                            >
+                                <RotateCcw className="mr-2 h-3.5 w-3.5" /> Reset
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Discard Unsaved Changes?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Are you sure you want to discard all unsaved score changes for {classInfo.sectionName} ({classInfo.yearGrade})? This cannot be undone.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel onClick={() => setClassIdToResetConfirm(null)}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleConfirmResetScores(classInfo.id)} className="bg-destructive hover:bg-destructive/90">
+                                    Discard Changes
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
                     <Button
                         size="sm"
                         onClick={() => handleSaveAllScoresForClass(classIdx)}
@@ -475,7 +533,7 @@ export default function ExamResultsPage() {
                         ) : (
                             <Save className="mr-2 h-4 w-4" />
                         )}
-                        Save All Scores for this Class
+                        Save
                     </Button>
                 </CardFooter>
                 </>

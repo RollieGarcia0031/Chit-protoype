@@ -3,7 +3,7 @@
 'use client';
 
 import type { ChangeEvent } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card"; // Removed CardHeader, CardTitle
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -171,29 +171,28 @@ export function ExamItemBlock({
 
   return (
     <Card className="border-border shadow-sm bg-card/50">
-      <CardHeader className="flex flex-col items-stretch gap-1.5 py-2 px-3 sm:flex-row sm:items-center sm:justify-between sm:py-3 sm:px-4 sm:gap-2">
-        <CardTitle className="text-xs sm:text-sm md:text-base font-medium flex-shrink-0 mr-auto order-first">Question {itemIndex + 1}</CardTitle>
-        <div className="flex items-center gap-1 sm:gap-2 w-full justify-between sm:w-auto sm:ml-auto sm:order-none">
-            <div className="flex items-center gap-1 sm:gap-1.5">
-                <Label htmlFor={`points-${item.id}-q${itemIndex}`} className="text-xs sm:text-sm whitespace-nowrap">Points:</Label>
-                <Input
-                    id={`points-${item.id}-q${itemIndex}`}
-                    type="number"
-                    value={item.points}
-                    onChange={handlePointsChange}
-                    min="0"
-                    placeholder="Pts"
-                    className="h-7 w-10 text-xs text-center sm:h-8 sm:w-14 sm:text-xs"
-                    disabled={disabled}
-                />
-            </div>
-            <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block" disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
-                <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground hover:text-destructive" />
-            </Button>
+      <CardContent className="space-y-2 sm:space-y-3 px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
+        <div className="flex items-center justify-between gap-1 sm:gap-2 mb-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="text-xs sm:text-sm font-medium whitespace-nowrap">{itemIndex + 1}.</span>
+            <Label htmlFor={`points-${item.id}-q${itemIndex}`} className="text-xs sm:text-sm whitespace-nowrap sr-only">Points:</Label>
+            <Input
+                id={`points-${item.id}-q${itemIndex}`}
+                type="number"
+                value={item.points}
+                onChange={handlePointsChange}
+                min="0"
+                placeholder="Pts"
+                className="h-7 w-10 text-xs text-center sm:h-8 sm:w-14 sm:text-sm"
+                disabled={disabled}
+            />
+          </div>
+          <Button variant="ghost" size="icon" onClick={onItemRemove} aria-label="Remove question from block" disabled={disabled} className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
+              <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground hover:text-destructive" />
+          </Button>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-3 sm:space-y-4 px-3 pb-3 sm:px-4 sm:pb-4">
-        {/* Question Text for MC and T/F */}
+        
+        {/* Question specific content starts here, indented slightly more implicitly by being in this flow */}
         {questionType !== 'matching' && questionType !== 'pooled-choices' && (
           <div className="space-y-1">
             <Label htmlFor={`questionText-${item.id}`} className="text-xs sm:text-sm">Question Text / Instructions</Label>
@@ -212,7 +211,6 @@ export function ExamItemBlock({
           </div>
         )}
 
-        {/* Specific UI for Pooled Choices */}
         {questionType === 'pooled-choices' && item.type === 'pooled-choices' && (
           <div className="space-y-2">
             <div className="flex items-start gap-2 sm:gap-3">

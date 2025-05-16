@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Trash2 } from "lucide-react";
+import { PlusCircle, Trash2, ChevronDown, ChevronUp } from "lucide-react"; // Added Chevron icons
 import type { ExamBlock, ExamQuestion, QuestionType } from "@/types/exam-types";
 import { QUESTION_TYPES } from "@/types/exam-types";
 import { ExamItemBlock } from "./ExamItemBlock";
 import { Textarea } from "../ui/textarea";
 import { generateId } from "@/lib/utils";
+import { useState } from "react"; // Added useState
+import { cn } from "@/lib/utils"; // Added cn
 
 interface ExamQuestionGroupBlockProps {
   block: ExamBlock;
@@ -45,6 +47,7 @@ export function ExamQuestionGroupBlock({
   onUpdateBlock,
   disabled = false,
 }: ExamQuestionGroupBlockProps) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const handleAddChoiceToPool = () => {
     if (block.blockType === 'pooled-choices') {
@@ -66,10 +69,9 @@ export function ExamQuestionGroupBlock({
       const choiceToRemove = block.choicePool[choiceIndex];
       const newChoicePool = block.choicePool.filter((_, i) => i !== choiceIndex);
       
-      // Also update questions that might have used this choice
       const updatedQuestions = block.questions.map(q => {
         if (q.type === 'pooled-choices' && q.correctAnswersFromPool.includes(choiceToRemove.text)) {
-          return { ...q, correctAnswersFromPool: [] }; // Clear selection if removed choice was selected
+          return { ...q, correctAnswersFromPool: [] }; 
         }
         return q;
       });
@@ -81,20 +83,20 @@ export function ExamQuestionGroupBlock({
 
   return (
     <Card className="shadow-md border-border">
-      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4 pb-3 sm:pb-4">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 sm:gap-4 pb-3 sm:pb-4">
         <div className="flex-grow">
           <CardTitle className="text-lg sm:text-xl">Question Block {blockIndex + 1}</CardTitle>
           <CardDescription className="text-xs sm:text-sm">
             Configure questions of type: <span className="font-semibold">{QUESTION_TYPES.find(qt => qt.value === block.blockType)?.label || block.blockType}</span>
           </CardDescription>
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-1 sm:gap-2">
           <Select
             value={block.blockType}
             onValueChange={(newType) => onBlockTypeChange(blockIndex, newType as QuestionType)}
             disabled={disabled}
           >
-            <SelectTrigger className="w-full sm:w-[180px] h-9 text-xs sm:text-sm" disabled={disabled}>
+            <SelectTrigger className="w-[150px] sm:w-[180px] h-9 text-xs sm:text-sm" disabled={disabled}>
               <SelectValue placeholder="Select type" />
             </SelectTrigger>
             <SelectContent>
@@ -105,12 +107,20 @@ export function ExamQuestionGroupBlock({
               ))}
             </SelectContent>
           </Select>
+          <Button variant="ghost" size="icon" onClick={() => setIsCollapsed(!isCollapsed)} aria-label={isCollapsed ? "Expand block" : "Collapse block"} disabled={disabled} className="h-9 w-9">
+            {isCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+          </Button>
           <Button variant="destructive" size="icon" onClick={() => onRemoveBlock(blockIndex)} aria-label="Remove question block" disabled={disabled} className="h-9 w-9">
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3 sm:space-y-4">
+      <CardContent className={cn(
+        "space-y-3 sm:space-y-4 transition-all duration-300 ease-in-out",
+        isCollapsed 
+          ? "max-h-0 opacity-0 py-0 overflow-hidden" 
+          : "max-h-[2000px] opacity-100 pt-3 sm:pt-4 pb-3 sm:pb-4" // Use a large enough max-height
+      )}>
         <div>
           <Label htmlFor={`blockTitle-${block.id}`} className="mb-1 block text-xs sm:text-sm">
             Block Instructions (Optional)
@@ -178,7 +188,7 @@ export function ExamQuestionGroupBlock({
           })}
         </div>
       </CardContent>
-      <CardFooter>
+      <CardFooter className={cn(isCollapsed && "hidden")}>
         <Button
           type="button"
           variant="outline"

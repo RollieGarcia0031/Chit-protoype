@@ -7,9 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useEffect, useState } from 'react';
-import type { FullExamData, ExamBlock, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, MatchingTypeQuestion, PooledChoicesQuestion, Student } from '@/types/exam-types';
+import type { FullExamData, ExamBlock, ExamQuestion, MultipleChoiceQuestion, TrueFalseQuestion, Student } from '@/types/exam-types';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, AlertTriangle, Send, ArrowLeft, Info, UserCheck } from 'lucide-react';
+import { FileText, AlertTriangle, Send, ArrowLeft, Info, UserCheck, Loader2 } from 'lucide-react';
 import { QUESTION_TYPES } from '@/types/exam-types';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -44,7 +44,13 @@ const getQuestionTypeLabel = (type: ExamQuestion['type']): string => {
 };
 
 interface StudentAnswers {
-  [questionId: string]: string | null; // For MC, T/F, Matching
+  [questionId: string]: string | null;
+}
+
+const LOCAL_STORAGE_KEY_PREFIX = 'studentExamProgress-';
+const getLocalStorageKey = (currentExamId: string | null) => {
+  if (!currentExamId) return null;
+  return `${LOCAL_STORAGE_KEY_PREFIX}${currentExamId}`;
 }
 
 export default function AnswerSheetPage() {
@@ -55,22 +61,27 @@ export default function AnswerSheetPage() {
   const [examToDisplay, setExamToDisplay] = useState<FullExamData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [studentAnswers, setStudentAnswers] = useState<StudentAnswers>({});
-  let globalQuestionNumber = 1;
-
+  
   const [selectedClassIdFromSession, setSelectedClassIdFromSession] = useState<string | null>(null);
   const [studentsInClass, setStudentsInClass] = useState<Student[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+  
   const [selectedStudentIdFromDropdown, setSelectedStudentIdFromDropdown] = useState<string | null>(null);
   const [enteredFirstName, setEnteredFirstName] = useState('');
   const [enteredLastName, setEnteredLastName] = useState('');
   const [isNameConfirmed, setIsNameConfirmed] = useState(false);
   const [studentDetailsError, setStudentDetailsError] = useState<string | null>(null);
+  
+  const [studentAnswers, setStudentAnswers] = useState<StudentAnswers>({});
+  let globalQuestionNumber = 1;
 
-
+  // Effect to load exam data from sessionStorage and student progress from localStorage
   useEffect(() => {
     if (typeof window !== 'undefined' && examId) {
       setIsLoading(true);
+      setError(null);
+      setStudentDetailsError(null);
+
       try {
         const cachedExamDataString = sessionStorage.getItem(`examData-${examId}`);
         const cachedClassId = sessionStorage.getItem(`selectedClassId-${examId}`);
@@ -79,7 +90,7 @@ export default function AnswerSheetPage() {
           const parsedData: FullExamData = JSON.parse(cachedExamDataString);
           setExamToDisplay(parsedData);
         } else {
-          setError("Exam data not found in session. Please return to the previous page and try starting the exam again.");
+          setError("Exam data not found. Please return to the exam start page and try again.");
           setIsLoading(false);
           return;
         }
@@ -87,16 +98,32 @@ export default function AnswerSheetPage() {
         if (cachedClassId) {
           setSelectedClassIdFromSession(cachedClassId);
         } else {
-          setError("Selected class information not found in session. Please return to the previous page.");
+          setError("Selected class information not found. Please return to the exam start page.");
           setIsLoading(false);
           return;
         }
 
+        // Load student progress from localStorage
+        const localStorageKey = getLocalStorageKey(examId);
+        if (localStorageKey) {
+          const savedProgressString = localStorage.getItem(localStorageKey);
+          if (savedProgressString) {
+            const savedProgress = JSON.parse(savedProgressString);
+            if (savedProgress.selectedStudentId) setSelectedStudentIdFromDropdown(savedProgress.selectedStudentId);
+            if (savedProgress.enteredFirstName) setEnteredFirstName(savedProgress.enteredFirstName);
+            if (savedProgress.enteredLastName) setEnteredLastName(savedProgress.enteredLastName);
+            if (typeof savedProgress.isNameConfirmed === 'boolean') setIsNameConfirmed(savedProgress.isNameConfirmed);
+            if (savedProgress.studentAnswers) setStudentAnswers(savedProgress.studentAnswers || {});
+          }
+        }
       } catch (e) {
-        console.error("Error parsing data from sessionStorage:", e);
-        setError("There was an issue loading the exam or class information. Please try again.");
+        console.error("Error processing initial data from storage:", e);
+        setError("There was an issue loading exam or progress information. Please try again.");
+        // Optionally clear potentially corrupted localStorage
+        const lsKey = getLocalStorageKey(examId);
+        if(lsKey) localStorage.removeItem(lsKey);
       } finally {
-        // setIsLoading(false); // Loading is set to false after students are fetched or if an error occurs
+        // setIsLoading will be set to false after students are fetched or if an error occurs in student fetching
       }
     } else if (!examId) {
       setError("No exam ID provided.");
@@ -104,6 +131,7 @@ export default function AnswerSheetPage() {
     }
   }, [examId]);
 
+  // Effect to fetch students for the selected class
   useEffect(() => {
     const fetchStudents = async () => {
       if (!selectedClassIdFromSession || !examToDisplay?.subjectId) {
@@ -137,10 +165,35 @@ export default function AnswerSheetPage() {
     if (selectedClassIdFromSession && examToDisplay) {
       fetchStudents();
     } else if (!selectedClassIdFromSession && examToDisplay) {
-      // This state is reached if exam data loaded but classId didn't (error handled in first useEffect)
       setIsLoading(false);
     }
   }, [selectedClassIdFromSession, examToDisplay]);
+
+  // Effect to save student progress to localStorage
+  useEffect(() => {
+    if (examId && examToDisplay && !isLoading && typeof window !== 'undefined') { // Only save if exam is loaded and not in initial loading phase
+      const localStorageKey = getLocalStorageKey(examId);
+      if (localStorageKey) {
+        const progressToSave = {
+          selectedStudentId: selectedStudentIdFromDropdown,
+          enteredFirstName,
+          enteredLastName,
+          isNameConfirmed,
+          studentAnswers,
+        };
+        localStorage.setItem(localStorageKey, JSON.stringify(progressToSave));
+      }
+    }
+  }, [
+    examId,
+    selectedStudentIdFromDropdown,
+    enteredFirstName,
+    enteredLastName,
+    isNameConfirmed,
+    studentAnswers,
+    examToDisplay, // Ensure exam is loaded before trying to save
+    isLoading      // Ensure initial loading is complete
+  ]);
 
 
   const handleAnswerChange = (questionId: string, answer: string) => {
@@ -166,9 +219,16 @@ export default function AnswerSheetPage() {
 
   const handleSubmitExam = () => {
     // Placeholder for future submission logic
+    console.log("Selected Student ID:", selectedStudentIdFromDropdown);
+    console.log("Entered First Name:", enteredFirstName);
+    console.log("Entered Last Name:", enteredLastName);
     console.log("Student Answers:", studentAnswers);
-    console.log("Confirmed Student ID:", selectedStudentIdFromDropdown);
-    alert("Exam submission functionality is coming soon! Answers and student ID logged to console.");
+    
+    // TODO: Clear local storage for this exam upon successful submission
+    // const localStorageKey = getLocalStorageKey(examId);
+    // if (localStorageKey) localStorage.removeItem(localStorageKey);
+
+    alert("Exam submission functionality is coming soon! Your progress (including name and answers) is saved locally in your browser. Details logged to console.");
   };
 
   if (isLoading) {
@@ -176,7 +236,7 @@ export default function AnswerSheetPage() {
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
         <Skeleton className="h-10 w-1/2 mb-2" />
         <Skeleton className="h-6 w-3/4 mb-6" />
-        <Skeleton className="h-20 w-full max-w-2xl mb-4" /> {/* For student ID section */}
+        <Skeleton className="h-20 w-full max-w-2xl mb-4" />
         <Skeleton className="h-40 w-full max-w-2xl mb-4" />
         <Skeleton className="h-40 w-full max-w-2xl" />
       </div>
@@ -278,7 +338,7 @@ export default function AnswerSheetPage() {
                       />
                     </div>
                     <Button onClick={handleNameConfirmation} className="w-full sm:w-auto">
-                      Confirm Name
+                      <UserCheck className="mr-2 h-4 w-4"/> Confirm Name
                     </Button>
                   </>
                 )}
@@ -293,7 +353,6 @@ export default function AnswerSheetPage() {
             <div className="prose prose-sm sm:prose-base max-w-none">
               {examToDisplay.examBlocks.map((block, blockIndex) => {
                 const blockTypeLabel = getQuestionTypeLabel(block.blockType);
-                // Reset globalQuestionNumber for each rendering pass for consistent numbering
                 if (blockIndex === 0) globalQuestionNumber = 1;
 
                 return (
@@ -318,7 +377,7 @@ export default function AnswerSheetPage() {
 
                     {block.questions.map((question) => {
                       const questionDisplayNumber = globalQuestionNumber;
-                      globalQuestionNumber += question.points; // Increment for the next question
+                      globalQuestionNumber += question.points;
                       const displayLabel = question.points > 1 ? `${questionDisplayNumber}-${globalQuestionNumber - 1}` : `${questionDisplayNumber}`;
 
                       if (question.type === 'pooled-choices') {
@@ -403,17 +462,17 @@ export default function AnswerSheetPage() {
                         <div className="mt-2 pl-4">
                             <h4 className="font-medium text-sm mb-1">Match From:</h4>
                             <ul className="list-none pl-0 columns-1 sm:columns-2 gap-x-4">
-                                {(block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs.map(p => p.response))
-                                    .filter((value, index, self) => self.indexOf(value) === index) // Unique responses
-                                    .sort((a,b) => { // Sort by assigned letter if available, otherwise alphabetically
-                                        const letterA = (block.questions as MatchingTypeQuestion[]).find(q => q.pairs.find(p => p.response === a))?.pairs.find(p => p.response === a)?.responseLetter || '';
-                                        const letterB = (block.questions as MatchingTypeQuestion[]).find(q => q.pairs.find(p => p.response === b))?.pairs.find(p => p.response === b)?.responseLetter || '';
+                                {(block.questions as MultipleChoiceQuestion[]).flatMap(q => (q as any).pairs.map((p: any) => p.response)) // Casting to any for pairs temporarily
+                                    .filter((value: any, index: number, self: any[]) => self.indexOf(value) === index)
+                                    .sort((a: any, b: any) => {
+                                        const letterA = (block.questions as MultipleChoiceQuestion[]).find(q => (q as any).pairs.find((p: any) => p.response === a))?.(q as any).pairs.find((p: any) => p.response === a)?.responseLetter || '';
+                                        const letterB = (block.questions as MultipleChoiceQuestion[]).find(q => (q as any).pairs.find((p: any) => p.response === b))?.(q as any).pairs.find((p: any) => p.response === b)?.responseLetter || '';
                                         if (letterA && letterB) return letterA.localeCompare(letterB);
-                                        return a.localeCompare(b);
+                                        return String(a).localeCompare(String(b));
                                     })
-                                    .map((response, index) => {
-                                         const originalPair = (block.questions as MatchingTypeQuestion[]).flatMap(q => q.pairs).find(p => p.response === response);
-                                         const letter = originalPair?.responseLetter || getAlphabetLetter(index); // Fallback letter if not assigned
+                                    .map((response: any, index: number) => {
+                                         const originalPair = (block.questions as MultipleChoiceQuestion[]).flatMap(q => (q as any).pairs).find((p: any) => p.response === response);
+                                         const letter = originalPair?.responseLetter || getAlphabetLetter(index);
                                          return <li key={`match-resp-${index}`} className="text-sm break-inside-avoid-column">{letter}. {response}</li>;
                                     })
                                 }
@@ -431,7 +490,7 @@ export default function AnswerSheetPage() {
             onClick={handleSubmitExam} 
             size="lg" 
             className="w-full sm:w-auto mx-auto"
-            disabled={!isNameConfirmed || isLoading}
+            disabled={!isNameConfirmed || isLoading || isLoadingStudents}
           >
             <Send className="mr-2 h-5 w-5" />
             Submit Exam (Coming Soon)

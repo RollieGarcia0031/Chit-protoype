@@ -1,4 +1,3 @@
-
 // src/app/take-exam/[examId]/answer-sheet/page.tsx
 'use client';
 
@@ -16,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { db } from '@/lib/firebase/config';
 import { collection, getDocs, query, orderBy, Timestamp } from 'firebase/firestore';
-import { SUBJECTS_COLLECTION_NAME, EXAMS_COLLECTION_NAME } from '@/config/firebase-constants';
+import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -78,6 +77,7 @@ export default function AnswerSheetPage() {
   const [selectedClassNameFromSession, setSelectedClassNameFromSession] = useState<string | null>(null);
   const [selectedSubjectIdForExamFromSession, setSelectedSubjectIdForExamFromSession] = useState<string | null>(null);
 
+
   const [studentsInClass, setStudentsInClass] = useState<Student[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   
@@ -130,7 +130,7 @@ export default function AnswerSheetPage() {
         if (cachedClassName) {
           setSelectedClassNameFromSession(cachedClassName);
         }
-        if (cachedSubjectIdForExam) {
+         if (cachedSubjectIdForExam) {
           setSelectedSubjectIdForExamFromSession(cachedSubjectIdForExam);
         } else {
           setError("Selected subject information for the exam not found. Please return to the exam start page.");
@@ -181,7 +181,6 @@ export default function AnswerSheetPage() {
 
   useEffect(() => {
     const fetchStudents = async () => {
-      // Use selectedSubjectIdForExamFromSession here
       if (!selectedClassIdFromSession || !selectedSubjectIdForExamFromSession) { 
         if (examToDisplay && !selectedSubjectIdForExamFromSession) {
              setStudentDetailsError("Exam configuration is missing subject ID, cannot fetch student list.");
@@ -193,7 +192,6 @@ export default function AnswerSheetPage() {
       setIsLoadingStudents(true);
       setStudentDetailsError(null);
       try {
-        // Use selectedSubjectIdForExamFromSession
         const studentsRef = collection(db, SUBJECTS_COLLECTION_NAME, selectedSubjectIdForExamFromSession, "classes", selectedClassIdFromSession, "students");
         const q = query(studentsRef, orderBy("lastName", "asc"), orderBy("firstName", "asc"));
         const querySnapshot = await getDocs(q);
@@ -214,7 +212,7 @@ export default function AnswerSheetPage() {
     if (selectedClassIdFromSession && examToDisplay && selectedSubjectIdForExamFromSession) {
       fetchStudents();
     } else if (examToDisplay && (!selectedClassIdFromSession || !selectedSubjectIdForExamFromSession)) {
-      setIsLoading(false); // Not enough info to fetch students
+      setIsLoading(false); 
     }
   }, [selectedClassIdFromSession, examToDisplay, selectedSubjectIdForExamFromSession]);
 
@@ -240,8 +238,8 @@ export default function AnswerSheetPage() {
     enteredLastName,
     isNameConfirmed,
     studentAnswers,
-    examToDisplay,
-    isLoading
+    examToDisplay, // Ensure examToDisplay is loaded before saving
+    isLoading // Ensure initial loading is complete
   ]);
 
 
@@ -330,7 +328,7 @@ export default function AnswerSheetPage() {
                 description: `Your score: ${result.achievedScore} / ${result.maxPossibleScore}. Results saved.`,
             });
             setIsSubmitConfirmDialogOpen(false);
-            // router.push(`/take-exam/submission-success?examId=${examId}`); // Optional: redirect to a success page
+            router.push('/take-exam/submission-success');
         } else {
             toast({ title: "Submission Failed", description: result.error || "There was an error submitting your exam. Please try again.", variant: "destructive" });
         }
@@ -559,8 +557,9 @@ export default function AnswerSheetPage() {
                                   type="text"
                                   placeholder="Enter matching letter"
                                   className="h-9 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring w-full max-w-xs"
-                                  onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                                  onChange={(e) => handleAnswerChange(question.id, e.target.value.toUpperCase())}
                                   value={studentAnswers[question.id] || ""}
+                                  maxLength={1}
                                 />
                               </div>
                             )}
@@ -637,7 +636,7 @@ export default function AnswerSheetPage() {
                 </ul>
               </div>
             ) : (
-              <p className="text-green-600">All questions appear to be answered. Good job!</p>
+              <p className="text-green-600 font-medium">All questions appear to be answered. Good job!</p>
             )}
           </div>
           <AlertDialogFooter>
@@ -655,5 +654,3 @@ export default function AnswerSheetPage() {
     </div>
   );
 }
-
-    

@@ -212,33 +212,25 @@ export default function ExamResultsPage() {
                     });
 
                     setGroupedStudentScores(prevGroups => {
-                        const newGroups = prevGroups.map(g => ({ ...g, students: [...g.students] })); // Deep clone for safety
+                        const newGroups = prevGroups.map(g => ({ ...g, students: [...g.students] })); 
 
-                        if (newGroups[groupIndex]) { // Check if the group exists
+                        if (newGroups[groupIndex]) { 
                             newGroups[groupIndex].students = newGroups[groupIndex].students.map(student => {
                                 const existingScoreData = scoresMap.get(student.id);
-                                const dbScore = existingScoreData?.score ?? null; // Score from the database
+                                const dbScore = existingScoreData?.score ?? null; 
                                 
-                                // Preserve user input if it's different from the previous DB score or if it's actively being edited
-                                // A simple check: if currentScoreInput is non-empty and differs from the student's old score,
-                                // or if input is empty but old score was not, keep currentScoreInput.
-                                // Otherwise, update currentScoreInput from the database.
                                 let newCurrentScoreInput = student.currentScoreInput;
-                                const oldDbScoreForStudent = student.score; // Score previously in state
+                                const oldDbScoreForStudent = student.score; 
 
                                 if (student.currentScoreInput === undefined || student.currentScoreInput === null || student.currentScoreInput === "") {
-                                    // If UI input is empty, update it from DB unless old DB score was null and new is null
                                     if (!(oldDbScoreForStudent === null && dbScore === null)){
                                         newCurrentScoreInput = dbScore !== null ? String(dbScore) : "";
                                     }
                                 } else {
-                                    // UI input has a value. Only update it if it matches the OLD db score
-                                    // This prevents overwriting active edits.
                                     const currentInputAsNumber = parseFloat(student.currentScoreInput);
                                     if (!isNaN(currentInputAsNumber) && currentInputAsNumber === oldDbScoreForStudent) {
                                          newCurrentScoreInput = dbScore !== null ? String(dbScore) : "";
                                     } else if (isNaN(currentInputAsNumber) && oldDbScoreForStudent === null) {
-                                        // If input was invalid (e.g. "abc") and old score was null, also update from DB
                                         newCurrentScoreInput = dbScore !== null ? String(dbScore) : "";
                                     }
                                 }
@@ -278,7 +270,7 @@ export default function ExamResultsPage() {
         unsubscribes.forEach(unsub => unsub());
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [examId, user, authLoading, toast, router]); // Removed getScoreStatus from dependency array
+  }, [examId, user, authLoading, toast, router]);
 
 
   const handleScoreInputChange = (classIdx: number, studentIdx: number, value: string) => {
@@ -302,10 +294,9 @@ export default function ExamResultsPage() {
     const { classInfo, students } = classGroup;
 
     setIsSavingAllInProgress(prev => ({ ...prev, [classInfo.id]: true }));
-    // Reset isSavingScore for individual students for this class before starting batch save
     setGroupedStudentScores(prev => {
         const newGroups = [...prev];
-        if (newGroups[classIdx]) { // Ensure the class group exists
+        if (newGroups[classIdx]) { 
           newGroups[classIdx].students = newGroups[classIdx].students.map(s => ({...s, isSavingScore: false })); 
         }
         return newGroups;
@@ -314,11 +305,9 @@ export default function ExamResultsPage() {
     const savableStudentsPromises = students.map(async (student, studentIdx) => {
       const scoreStatusDetails = getScoreStatus(student);
       if (!scoreStatusDetails.isSavable) {
-        // No changes or invalid input, so skip saving for this student
         return { studentId: student.id, success: true, noChange: true, finalScore: student.score, scoreDocId: student.scoreDocId }; 
       }
 
-      // Mark this specific student as saving for individual row feedback
       setGroupedStudentScores(prev => {
         const newGroups = [...prev];
         if (newGroups[classIdx] && newGroups[classIdx].students[studentIdx]) {
@@ -327,10 +316,9 @@ export default function ExamResultsPage() {
         return newGroups;
       });
       
-      const scoreToSave = scoreStatusDetails.parsedScore; // This can be null if input was cleared
+      const scoreToSave = scoreStatusDetails.parsedScore; 
 
       try {
-        // scoreData needs to allow null for score
         const scoreData: Omit<StudentExamScore, 'id' | 'createdAt'> & { score: number | null } = {
           examId: examDetails.id,
           studentId: student.id,
@@ -340,22 +328,19 @@ export default function ExamResultsPage() {
         };
 
         const scoresCollectionPath = collection(db, SUBJECTS_COLLECTION_NAME, classInfo.subjectId, "classes", classInfo.id, SCORES_SUBCOLLECTION_NAME);
-        let newScoreDocId = student.scoreDocId;
+        
+        // Always use student.id as the document ID for the score document
+        const scoreDocRef = doc(scoresCollectionPath, student.id);
+        
+        // Use setDoc with merge:true to create or update
+        await setDoc(scoreDocRef, 
+            student.scoreDocId ? scoreData : { ...scoreData, createdAt: serverTimestamp() as Timestamp }, 
+            { merge: true }
+        );
+        
+        // The scoreDocId in our local state should now always be student.id after a successful save
+        const newScoreDocId = student.id; 
 
-        if (student.scoreDocId) {
-          const scoreDocRef = doc(scoresCollectionPath, student.scoreDocId);
-          await setDoc(scoreDocRef, scoreData, { merge: true });
-        } else {
-          // If scoreDocId is null, it means it's a new score record or one being reset to null
-          // If scoreToSave is null and no scoreDocId, no need to create a doc just for null.
-          // But if scoreToSave is not null, we need to create.
-          if (scoreToSave !== null) {
-            const newDocRef = await addDoc(scoresCollectionPath, { ...scoreData, createdAt: serverTimestamp() as Timestamp });
-            newScoreDocId = newDocRef.id;
-          } else {
-            // If score is null and no existing doc, do nothing (effectively deleting if it existed, though covered by emptyAndDirty -> parsedScore: null)
-          }
-        }
         return { studentId: student.id, success: true, finalScore: scoreToSave, newScoreDocId };
       } catch (e) {
         console.error(`Error saving score for ${student.firstName} ${student.lastName}:`, e);
@@ -367,10 +352,9 @@ export default function ExamResultsPage() {
     let allSuccessful = true;
     let changesMade = false;
 
-    // Update local state based on results
     setGroupedStudentScores(prev => {
       const newGroups = [...prev];
-      if (!newGroups[classIdx]) return prev; // Should not happen if classGroup was found
+      if (!newGroups[classIdx]) return prev;
 
       const studentsToUpdate = newGroups[classIdx].students.map(s => {
         const resultItem = results.find(r => r.status === 'fulfilled' && r.value.studentId === s.id);
@@ -380,21 +364,20 @@ export default function ExamResultsPage() {
             if (!resultValue.noChange) changesMade = true;
             return {
               ...s,
-              score: resultValue.finalScore, // Update the 'official' score
-              scoreDocId: resultValue.newScoreDocId,
-              currentScoreInput: resultValue.finalScore !== null && resultValue.finalScore !== undefined ? String(resultValue.finalScore) : '', // Reset input to saved value
+              score: resultValue.finalScore, 
+              scoreDocId: resultValue.newScoreDocId, // This will be student.id
+              currentScoreInput: resultValue.finalScore !== null && resultValue.finalScore !== undefined ? String(resultValue.finalScore) : '', 
               isSavingScore: false,
             };
-          } else { // Save failed for this student
+          } else { 
             allSuccessful = false;
-            return { ...s, isSavingScore: false }; // Clear saving flag even on failure
+            return { ...s, isSavingScore: false }; 
           }
         } else if (resultItem && resultItem.status === 'rejected') {
           allSuccessful = false;
           return { ...s, isSavingScore: false };
         }
-        // If student was not part of savableStudentsPromises (noChange was true), or resultItem not found (should not happen)
-        return { ...s, isSavingScore: false }; // Ensure saving flag is cleared
+        return { ...s, isSavingScore: false }; 
       });
       newGroups[classIdx].students = studentsToUpdate;
       return newGroups;
@@ -402,8 +385,6 @@ export default function ExamResultsPage() {
 
     if (allSuccessful && changesMade) {
       toast({ title: "Scores Saved", description: `All changes for ${classInfo.sectionName} saved successfully.` });
-    } else if (!changesMade && allSuccessful) {
-      // toast({ title: "No Changes", description: `No scores needed saving for ${classInfo.sectionName}.`}); // Removed this line
     } else if (!allSuccessful) {
       toast({ title: "Partial Save", description: `Some scores for ${classInfo.sectionName} could not be saved. Please check individual statuses.`, variant: "destructive" });
     }
@@ -419,7 +400,6 @@ export default function ExamResultsPage() {
             ...group,
             students: group.students.map(student => ({
               ...student,
-              // Revert currentScoreInput to the last saved score (or empty if no score was saved)
               currentScoreInput: student.score !== null && student.score !== undefined ? String(student.score) : '',
             })),
           };

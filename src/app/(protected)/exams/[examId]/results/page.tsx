@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { db } from '@/lib/firebase/config';
-import { doc, getDoc, collection, getDocs, query, where, orderBy, setDoc, addDoc, serverTimestamp, Timestamp, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, where, orderBy, setDoc, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
 import type { ExamSummaryData, ClassInfoForDropdown, Student, StudentExamScore } from '@/types/exam-types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,8 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, BarChart3, Users, AlertTriangle, Info, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, BarChart3, Users, AlertTriangle, Info, Save, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 const SCORES_SUBCOLLECTION_NAME = 'scores';
 
@@ -34,6 +35,14 @@ export default function ExamResultsPage() {
   const [groupedStudentScores, setGroupedStudentScores] = useState<ClassWithStudentsAndScores[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [collapsedStates, setCollapsedStates] = useState<Record<string, boolean>>({});
+
+  const toggleCollapse = (classId: string) => {
+    setCollapsedStates(prev => ({
+      ...prev,
+      [classId]: !(prev[classId] ?? false) // Default to expanded (false), so first click collapses
+    }));
+  };
 
   const fetchResultsData = useCallback(async () => {
     if (!user || !examId) return;
@@ -313,69 +322,94 @@ export default function ExamResultsPage() {
         </Card>
       )}
 
-      {groupedStudentScores.map(({ classInfo, students }, classIdx) => (
-        <Card key={classInfo.id} className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-lg sm:text-xl flex items-center">
-              <Users className="mr-2 h-5 w-5 text-muted-foreground" />
-              {classInfo.sectionName} ({classInfo.yearGrade})
-            </CardTitle>
-            <CardDescription className="text-xs sm:text-sm ml-7">
-              Subject: {classInfo.subjectName} ({classInfo.subjectCode}) | Class Code: {classInfo.code}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {students.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[45%] px-2 sm:px-4 text-xs sm:text-sm">Student Name</TableHead>
-                    <TableHead className="w-[30%] text-center px-2 sm:px-4 text-xs sm:text-sm">Score</TableHead>
-                    <TableHead className="w-[25%] text-right px-2 sm:px-4 text-xs sm:text-sm">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {students.map((student, studentIdx) => (
-                    <TableRow key={student.id}>
-                      <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-3 align-middle">
-                        {student.lastName}, {student.firstName} {student.middleName && `${student.middleName.charAt(0)}.`}
-                      </TableCell>
-                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm py-1.5 sm:py-2 align-middle">
-                        <Input
-                          type="text" 
-                          placeholder={`Score / ${examDetails.totalPoints}`}
-                          value={student.currentScoreInput ?? ''}
-                          onChange={(e) => handleScoreInputChange(classIdx, studentIdx, e.target.value)}
-                          className="h-8 sm:h-9 text-xs sm:text-sm text-center w-full max-w-[120px] mx-auto"
-                          disabled={student.isSavingScore}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right px-2 sm:px-4 text-xs sm:text-sm py-1.5 sm:py-2 align-middle">
-                        <Button
-                          size="sm"
-                          onClick={() => handleSaveScore(classIdx, studentIdx)}
-                          disabled={student.isSavingScore}
-                          className="h-8 sm:h-9 text-2xs sm:text-xs px-2 sm:px-3"
-                        >
-                          {student.isSavingScore ? (
-                            <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
-                          ) : (
-                            <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                          )}
-                           <span className="hidden sm:inline ml-1 sm:ml-1.5">Save</span>
-                        </Button>
-                      </TableCell>
+      {groupedStudentScores.map(({ classInfo, students }, classIdx) => {
+        const isCollapsed = collapsedStates[classInfo.id] ?? false; // Default to expanded
+
+        return (
+          <Card key={classInfo.id} className="shadow-lg">
+            <CardHeader className="flex flex-row justify-between items-center">
+              <div className="flex-grow">
+                <CardTitle className="text-lg sm:text-xl flex items-center">
+                  <Users className="mr-2 h-5 w-5 text-muted-foreground" />
+                  {classInfo.sectionName} ({classInfo.yearGrade})
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm ml-7">
+                  Subject: {classInfo.subjectName} ({classInfo.subjectCode}) | Class Code: {classInfo.code}
+                </CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => toggleCollapse(classInfo.id)}
+                aria-expanded={!isCollapsed}
+                aria-controls={`class-content-${classInfo.id}`}
+                className="flex-shrink-0"
+              >
+                {isCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+                <span className="sr-only">{isCollapsed ? 'Expand' : 'Collapse'}</span>
+              </Button>
+            </CardHeader>
+            <CardContent
+              id={`class-content-${classInfo.id}`}
+              className={cn(
+                "overflow-hidden transition-all duration-300 ease-in-out",
+                "px-2 sm:px-4", // Keep horizontal padding consistent
+                isCollapsed 
+                  ? "max-h-0 py-0 opacity-0" 
+                  : "max-h-[100dvh] overflow-y-auto pt-0 pb-4 sm:pb-6 opacity-100" 
+              )}
+            >
+              {students.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[45%] px-2 sm:px-4 text-xs sm:text-sm">Student Name</TableHead>
+                      <TableHead className="w-[30%] text-center px-2 sm:px-4 text-xs sm:text-sm">Score</TableHead>
+                      <TableHead className="w-[25%] text-right px-2 sm:px-4 text-xs sm:text-sm">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">No students found in this class.</p>
-            )}
-          </CardContent>
-        </Card>
-      ))}
+                  </TableHeader>
+                  <TableBody>
+                    {students.map((student, studentIdx) => (
+                      <TableRow key={student.id}>
+                        <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm py-2 sm:py-3 align-middle">
+                          {student.lastName}, {student.firstName} {student.middleName && `${student.middleName.charAt(0)}.`}
+                        </TableCell>
+                        <TableCell className="px-2 sm:px-4 text-xs sm:text-sm py-1.5 sm:py-2 align-middle">
+                          <Input
+                            type="text" 
+                            placeholder={`Score / ${examDetails.totalPoints}`}
+                            value={student.currentScoreInput ?? ''}
+                            onChange={(e) => handleScoreInputChange(classIdx, studentIdx, e.target.value)}
+                            className="h-8 sm:h-9 text-xs sm:text-sm text-center w-full max-w-[120px] mx-auto"
+                            disabled={student.isSavingScore}
+                          />
+                        </TableCell>
+                        <TableCell className="text-right px-2 sm:px-4 text-xs sm:text-sm py-1.5 sm:py-2 align-middle">
+                          <Button
+                            size="sm"
+                            onClick={() => handleSaveScore(classIdx, studentIdx)}
+                            disabled={student.isSavingScore}
+                            className="h-8 sm:h-9 text-2xs sm:text-xs px-2 sm:px-3"
+                          >
+                            {student.isSavingScore ? (
+                              <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                            ) : (
+                              <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                            )}
+                             <span className="hidden sm:inline ml-1 sm:ml-1.5">Save</span>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No students found in this class.</p>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }
-

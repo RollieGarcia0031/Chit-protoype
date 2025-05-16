@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowRight, Edit3, Trash2, AlertTriangle, Loader2, Layers, BookOpen, Users2Icon } from "lucide-react";
+import { ArrowRight, Edit3, Trash2, AlertTriangle, Loader2, Layers, BookOpen, Users2Icon, BarChart3, Send } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
@@ -25,9 +25,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { EXAMS_COLLECTION_NAME, SUBJECTS_COLLECTION_NAME } from "@/config/firebase-constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ExamSummaryData, FetchedSubjectInfo, ClassInfoForDropdown } from "@/types/exam-types";
+import { useRouter } from "next/navigation";
 
 type DisplayMode = 'all' | 'bySubject' | 'byClass';
 
@@ -51,6 +53,7 @@ interface ClassGroup {
 export default function ViewExamsPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
 
   const [exams, setExams] = useState<ExamSummaryData[]>([]);
   const [isLoadingExams, setIsLoadingExams] = useState(true);
@@ -62,6 +65,9 @@ export default function ViewExamsPage() {
   const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
   const [allUserClasses, setAllUserClasses] = useState<ClassInfoForDropdown[]>([]);
   const [isLoadingClasses, setIsLoadingClasses] = useState(false);
+
+  const [isOptionsDialogOpen, setIsOptionsDialogOpen] = useState(false);
+  const [selectedExamForOptions, setSelectedExamForOptions] = useState<ExamSummaryData | null>(null);
 
   useEffect(() => {
     const fetchExamsData = async () => {
@@ -288,6 +294,32 @@ export default function ViewExamsPage() {
     }
   };
 
+  const handleOpenOptionsDialog = (exam: ExamSummaryData) => {
+    setSelectedExamForOptions(exam);
+    setIsOptionsDialogOpen(true);
+  };
+
+  const handleCloseOptionsDialog = () => {
+    setSelectedExamForOptions(null);
+    setIsOptionsDialogOpen(false);
+  };
+
+  const handleViewScores = () => {
+    if (selectedExamForOptions) {
+      router.push(`/exams/${selectedExamForOptions.id}/results`);
+      handleCloseOptionsDialog();
+    }
+  };
+
+  const handlePublishExam = () => {
+    // Placeholder for publish functionality
+    toast({
+      title: "Feature Coming Soon",
+      description: "The 'Publish Exam' feature is not yet implemented.",
+    });
+    handleCloseOptionsDialog();
+  };
+
   const renderExamTable = (examList: ExamSummaryData[], context: string) => {
     if (examList.length === 0) {
         return <p className="text-sm text-muted-foreground py-4 text-center">No exams found for this {context}.</p>;
@@ -323,8 +355,14 @@ export default function ViewExamsPage() {
                     <Button variant="outline" size="icon" aria-label="Edit Exam" asChild className="h-7 w-7 sm:h-8 sm:w-8">
                     <Link href={`/create-exam?examId=${exam.id}`}><Edit3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></Link>
                     </Button>
-                    <Button variant="outline" size="icon" aria-label="View Exam Results" className="text-primary hover:text-primary h-7 w-7 sm:h-8 sm:w-8" asChild>
-                    <Link href={`/exams/${exam.id}/results`}><ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></Link>
+                    <Button 
+                        variant="outline" 
+                        size="icon" 
+                        aria-label="Exam Options" 
+                        className="text-primary hover:text-primary h-7 w-7 sm:h-8 sm:w-8" 
+                        onClick={() => handleOpenOptionsDialog(exam)}
+                    >
+                        <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </Button>
                     <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -531,6 +569,37 @@ export default function ViewExamsPage() {
         </Card>
     )}
 
+    {selectedExamForOptions && (
+        <Dialog open={isOptionsDialogOpen} onOpenChange={setIsOptionsDialogOpen}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="text-base sm:text-lg">Options for: {selectedExamForOptions.title}</DialogTitle>
+                    <DialogDescription className="text-xs sm:text-sm">
+                        Choose an action for this exam.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-1 gap-3 py-4 sm:grid-cols-2 sm:gap-4">
+                    <Button variant="outline" onClick={handleViewScores} size="sm" className="text-xs sm:text-sm">
+                        <BarChart3 className="mr-2 h-4 w-4" />
+                        View Scores
+                    </Button>
+                    <Button variant="default" onClick={handlePublishExam} size="sm" className="text-xs sm:text-sm">
+                        <Send className="mr-2 h-4 w-4" />
+                        Publish Exam (Soon)
+                    </Button>
+                </div>
+                <DialogFooter className="sm:justify-start">
+                    <DialogClose asChild>
+                        <Button type="button" variant="ghost" size="sm" className="text-xs sm:text-sm">
+                        Close
+                        </Button>
+                    </DialogClose>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )}
+
     </div>
   );
 }
+

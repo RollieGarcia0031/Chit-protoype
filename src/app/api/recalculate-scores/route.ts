@@ -14,14 +14,16 @@ try {
       });
     } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
        admin.initializeApp({
-        credential: admin.credential.applicationDefault(),
+        credential: admin.credential.applicationDefault(), // For GAE, GCF, GCR
       });
     } else {
+       // Fallback for local dev if GOOGLE_APPLICATION_CREDENTIALS is set via gcloud CLI or to a file path
        admin.initializeApp();
     }
   }
 } catch (error: any) {
   console.error('Firebase Admin Initialization Error in /api/recalculate-scores:', error.message);
+  // This error will likely prevent the API route from functioning correctly.
 }
 
 const firestore = admin.firestore();
@@ -70,7 +72,7 @@ function calculateScore(fullExam: FullExamData, studentAnswers: StudentAnswers):
           break;
         case 'matching':
           const matq = question as MatchingTypeQuestion;
-           if (matq.pairs && matq.pairs.length > 0 && typeof singleStudentAnswer === 'string' && singleStudentAnswer.toUpperCase() === (matq.pairs[0].responseLetter || '').toUpperCase()) {
+           if (matq.pairs && matq.pairs.length > 0 && typeof singleStudentAnswer === 'string' && (matq.pairs[0].responseLetter || '').toUpperCase() === singleStudentAnswer.toUpperCase() ) {
             isCorrect = true;
           }
           break;
@@ -126,12 +128,12 @@ export async function POST(request: NextRequest) {
     const updatedFullExam: FullExamData = { ...examData, id: examId, examBlocks: fetchedBlocks };
 
     // 2. Query for all score documents related to this exam using a collection group query
-    // This queries all 'scores' subcollections across all subjects/classes for the given examId
     const scoresQuery = firestore.collectionGroup('scores').where('examId', '==', examId);
     const scoresSnapshot = await scoresQuery.get();
 
     if (scoresSnapshot.empty) {
-      return NextResponse.json({ message: 'No student submissions found for this exam to recalculate.' }, { status: 200 });
+      // Exam exists, but no student submissions were found for this examId.
+      return NextResponse.json({ message: `Exam "${updatedFullExam.title}" exists, but no student submissions were found to recalculate.` }, { status: 200 });
     }
 
     const batch = firestore.batch();
@@ -142,10 +144,10 @@ export async function POST(request: NextRequest) {
       if (scoreData.answers) { // Only recalculate if there are answers stored
         const { achievedScore, maxPossibleScore } = calculateScore(updatedFullExam, scoreData.answers);
         
-        const updatedScoreFields = {
+        const updatedScoreFields: Partial<StudentExamScore> = { // Use Partial for update
           score: achievedScore,
-          maxPossibleScore: maxPossibleScore, // Update max possible score too
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          maxPossibleScore: maxPossibleScore,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp() as FirebaseFirestore.Timestamp,
         };
         batch.update(scoreDoc.ref, updatedScoreFields);
         recalculatedCount++;
@@ -168,3 +170,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to recalculate scores.', details: errorMessage }, { status: 500 });
   }
 }
+

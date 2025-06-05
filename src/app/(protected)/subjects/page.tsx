@@ -1,7 +1,7 @@
+
 // src/app/(protected)/subjects/page.tsx
 'use client';
 
-import { useState, type FormEvent, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
@@ -10,10 +10,6 @@ import { Label } from "@/components/ui/label";
 import { BookOpen, PlusCircle, Edit3, Trash2, List, Loader2, AlertTriangle } from "lucide-react";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/contexts/auth-context';
-import { db } from '@/lib/firebase/config';
-import { SUBJECTS_COLLECTION_NAME } from '@/config/firebase-constants';
-import { collection, addDoc, serverTimestamp, query, where, getDocs, orderBy, doc, updateDoc, deleteDoc, Timestamp } from "firebase/firestore";
-import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog,
@@ -26,140 +22,27 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-
-interface SubjectInfo {
-  id: string;
-  name: string;
-  code: string;
-  userId?: string; // For Firestore query
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
-}
+import { useSubjectsLogic, type SubjectInfo } from '@/features/subjects-management/hooks/useSubjectsLogic'; // IMPORT THE HOOK
 
 export default function SubjectsPage() {
   const { user, loading: authLoading } = useAuth();
-  const { toast } = useToast();
-  const [subjects, setSubjects] = useState<SubjectInfo[]>([]);
-  const [isLoadingSubjects, setIsLoadingSubjects] = useState(true);
-  const [isSavingSubject, setIsSavingSubject] = useState(false);
-  const [deletingSubjectId, setDeletingSubjectId] = useState<string | null>(null);
-  
-  const [isAddSubjectDialogOpen, setIsAddSubjectDialogOpen] = useState(false);
-  const [newSubjectName, setNewSubjectName] = useState('');
-  const [newSubjectCode, setNewSubjectCode] = useState('');
-  const [editingSubject, setEditingSubject] = useState<SubjectInfo | null>(null);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const {
+    subjects,
+    isLoadingSubjects,
+    isSavingSubject,
+    deletingSubjectId,
+    isAddSubjectDialogOpen, setIsAddSubjectDialogOpen,
+    newSubjectName, setNewSubjectName,
+    newSubjectCode, setNewSubjectCode,
+    editingSubject,
+    fetchError,
+    fetchSubjects, // Can be used for a manual refresh button if needed
+    handleAddOrUpdateSubject,
+    openEditDialog,
+    handleDeleteSubject,
+    closeDialog,
+  } = useSubjectsLogic({ user });
 
-  const fetchSubjects = async () => {
-    if (!user) {
-      setSubjects([]);
-      setIsLoadingSubjects(false);
-      return;
-    }
-    setIsLoadingSubjects(true);
-    setFetchError(null);
-    try {
-      const subjectsCollectionRef = collection(db, SUBJECTS_COLLECTION_NAME);
-      const q = query(subjectsCollectionRef, where("userId", "==", user.uid), orderBy("name", "asc"));
-      const querySnapshot = await getDocs(q);
-      const fetchedSubjects: SubjectInfo[] = [];
-      querySnapshot.forEach((doc) => {
-        fetchedSubjects.push({ id: doc.id, ...doc.data() } as SubjectInfo);
-      });
-      setSubjects(fetchedSubjects);
-    } catch (e) {
-      console.error("Error fetching subjects: ", e);
-      setFetchError("Failed to load subjects. Please try again.");
-      toast({
-        title: "Error",
-        description: "Could not fetch subjects.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoadingSubjects(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!authLoading && user) {
-      fetchSubjects();
-    } else if (!authLoading && !user) {
-      setIsLoadingSubjects(false);
-      setSubjects([]);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading]);
-
-  const handleAddOrUpdateSubject = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!user) {
-      toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
-      return;
-    }
-    if (!newSubjectName.trim() || !newSubjectCode.trim()) {
-      toast({ title: "Validation Error", description: "Subject Name and Code are required.", variant: "destructive" });
-      return;
-    }
-
-    setIsSavingSubject(true);
-    const subjectData = {
-      name: newSubjectName,
-      code: newSubjectCode.toUpperCase(),
-      userId: user.uid,
-      updatedAt: serverTimestamp(),
-    };
-
-    try {
-      if (editingSubject) {
-        const subjectDocRef = doc(db, SUBJECTS_COLLECTION_NAME, editingSubject.id);
-        await updateDoc(subjectDocRef, subjectData);
-        toast({ title: "Subject Updated", description: `"${newSubjectName}" updated successfully.` });
-      } else {
-        await addDoc(collection(db, SUBJECTS_COLLECTION_NAME), {
-          ...subjectData,
-          createdAt: serverTimestamp(),
-        });
-        toast({ title: "Subject Added", description: `"${newSubjectName}" added successfully.` });
-      }
-      closeDialog();
-      await fetchSubjects(); // Refetch to update list
-    } catch (e) {
-      console.error("Error saving subject: ", e);
-      toast({ title: "Error Saving Subject", description: "There was an issue. Please try again.", variant: "destructive" });
-    } finally {
-      setIsSavingSubject(false);
-    }
-  };
-
-  const openEditDialog = (subjectInfo: SubjectInfo) => {
-    setEditingSubject(subjectInfo);
-    setNewSubjectName(subjectInfo.name);
-    setNewSubjectCode(subjectInfo.code);
-    setIsAddSubjectDialogOpen(true);
-  };
-
-  const handleDeleteSubject = async (subjectId: string, subjectName: string) => {
-    if (!user) return;
-    setDeletingSubjectId(subjectId);
-    try {
-      // Add deletion of subcollections (classes and students) here if needed in future
-      await deleteDoc(doc(db, SUBJECTS_COLLECTION_NAME, subjectId));
-      toast({ title: "Subject Deleted", description: `Subject "${subjectName}" deleted.` });
-      setSubjects(prevSubjects => prevSubjects.filter(s => s.id !== subjectId));
-    } catch (e) {
-      console.error("Error deleting subject: ", e);
-      toast({ title: "Error Deleting Subject", description: "Could not delete subject. It might have associated classes.", variant: "destructive" });
-    } finally {
-      setDeletingSubjectId(null);
-    }
-  };
-  
-  const closeDialog = () => {
-    setIsAddSubjectDialogOpen(false);
-    setNewSubjectName('');
-    setNewSubjectCode('');
-    setEditingSubject(null);
-  };
 
   if (authLoading || isLoadingSubjects) {
     return (
@@ -315,8 +198,8 @@ export default function SubjectsPage() {
                             <AlertDialogHeader>
                               <AlertDialogTitle className="text-base sm:text-lg">Are you absolutely sure?</AlertDialogTitle>
                               <AlertDialogDescription className="text-xs sm:text-sm">
-                                This action cannot be undone. This will permanently delete the subject 
-                                &quot;{sub.name}&quot; and all associated classes and student data.
+                                This action cannot be undone. This will permanently delete the subject
+                                &quot;{sub.name}&quot; and all associated classes, students, and exams under this subject.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
@@ -348,4 +231,3 @@ export default function SubjectsPage() {
     </div>
   );
 }
-
